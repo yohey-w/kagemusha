@@ -31,6 +31,10 @@ set -uo pipefail
 # cron's default PATH omits ~/.local/bin, so AGENT_CMD (claude / codex / gemini,
 # installed there by most native installers) is not found and the run dies instantly.
 export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"
+# If your agent CLI uses MCP servers or hooks, it may also need `node` on PATH.
+# Installed via nvm, node lives outside the dirs above — find its dir with
+#   dirname "$(command -v node)"
+# and append it to the PATH line if cron runs die with "node: not found".
 
 # ─── CONFIG ▼  edit these (or source config.env and reuse its values) ────────
 MINING_DIR="${JUDGMENT_MINING_OUT:-$HOME/judgment/mining}"  # private, git-ignored
