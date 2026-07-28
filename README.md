@@ -2,7 +2,7 @@
 
 <sub>🌐 **English** (canonical) · [🇯🇵 日本語版はこちら → README_ja.md](README_ja.md)</sub>
 
-**The work happens overnight. You approve in minutes each morning. Even your rejections become an asset.**
+**Inward work runs on its own. Anything going outward stops for your approval. Even your rejections become an asset.**
 
 Hand it your repetitive work — first-pass inbox handling, drafts, research, prep for recurring meetings — and every morning a "board" arrives: finished drafts and research, plus an approval queue you can clear from your phone in a few minutes.
 
@@ -10,7 +10,7 @@ You are the approver of record. The AI is your back office. Your rejection reaso
 
 **Why "kagemusha"?** A *kagemusha* (影武者) was a feudal lord's body double — acting in the lord's place within delegated bounds, but never signing in his name. That is this kit's mandate design, baked into the name: inward acts run on their own; outward acts wait for your seal. (Formerly `approval-loop` — the approval queue lives on as the mechanism's name inside.)
 
-> **A morning with the loop.** Overnight, the loop ran. At 06:53 your phone buzzes ([ntfy](https://ntfy.sh/)): today's board — 3 finished drafts, 1 research memo, 2 items waiting in the approval queue.
+> **A morning with the loop.** Overnight, notifications stay silent — **but the inbound watch never stops.** At 06:53 your phone buzzes ([ntfy](https://ntfy.sh/)): today's board — 3 drafts and 1 research memo the loop finished yesterday, 2 requests that landed overnight, 2 items waiting in the approval queue.
 > Coffee in hand, you answer from your phone: YES, YES, NO — "too pushy for this client." Two minutes.
 > That NO, verbatim, is appended to the decisions journal.
 > On Sunday night the weekly distiller turns it into a principle in the judgment model.
