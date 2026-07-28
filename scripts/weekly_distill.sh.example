@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+# weekly_distill.sh — the judgment-distillation trigger (a weekly time trigger).
+#
+# Copy this to weekly_distill.sh, edit the CONFIG block, then put it on cron.
+# This shell is only ONE example wiring (Linux/cron) — not a requirement. On
+# Windows, use Task Scheduler with the same prompt; or run it by hand from a weekly
+# calendar reminder; or just paste the prompt into a desktop/web chat. The
+# mechanism is the prompt + the two Markdown files (journal + model), so any AI
+# assistant + any scheduler is an equivalent stand-in.
+# It is the feedback side of the loop: once a week it reads the last 7 days of
+# rulings/corrections/rejections, folds them into the value-judgment model, and
+# reports what it changed. See docs/judgment-distillation.md.
+#
+# INWARD-ONLY. Like morning_brief.sh, this must NEVER perform an outward
+# operation (send / publish / push / deploy / mutate a shared SSOT). It may edit
+# ONLY the judgment journal and the judgment model, and only on this machine.
+#
+# SAFE BY DEFAULT: it proposes; it does not silently rewrite your judgment.
+#   - Reinforcing an existing principle (adding a citation) → applied directly.
+#   - A NEW principle or a CONTRADICTION with an existing one → written to a
+#     *_pending.md file for you to review. Nothing new is promoted unattended,
+#     because an unattended rewrite of the model that governs the agent's calls
+#     is exactly the kind of un-undoable change this whole kit exists to gate.
+#   - IMMUTABLE layer: the evidence requirement (a principle needs a real quote),
+#     your revoke right, raw-log retention, and the audit sampling rate are never
+#     editable by this job — the mechanism may not loosen its own evidence bar.
+# ═══════════════════════════════════════════════════════════════════════════
+set -uo pipefail
+
+# cron's default PATH omits ~/.local/bin, so AGENT_CMD (claude / codex / gemini,
+# installed there by most native installers) is not found and the run dies instantly.
+export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"
+
+# ─── CONFIG ▼  edit these (or source config.env and reuse its values) ────────
+MINING_DIR="${JUDGMENT_MINING_OUT:-$HOME/judgment/mining}"  # private, git-ignored
+MODEL_FILE="${JUDGMENT_MODEL_FILE:-$HOME/judgment/judgment_model.md}"     # L1 thin canon
+JOURNAL_FILE="${JUDGMENT_JOURNAL_FILE:-$HOME/judgment/decisions_journal.md}" # L2 event log
+REPORT_DIR="${JUDGMENT_REPORT_DIR:-$HOME/judgment/reports}"
+LOG_DIR="${JUDGMENT_LOG_DIR:-$HOME/judgment/logs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Which conversation logs to mine (default: all of ~/.claude/projects/*).
+CONV_DIRS="${CONV_DIRS:-}"                 # e.g. "$HOME/.claude/projects/-home-me-work"
+
+# Line budget for the model (see docs — long instruction files stop being obeyed).
+MODEL_MAX_LINES="${MODEL_MAX_LINES:-160}"
+MODEL_MAX_PRINCIPLES="${MODEL_MAX_PRINCIPLES:-32}"
+
+# The agent CLI (headless). Same swap points as morning_brief.sh.
+AGENT_CMD="${AGENT_CMD:-claude}"
+AGENT_MODEL="${AGENT_MODEL:-claude-opus-4-8}"
+AGENT_FLAGS="${AGENT_FLAGS:---dangerously-skip-permissions}"
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-1200}"
+
+# ntfy self-ping (inward — a note to yourself, not an outward send).
+NTFY_TOPIC="${NTFY_TOPIC:-}"               # empty = no notification
+NTFY_SERVER="${NTFY_SERVER:-https://ntfy.sh}"
+# ─── CONFIG ▲ ───────────────────────────────────────────────────────────────
+
+TODAY="$(date +%F)"
+DOM="$(date +%-d)"                          # day-of-month, for the monthly audit
+REPORT="${REPORT_DIR}/distill_${TODAY}.md"
+PENDING="${REPORT_DIR}/distill_pending_${TODAY}.md"
+WEEK_MD="${MINING_DIR}/judgments_week.md"
+LOG="${LOG_DIR}/weekly_distill_${TODAY}.log"
+mkdir -p "$REPORT_DIR" "$LOG_DIR" "$MINING_DIR"
+
+# ─── lint: is the model within its line / principle budget? ──────────────────
+# Prints "OK|msg" or "VIOLATION|msg". A principle line = optional "- "/"N. " +
+# a 1-2 digit number + ". ". Everything after a "## Freshness"/"## Appendix"
+# heading is treated as non-principle appendix and not counted.
+run_lint() {
+  local mf="$1" cut body prin msg
+  if [[ ! -f "$mf" ]]; then echo "SKIP|model file not found: $mf"; return; fi
+  cut=$(awk '/^## (Freshness|Appendix|付録|鮮度)/{print NR; exit}' "$mf")
+  if [[ -n "$cut" ]]; then body=$((cut - 1)); else body=$(wc -l < "$mf"); fi
+  prin=$(awk -v cut="${cut:-0}" 'cut>0 && NR>=cut{exit} /^[[:space:]]*(- \*\*|- )?[0-9][0-9]?\. /{c++} END{print c+0}' "$mf")
+  msg="model body=${body}ln (max ${MODEL_MAX_LINES}) / principles=${prin} (max ${MODEL_MAX_PRINCIPLES})"
+  if [[ "$body" -gt "$MODEL_MAX_LINES" || "$prin" -gt "$MODEL_MAX_PRINCIPLES" ]]; then
+    echo "VIOLATION|${msg} — over budget; merge or retire principles before adding more"
+  else
+    echo "OK|${msg}"
+  fi
+}
+
+# ─── step 0: mine the last 7 days → judgments_week.md ────────────────────────
+{ echo "[$(date '+%F %T')] === weekly_distill ${TODAY} ==="; echo "[step0] mine + filter"; } >> "$LOG"
+MINE_ARGS=(--out "$MINING_DIR" --since 7d)
+[[ -n "$CONV_DIRS" ]] && MINE_ARGS+=(--dirs ${CONV_DIRS//:/ })
+python3 "$SCRIPT_DIR/mine_conversations.py"  "${MINE_ARGS[@]}"        >> "$LOG" 2>&1
+python3 "$SCRIPT_DIR/filter_judgments.py"    --in "$MINING_DIR" --week >> "$LOG" 2>&1
+WEEK_COUNT=0
+[[ -f "$WEEK_MD" ]] && WEEK_COUNT=$(grep -c '^- ' "$WEEK_MD" 2>/dev/null || echo 0)
+WEEK_CONTENT="$(cat "$WEEK_MD" 2>/dev/null || echo '(judgments_week.md missing — check mine/filter logs)')"
+echo "[step0] judgments_week.md entries=${WEEK_COUNT}" >> "$LOG"
+
+# ─── monthly (first 7 days): add a usage audit of which principles get cited ─
+MONTHLY_BLOCK=""
+if [[ "$DOM" -le 7 ]]; then
+  MONTHLY_BLOCK="(monthly, first Sunday only) USAGE AUDIT: over the last month of ${JOURNAL_FILE}, tally which principle IDs appear in the 'principle:' field of journal entries. List principles cited zero times as candidates for 'not recalled / possibly unneeded' — REPORT ONLY, never delete."
+fi
+
+# ─── the distillation prompt (7 steps) ───────────────────────────────────────
+read -r -d '' PROMPT <<PROMPT_EOF || true
+Weekly judgment-distillation task. INWARD-ONLY: never send, publish, push, deploy,
+or mutate any shared source of truth. You may edit ONLY these two local files:
+${JOURNAL_FILE} (the judgment journal) and ${MODEL_FILE} (the value-judgment model).
+Do NOT launch any other model/CLI from this run.
+
+You may NOT weaken your own evidence requirements. The rule "a principle is promoted
+only on a real approver quote", the owner's revoke right, raw-log retention, and the
+audit sampling rate form an IMMUTABLE layer this job must never edit; loosening any of
+them is a change only the owner makes by hand, never this distiller.
+
+Read: (a) the attached "approver judgments, last 7 days" list (${WEEK_COUNT} turns),
+(b) the last 7 days of ${JOURNAL_FILE}, (c) ${MODEL_FILE} (the value-judgment model).
+
+Steps:
+1. BACKFILL — cross-check the attached list against ${JOURNAL_FILE}. Any ruling,
+   correction, rejection, or interrupt that never got journaled, append to
+   ${JOURNAL_FILE} WITH A VERBATIM QUOTE (append-only; never overwrite; use the
+   template's format; a correction that supersedes an earlier entry gets a
+   'revises:' pointer, it does not delete the old one).
+2. RECONCILE — for each event, compare against existing principles and sort into:
+   (a) reinforces an existing principle, (b) CONTRADICTS one (the model is wrong,
+   or an exception condition just surfaced — most important), (c) a new candidate.
+3. REVISE — apply category (a) directly: add a source tag / bump a verification
+   mark on the existing principle in ${MODEL_FILE}. Do NOT apply (b) or (c)
+   directly. Write every new principle and every contradiction to ${PENDING},
+   with the verbatim quote that would justify it, under the header
+   "PENDING — apply only after the owner confirms". A principle may be promoted
+   ONLY if a real approver quote can be cited; inference stays a [working
+   hypothesis] tag in the journal, never a promoted principle.
+4. BUDGET — the model body must stay <= ${MODEL_MAX_LINES} lines and
+   <= ${MODEL_MAX_PRINCIPLES} principles. If a revision would exceed that,
+   compress (merge or retire) first. (The wrapper lints this after you finish.)
+5. EXPIRE + VERIFY-SWEEP — (a) list principles with a high per-exposure refutation
+   rate, or long-zero-exposure, as DORMANCY candidates (report only; never move or
+   delete; elapsed weeks alone are NOT sufficient grounds). (b) Sweep the journal's
+   'verification' lines and external-outcome columns: surface any hypothesis past its
+   verification deadline still unjudged, and any entry past its outcome deadline whose
+   actual-result column is still empty, for the owner. Note any stale time-varying
+   reference (model assignment, quotas, tool names). When counting support/refutation,
+   collapse consecutive mentions within one session/context into a SINGLE vote
+   (cluster-one-vote — pseudo-repetition must not inflate confidence).
+6. REPORT — write ${REPORT}: "changed this week / held for review (-> ${PENDING}) /
+   expiry candidates / questions for the owner". Keep it phone-readable: full
+   sentences, no private file paths, no invented abbreviations.
+7. (the wrapper sends the ntfy self-ping; do not send any network notification.)
+${MONTHLY_BLOCK}
+
+Stay read-only except for the two files named above. No outward operation at all.
+
+──────── attached: judgments_week.md (last 7 days, auto-extracted, UNVERIFIED, ${WEEK_COUNT}) ────────
+${WEEK_CONTENT}
+──────── end attachment ────────
+PROMPT_EOF
+
+# ─── DRY RUN: print the prompt, fire nothing (no cost) ───────────────────────
+if [[ "${DISTILL_DRYRUN:-0}" = "1" ]]; then
+  echo "=== DRY RUN: agent NOT invoked ==="
+  echo "week_entries=${WEEK_COUNT}  monthly_audit=$([[ "$DOM" -le 7 ]] && echo on || echo off)"
+  echo "lint (current model): $(run_lint "$MODEL_FILE" | sed 's/|/ -> /')"
+  echo "--- PROMPT ---"; printf '%s\n' "$PROMPT"; echo "--- /PROMPT ---"
+  exit 0
+fi
+
+# ─── run the agent (headless) ────────────────────────────────────────────────
+# CLI-SWAP POINT ▼  (same as morning_brief.sh)
+#   Claude : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS
+#   Codex  : "$AGENT_CMD" exec "$PROMPT" $AGENT_FLAGS
+#   Gemini : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+-m "$AGENT_MODEL"} $AGENT_FLAGS
+# shellcheck disable=SC2086
+timeout "$AGENT_TIMEOUT" "$AGENT_CMD" -p "$PROMPT" \
+  ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS >> "$LOG" 2>&1
+RC=$?
+
+# ─── lint the result, append the verdict to the report ───────────────────────
+LINT="$(run_lint "$MODEL_FILE")"
+{ echo ""; echo "## lint ($(date '+%F %T'))"; echo "- ${LINT%%|*}: ${LINT#*|}"; } >> "$REPORT" 2>/dev/null || true
+echo "[$(date '+%F %T')] lint ${LINT}" >> "$LOG"
+
+# ─── ntfy self-ping (inward) ─────────────────────────────────────────────────
+if [[ -n "$NTFY_TOPIC" ]]; then
+  PENDING_NOTE=""; [[ -f "$PENDING" ]] && PENDING_NOTE=" — pending items need your review"
+  curl -s -H "Title: weekly distill ${TODAY}" \
+    -d "distilled ${WEEK_COUNT} judgments; ${LINT%%|*}${PENDING_NOTE}" \
+    "${NTFY_SERVER}/${NTFY_TOPIC}" > /dev/null || true
+fi
+
+echo "[$(date '+%F %T')] weekly_distill exit=${RC} lint=${LINT%%|*} week=${WEEK_COUNT}" \
+  >> "${LOG_DIR}/weekly_distill_cron.log"
+exit "$RC"

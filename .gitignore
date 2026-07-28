@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# Allowlist .gitignore — you live INSIDE this clone.
+#
+# Everything at the root is ignored by default; only the OSS-shipped files
+# below are un-ignored (tracked). So the instance data setup.sh scaffolds
+# next to them — ssot/, judgment/, projects/, briefs/, logs/, local/
+# (machine-local scripts & secrets), system_map.md, approval_queue.md,
+# verifiers.md, config.env, CLAUDE.md / AGENTS.md — can never be committed,
+# by construction. `git pull` updates the kit under you without touching
+# your data.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ignore everything at the root...
+/*
+
+# ...except the kit itself
+!/.gitignore
+!/LICENSE
+!/README.md
+!/README_ja.md
+!/config.env.example
+!/docs
+!/scripts
+!/templates
+
+# inside the tracked dirs: your live weekly distiller (holds your paths/CONFIG)
+scripts/weekly_distill.sh
+# ...and your live inbound watcher (same pattern: the .example is the kit)
+scripts/inbound_watch.sh
+
+# Python / OS / editor cruft (applies inside tracked dirs too)
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
