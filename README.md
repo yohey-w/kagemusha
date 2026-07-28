@@ -61,6 +61,8 @@ The mechanism is **files and discipline** — a harness-agnostic core. The prere
 
 In this mechanism a human has to approve principle revisions anyway (the weekly distiller *proposes*; new principles wait for your OK). So a human doing the kick-off is **not a failure of automation** — the approval and the kick-off just collapse into the same single tap.
 
+(Those three are about *who* kicks off the same OS-scheduled run — a separate question from *which* loop mechanism to use at all. An OS scheduler, an agent's own built-in loop (e.g. Claude Code's `/loop`), and a schedule run by the coding agent's own service or app are not interchangeable — they differ in who holds the clock and whether the job can reach your local files. Comparison: [`docs/inbound-loop.md`](docs/inbound-loop.md).)
+
 That's it. The `scripts/` in this repo are a **convenience layer** (headless automation, log mining, budget lints), not a prerequisite. Delete them and the loop still runs: the core is the Markdown files plus the discipline of *inward = auto / outward = approval queue*. A CLI + a scheduler is just the example wiring — a desktop app + a weekly calendar nudge is equally valid.
 
 ---
@@ -132,7 +134,8 @@ $EDITOR config.env                    # set PROJECT_ROOT / AGENT_CMD / NTFY_TOPI
 ./scripts/morning_brief.sh            # run once by hand (read-only, ~a few minutes)
 
 # 4. Put it on cron (or Windows Task Scheduler → docs/windows.md, or a daily
-#    calendar reminder to run it by hand — any scheduler is equivalent).
+#    calendar reminder to run it by hand — any OS scheduler is equivalent;
+#    other loop mechanisms are not, see docs/inbound-loop.md).
 #    53 6 * * *  /path/to/kagemusha/scripts/morning_brief.sh
 ```
 
