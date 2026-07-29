@@ -2,6 +2,8 @@
 
 <sub>🇯🇵 **日本語** · [🌐 English version (canonical) → README.md](README.md)</sub>
 
+[![ci](https://github.com/yohey-w/kagemusha/actions/workflows/ci.yml/badge.svg)](https://github.com/yohey-w/kagemusha/actions/workflows/ci.yml)
+
 **内向きの仕事は、勝手に進む。外へ出るものは、あなたの承認で必ず止まる。却下した理由まで、資産になる。**
 
 繰り返しの仕事（受信箱の一次対応・下書き・調査・定例の準備）を渡すと、毎朝「盤面」が届きます——できあがった下書きと調査、そしてスマホで数分で捌ける承認キュー。
@@ -177,6 +179,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`scripts/filter_judgments.py`** | それを RULE/REJECT/CORRECT/… にバケット分類（語彙は設定可・日英デフォルト）。 |
 | **`scripts/weekly_distill.sh.example`** | 週次フィードバックトリガー——採掘 → 台帳 → モデルへ蒸留（提案止まり・承認者が確定）。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
+| `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |
 | **`docs/judgment-distillation.md`** | フィードバック側の全体: 4層・8トリガー・イベントソーシング・週次7段・三層の変更ガバナンス。 |
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |

@@ -14,6 +14,7 @@
 /*
 
 # ...except the kit itself
+!/.github
 !/.gitignore
 !/LICENSE
 !/README.md
@@ -22,6 +23,7 @@
 !/docs
 !/scripts
 !/templates
+!/tests
 
 # inside the tracked dirs: your live weekly distiller (holds your paths/CONFIG)
 scripts/weekly_distill.sh

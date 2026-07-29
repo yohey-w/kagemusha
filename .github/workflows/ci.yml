@@ -1,0 +1,32 @@
+name: ci
+
+# The gate is scripts/test.sh, not this file. Everything here does is install
+# shellcheck and run the same command you run locally — so a green badge and a
+# green terminal mean the same thing, and CI cannot drift into being softer.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: versions
+        run: |
+          bash --version | head -n 1
+          git --version
+          python3 --version
+          shellcheck --version | sed -n '2p'
+
+      - name: test
+        run: ./scripts/test.sh

@@ -91,7 +91,10 @@ run_lint() {
 # ─── step 0: mine the last 7 days → judgments_week.md ────────────────────────
 { echo "[$(date '+%F %T')] === weekly_distill ${TODAY} ==="; echo "[step0] mine + filter"; } >> "$LOG"
 MINE_ARGS=(--out "$MINING_DIR" --since 7d)
-[[ -n "$CONV_DIRS" ]] && MINE_ARGS+=(--dirs ${CONV_DIRS//:/ })
+if [[ -n "$CONV_DIRS" ]]; then
+  IFS=':' read -r -a _conv_dirs <<< "$CONV_DIRS"   # colon-separated, may contain spaces
+  MINE_ARGS+=(--dirs "${_conv_dirs[@]}")
+fi
 python3 "$SCRIPT_DIR/mine_conversations.py"  "${MINE_ARGS[@]}"        >> "$LOG" 2>&1
 python3 "$SCRIPT_DIR/filter_judgments.py"    --in "$MINING_DIR" --week >> "$LOG" 2>&1
 WEEK_COUNT=0

@@ -1,0 +1,48 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# forbidden_patterns.txt — strings that must never appear in a tracked file.
+#
+# This kit is developed by dogfooding: the author's live work loop lives inside
+# a clone of it. The allowlist .gitignore keeps his DATA out of the repo; this
+# file keeps his identifiers out of the KIT — paths, notification topics,
+# channel ids, client names, personal addresses that leak in via a copy-paste
+# from a working session.
+#
+# FORMAT: one POSIX ERE per line ("#" = comment, blank lines ignored).
+# Each pattern is a plain literal with exactly ONE character wrapped in
+# brackets — a bracket expression matches the bare character, so the pattern
+# matches the forbidden string while the pattern's own text does not. THIS
+# FILE therefore passes its own scan and needs no exemption (an exempted file
+# is a hole, and a hole in a guard is how the guard dies).
+#
+# tests/test_c_privacy.sh derives a positive sample from every line by
+# deleting the [ ] and \ characters, and asserts each one is caught — so a
+# pattern that stops matching what it is named for turns the suite red.
+#
+# NOT forbidden, on purpose: "yohey-w" — the author's GitHub handle. It is
+# load-bearing in the clone URLs and the LICENSE, and it is public by
+# construction. Patterns below must never match it.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# machine-local home directory of the author's workstation
+/home/to[n]o
+
+# personal ntfy topic (anyone who learns it can read the pings)
+sho-y0uh[e]y
+
+# private Slack channel id
+C0A2ASZD2U[R]
+
+# client / customer names picked up from live sessions
+大[里]
+菅[原]
+ケアスマイ[ル]
+
+# Azure tenant account handles
+scarfis[t]
+scaries[t]
+
+# private Claude artifact links (unlisted, but not secret once published)
+claude\.ai/code/artifac[t]/
+
+# the author's personal mail address (any local-part containing it)
+yoheinab[e]

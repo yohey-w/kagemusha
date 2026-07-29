@@ -214,7 +214,7 @@ for u, f, s in out:
 
 lane_gmail_hot() { # 10-min lane: mail from hot contacts (per-sender IMAP search)
   [ -n "$GMAIL_USER" ] && [ -n "$GMAIL_APP_PASSWORD" ] || return 2
-  local since hc addr uids rc=0
+  local since addr uids rc=0
   since="$(imap_since)"
   while IFS='|' read -r addr _label; do
     [ -n "$addr" ] || continue
@@ -249,10 +249,13 @@ print(json.load(open(sys.argv[1])).get("slack",{}).get(sys.argv[2],{}).get("last
     resp="$(curl -sf --max-time 20 -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
       "https://slack.com/api/conversations.history?channel=${ch}&limit=50${oldest:+&oldest=$oldest}")" \
       || { echo "slack: curl failed for $ch" >&2; fail=1; continue; }
-    if printf '%s' "$resp" | python3 - "$STATE" "$ch" "$INBW_SLACK_SELF_USER" <<'PY'
+    # the response goes through a FILE, not a pipe: `python3 -` already takes the
+    # program on stdin (the heredoc), so a pipe into it would be swallowed.
+    printf '%s' "$resp" > "$TMP/slack_resp.json"
+    if python3 - "$STATE" "$ch" "$INBW_SLACK_SELF_USER" "$TMP/slack_resp.json" <<'PY'
 import sys, json
-state_path, ch, self_user = sys.argv[1], sys.argv[2], sys.argv[3]
-d = json.load(sys.stdin)
+state_path, ch, self_user, resp_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+d = json.load(open(resp_path))
 if not d.get("ok"):
     print("slack: api error %s on %s" % (d.get("error"), ch), file=sys.stderr); sys.exit(1)
 s = json.load(open(state_path))
