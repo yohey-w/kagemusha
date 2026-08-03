@@ -194,7 +194,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | Context | What does it know? | **SSOT** (`decisions` / `tasks` / `glossary` / `people`) |
 | Harness | What can it do? | CLIs, scripts, file ops |
 | Loop | When does it act, how is it checked? | triggers (time / inbox) + verifiers |
-| **Mandate** | **How far is it trusted; who is accountable?** | **inward = auto / outward = approval queue** |
+| **Mandate** | **How far is it trusted; who is accountable?** | **reversible = auto / irreversible = approval queue** (proxy: inward / outward) |
 
 The first three are "how to make it run"; only the fourth is "how far to trust it." Out of the lab and into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays — given current capability, authority, and risk thresholds — with the person who knows the work best.
 
