@@ -245,7 +245,10 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 ---
 
-あなたのループで焼けた規律を持ち寄りたい場合——本式の受け入れレーン（自動マージのcommunity棚＋選別スターター）は準備中。それまでは **issue で規律1行と、焼けた元の失敗**を添えて投げてほしい。
+あなたのループで焼けた規律を持ち寄りたい場合、入口は**2つ**あり、判定するものが違う（詳細は [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)）。
+
+- **キット本体**（`templates/starter-disciplines.md`・docs・書式）——**管理者が裁定する**。基準はそのファイル自身の `## 増やし方` と同じ4軸: 実際の却下・事故から焼けたこと／職業を落としても命題が残ること／「この1本を消したら、エージェントは間違えるか」／メタ3点（可搬性ラベル・貼り先・焼けた出自）。**このレーンに自動マージは無い。**
+- **あなた専用の棚**——[`community/<GitHubログイン名>/`](community/README.md)。選別の門が意図的に捨てるもの、つまり**あなたの環境固有の規律**と**あなたの職業の規律**の受け皿。自分のディレクトリだけを触り形式 lint を通った PR は、**誰も内容を読まないまま自動承認＋squash マージされる**——だからこそ [`community/README.md`](community/README.md) は責任の所在の話であり、後から削除しても **git の履歴には残る**という話でもある。
 
 ## 7. 複数案件を回す — 憲章・システム地図・clone に住む
 
@@ -258,7 +261,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 ```text
 kagemusha/                     ← あなたの clone ＝ あなたの実走環境
-├── README.md  docs/  scripts/  templates/  evidence/  ✓ 追跡（キット本体）
+├── README.md  docs/  scripts/  templates/  evidence/  community/  ✓ 追跡（キット本体）
 ├── CLAUDE.md (または AGENTS.md)  エージェント指示——実走環境の憲法
 ├── system_map.md                 1画面の盤面
 ├── approval_queue.md             外向き操作が積まれるキュー

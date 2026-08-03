@@ -1,0 +1,202 @@
+name: community-remove
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Take-down of a community shelf, on the owner's own request.
+#
+# The rule is one line: the issue's AUTHOR must be the owner of the directory.
+# The path that gets deleted is built as `community/<verified shelf name>` in
+# the removal step — the `community/` prefix is hard-coded, so no issue body
+# can ever aim this workflow at the kit. The shelf name is accepted only if it
+# is a plain GitHub login AND equals the issue author's login case-insensitively.
+#
+# What this workflow does NOT do: rewrite history. A shelf that was public is
+# public in the git history of every clone and fork that already pulled it.
+# See community/README.md — deleting is not un-publishing.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: community-remove-${{ github.event.issue.number }}
+
+jobs:
+  remove:
+    # the label must be present AND be the reason we woke up — otherwise every
+    # later label a maintainer adds re-runs the take-down on a closed issue
+    if: >-
+      contains(github.event.issue.labels.*.name, 'community-removal')
+      && (github.event.action == 'opened' || github.event.label.name == 'community-removal')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - id: verify
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const { owner, repo } = context.repo;
+            const login = issue.user.login;
+            const body = issue.body || '';
+
+            core.setOutput('ok', 'false');
+
+            async function refuse(msgEn, msgJa, close) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: issue.number,
+                body: `${msgEn}\n\n---\n\n${msgJa}`,
+              });
+              if (close) {
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issue.number,
+                  state: 'closed', state_reason: 'not_planned',
+                });
+              }
+            }
+
+            const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+            if (!LOGIN_RE.test(login)) {
+              await refuse(
+                'Could not verify the requester automatically. A maintainer will handle this by hand.',
+                '起票者の自動照合ができませんでした。管理者が手で対応します。',
+                false);
+              return;
+            }
+
+            // every community/... path claimed anywhere in the issue body
+            const claimed = [...body.matchAll(/community\/[A-Za-z0-9._/-]*/g)].map((m) => m[0]);
+            if (claimed.length === 0) {
+              await refuse(
+                'Please state the path to remove, in the form `community/<your GitHub login>/`.',
+                '削除対象を `community/<あなたの GitHub ログイン名>/` の形で本文に書いてください。',
+                false);
+              return;
+            }
+
+            const MINE = 'Only the owner of a shelf can ask for it to be removed. '
+              + 'The requested path does not belong to this account.';
+            const MINE_JA = 'ご本人からの依頼のみ受け付けます（対象パスの `community/<ログイン名>/` が起票者と一致しません）。';
+
+            const shelves = new Set();
+            for (const p of claimed) {
+              if (p.includes('..')) {
+                await refuse(MINE, MINE_JA, true);
+                return;
+              }
+              const seg = p.split('/')[1] || '';
+              // not a login-shaped segment → the template's own `community/<your-login>/`
+              // placeholder, or a mention of community/README.md. Ignore, don't refuse.
+              if (!LOGIN_RE.test(seg)) continue;
+              if (seg.toLowerCase() !== login.toLowerCase()) {
+                await refuse(MINE, MINE_JA, true);
+                return;
+              }
+              shelves.add(seg);
+            }
+            if (shelves.size !== 1) {
+              await refuse(
+                'Please state exactly one path to remove, in the form `community/<your GitHub login>/`.',
+                '削除対象を `community/<あなたの GitHub ログイン名>/` の形で、1つだけ本文に書いてください。',
+                false);
+              return;
+            }
+
+            const shelf = [...shelves][0];
+            core.setOutput('shelf', shelf);
+            core.setOutput('ok', 'true');
+            core.notice(`verified: ${login} may remove community/${shelf}/`);
+
+      - if: steps.verify.outputs.ok == 'true'
+        uses: actions/checkout@v7
+
+      - id: rm
+        if: steps.verify.outputs.ok == 'true'
+        env:
+          # via env, never inline ${{ }} in a run: block
+          SHELF: ${{ steps.verify.outputs.shelf }}
+          ISSUE: ${{ github.event.issue.number }}
+          BASE: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # second gate, in the shell: a shelf name is a plain GitHub login
+          case "$SHELF" in
+            "" | *[!A-Za-z0-9-]*) echo "refusing: not a plain login: $SHELF" >&2; exit 1 ;;
+          esac
+          # Shelf ownership is decided case-insensitively (GitHub logins are unique
+          # case-insensitively), so the directory on disk may differ in case from
+          # what the issue says. Resolve the real name — the search root
+          # `community` is hard-coded, and -mindepth/-maxdepth 1 keep it to one
+          # level, so nothing outside community/ can ever be the target.
+          target=""
+          if [ -d community ]; then
+            target="$(find community -mindepth 1 -maxdepth 1 -type d -iname "$SHELF" | head -n 1)"
+          fi
+
+          if [ -z "$target" ] || [ ! -d "$target" ]; then
+            echo "state=absent" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          branch="community-removal/$SHELF-$ISSUE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git rm -r --quiet -- "$target"
+          git commit -q -m "community: remove $target at its owner's request (closes #$ISSUE)"
+          git push -q origin "$branch"
+
+          gh pr create --base "$BASE" --head "$branch" \
+            --title "community: remove $target (#$ISSUE)" \
+            --body "Requested by the shelf's owner in #$ISSUE. Verified automatically: the issue author's login matches the directory. / 棚の本人からの削除依頼（#$ISSUE）。起票者とディレクトリ名の一致は自動照合済み。"
+          gh pr merge "$branch" --squash --delete-branch
+
+          echo "state=removed" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+
+      - if: steps.verify.outputs.ok == 'true'
+        uses: actions/github-script@v7
+        env:
+          STATE: ${{ steps.rm.outputs.state }}
+          SHELF: ${{ steps.verify.outputs.shelf }}
+          TARGET: ${{ steps.rm.outputs.target }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.issue.number;
+            const removed = process.env.STATE === 'removed';
+            const shelf = removed
+              ? (process.env.TARGET || '').replace(/^community\//, '')
+              : process.env.SHELF;
+
+            const en = removed
+              ? `\`community/${shelf}/\` has been removed from \`main\`.\n\n`
+                + '**This is not un-publishing.** The content stays in the git history of this repository '
+                + 'and of every clone, fork, and mirror that already pulled it. If a secret was in it, '
+                + 'rotate the secret — that is the only action that actually takes effect.'
+              : `There is no \`community/${shelf}/\` on \`main\` — nothing was removed. `
+                + 'If the shelf is under a different name, reopen with the exact path.';
+            const ja = removed
+              ? `\`community/${shelf}/\` を \`main\` から削除しました。\n\n`
+                + '**これは「公開の取り消し」ではありません。** 内容はこのリポジトリと、'
+                + '既に pull した全ての clone / fork / ミラーの git 履歴に残ります。'
+                + '秘密情報が含まれていたなら、**実際に効く対処はローテーションだけ**です。'
+              : `\`main\` に \`community/${shelf}/\` は見当たらず、**何も削除していません**。`
+                + '別名の棚であれば、正確なパスを添えて再度お願いします。';
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number, body: `${en}\n\n---\n\n${ja}`,
+            });
+            // 'completed' only when something was actually removed — a request that
+            // did nothing must not be closed as if it had been carried out
+            await github.rest.issues.update({
+              owner, repo, issue_number,
+              state: 'closed', state_reason: removed ? 'completed' : 'not_planned',
+            });

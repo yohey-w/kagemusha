@@ -245,7 +245,10 @@ The first thing shipped out of that inflow is **[`templates/starter-disciplines.
 
 ---
 
-Want to contribute a discipline forged in your own loop? A proper contribution lane (auto-merged community shelves + a curated starter set) is being built — until it lands, **open an issue** with the one-line discipline and the failure it was forged from.
+Want to contribute a discipline forged in your own loop? There are **two lanes**, and they are judged by different things — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
+
+- **The kit itself** (`templates/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
+- **Your own shelf** — [`community/<your GitHub login>/`](community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`community/README.md`](community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
 
 ## 7. Running multiple projects — charters, the system map, and living in the clone
 
@@ -258,7 +261,7 @@ And you run all of it **directly inside the clone**. The allowlist `.gitignore` 
 
 ```text
 kagemusha/                     ← your clone = your instance
-├── README.md  docs/  scripts/  templates/  evidence/  ✓ tracked (the kit)
+├── README.md  docs/  scripts/  templates/  evidence/  community/  ✓ tracked (the kit)
 ├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
 ├── system_map.md                 the one-screen board
 ├── approval_queue.md             the queue outward operations pile into

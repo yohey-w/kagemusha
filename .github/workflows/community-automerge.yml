@@ -1,0 +1,262 @@
+name: community-automerge
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The community/ lane: a pull request that touches ONLY community/<author>/
+# and passes a mechanical format lint is approved and squash-merged with no
+# maintainer in the loop. Everything else is left alone and labelled for the
+# maintainer's adjudication lane — this workflow never rejects, never closes,
+# and never merges anything outside one directory.
+#
+# The whole gate rests on ONE invariant: every changed path must start with
+# `community/<the PR author's own login>/`. That prefix is built from
+# pull_request.user.login (which the author cannot forge), not from anything
+# in the diff — so "touch someone else's shelf" and "touch the kit" are the
+# same case, and both leave the lane.
+#
+# pull_request_target is used deliberately: fork PRs need a write token to be
+# approved and merged. The PR's code is NEVER checked out and NEVER executed —
+# the only checkout is the BASE branch (for tests/forbidden_patterns.txt), and
+# the PR's files are read as data through the blob API.
+# ═══════════════════════════════════════════════════════════════════════════
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Minimal. NOTE: creating a repository label is an `issues` scope operation, so
+# the first-use auto-create below will 403 under these permissions — pre-create
+# the `管理者裁定レーン` label in repo settings (or grant `issues: write`). The
+# call is wrapped: if labelling fails the workflow comments instead, so the
+# "a maintainer decides this one" signal is never lost.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: community-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # base branch only — this is our own code, not the contributor's
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const pr = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const login = pr.user.login;
+
+            const MAX_FILES = 3;
+            const MAX_BYTES = 50 * 1024;
+            const ADMIN_LABEL = '管理者裁定レーン';
+            const URL_HOSTS = ['github.com', 'zenn.dev'];
+
+            // ── the admin lane: label, and do nothing else ──────────────────
+            async function adminLane(reason) {
+              core.notice(`admin adjudication lane: ${reason}`);
+              try {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name: ADMIN_LABEL });
+                } catch (e) {
+                  if (e.status !== 404) throw e;
+                  await github.rest.issues.createLabel({
+                    owner, repo, name: ADMIN_LABEL, color: 'ededed',
+                    description: 'Outside the community/ auto-merge lane — a maintainer decides.',
+                  });
+                }
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: pr.number, labels: [ADMIN_LABEL],
+                });
+              } catch (e) {
+                // labelling is best effort; the signal must not be lost
+                core.warning(`could not label (${e.status || e.message}) — commenting instead`);
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: pr.number,
+                  body: 'This PR is outside the `community/` auto-merge lane, so a maintainer will review it. / '
+                      + 'この PR は `community/` の自動マージ対象外のため、管理者が裁定します。',
+                });
+              }
+            }
+
+            // ── a lint failure: tell the author WHICH rule and WHERE ────────
+            // Never echo the matched text or the pattern: this comment is public
+            // and permanent, and the matched text is exactly what must not spread.
+            async function lintFailed(problems) {
+              const list = problems.map((p) => `- \`${p.file}\`${p.line ? ` (line ${p.line})` : ''} — **${p.rule}**`).join('\n');
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: [
+                  'Automatic merge declined by the `community/` format lint. Fix and push again — the check re-runs.',
+                  '',
+                  list,
+                  '',
+                  'The matched text is deliberately not quoted here (this comment is public and permanent). '
+                    + 'See [`community/README.md`](../blob/HEAD/community/README.md) for the rule list.',
+                  '',
+                  '---',
+                  '',
+                  '`community/` の形式 lint に引っかかったため自動マージしませんでした。修正して push し直すと再判定されます。',
+                  '該当箇所の**中身はここに引用しません**（このコメントは公開・恒久のため）。ルール一覧は '
+                    + '[`community/README.md`](../blob/HEAD/community/README.md)。',
+                ].join('\n'),
+              });
+              core.setFailed(`community lint: ${problems.length} problem(s)`);
+            }
+
+            // ── 0. only the default branch is auto-mergeable ────────────────
+            if (pr.base.ref !== context.payload.repository.default_branch) {
+              core.notice(`base is ${pr.base.ref}, not the default branch — nothing to do`);
+              return;
+            }
+
+            // ── 1. the changed paths ────────────────────────────────────────
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: pr.number, per_page: 100,
+            });
+
+            if (files.length === 0) {
+              await adminLane('no files changed');
+              return;
+            }
+            if (files.length > MAX_FILES) {
+              await adminLane(`${files.length} files changed (max ${MAX_FILES})`);
+              return;
+            }
+
+            // THE load-bearing check: the prefix comes from the PR author's own
+            // login, never from the diff. GitHub logins are unique
+            // case-insensitively, so the directory is compared case-folded.
+            const prefix = `community/${login.toLowerCase()}/`;
+            const SAFE_PATH = /^community\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]+\.md$/;
+
+            const outside = [];
+            for (const f of files) {
+              const paths = [f.filename];
+              if (f.previous_filename) paths.push(f.previous_filename);
+              for (const p of paths) {
+                if (p.includes('..') || p.includes('\\') || p.startsWith('/')) {
+                  outside.push(`${p} (unsafe path)`);
+                } else if (!SAFE_PATH.test(p)) {
+                  outside.push(`${p} (not community/<login>/<name>.md)`);
+                } else if (!p.toLowerCase().startsWith(prefix)) {
+                  outside.push(`${p} (not this author's shelf)`);
+                }
+              }
+            }
+            if (outside.length > 0) {
+              await adminLane(`outside the lane: ${outside.join(', ')}`);
+              return;
+            }
+
+            // ── 2. the format lint ──────────────────────────────────────────
+            const RULES = [
+              { rule: 'email-address', re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/ },
+              // shaped, not generic: a bare digit-group regex fires on dates
+              // (2026-07-28) and version strings, which this corpus is full of.
+              { rule: 'phone-number', re: /(?<![\d-])0\d{1,4}[-\s]\d{1,4}[-\s]\d{3,4}(?![\d-])|(?<!\d)0[789]0\d{8}(?!\d)|\+\d{1,3}[-\s]?\d{1,4}[-\s]?\d{3,4}[-\s]?\d{3,4}(?!\d)/ },
+              { rule: 'company-name (株式会社 / Inc. / LLC / Ltd)', re: /株式会社|有限会社|合同会社|（株）|\(株\)|㈱|\bInc\.|\bLLC\b|\bLtd\b/ },
+              { rule: 'money-amount', re: /[¥$]\s?\d{2,}|[¥$]\s?\d+[.,]\d|[0-9０-９]\s?(?:円|万円)/ },
+              { rule: 'absolute-path (/home/, /Users/, /mnt/, C:\\)', re: /\/home\/|\/Users\/|\/mnt\/[a-z]\/|\b[A-Za-z]:\\/ },
+              { rule: 'parent-directory reference (..)', re: /\.\.\// },
+            ];
+
+            // The kit's own leak guard, applied at merge time. ci.yml does run group
+            // C over a fork PR's content, but nothing here waits on its result, and a
+            // merge performed by GITHUB_TOKEN does not re-trigger ci.yml on main — so
+            // this is the only privacy scan that can STOP the merge. Without it, a
+            // community file carrying a guarded identifier turns main red at the next
+            // unrelated push, with no signal at merge time.
+            const KIT_PATTERNS = fs.readFileSync('tests/forbidden_patterns.txt', 'utf8')
+              .split('\n')
+              .filter((l) => l.trim() !== '' && !l.trim().startsWith('#'))
+              .map((l) => new RegExp(l));
+
+            function urlProblems(lines) {
+              const out = [];
+              const URL_RE = /https?:\/\/[^\s<>()[\]"'`]+/g;
+              lines.forEach((text, i) => {
+                for (const m of text.matchAll(URL_RE)) {
+                  let host = null;
+                  try { host = new URL(m[0]).hostname.toLowerCase(); } catch (e) { host = null; }
+                  const ok = host !== null
+                    && URL_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+                  if (!ok) out.push(i + 1);
+                }
+              });
+              return out;
+            }
+
+            const problems = [];
+            for (const f of files) {
+              if (f.status === 'removed') continue;
+              let blob;
+              try {
+                blob = await github.rest.git.getBlob({ owner, repo, file_sha: f.sha });
+              } catch (e) {
+                problems.push({ file: f.filename, rule: `unreadable blob (${e.status || e.message})` });
+                continue;
+              }
+              if (blob.data.size > MAX_BYTES) {
+                problems.push({ file: f.filename, rule: `larger than ${MAX_BYTES} bytes` });
+                continue;
+              }
+              const content = Buffer.from(blob.data.content, blob.data.encoding || 'base64').toString('utf8');
+              const lines = content.split('\n');
+
+              for (const r of RULES) {
+                lines.forEach((text, i) => {
+                  if (r.re.test(text)) problems.push({ file: f.filename, line: i + 1, rule: r.rule });
+                });
+              }
+              lines.forEach((text, i) => {
+                if (KIT_PATTERNS.some((re) => re.test(text))) {
+                  problems.push({ file: f.filename, line: i + 1, rule: 'identifier on the kit leak-guard list' });
+                }
+              });
+              for (const line of urlProblems(lines)) {
+                problems.push({
+                  file: f.filename, line,
+                  rule: `link to a host outside the allowlist (${URL_HOSTS.join(', ')})`,
+                });
+              }
+            }
+
+            if (problems.length > 0) {
+              await lintFailed(problems.slice(0, 30));
+              return;
+            }
+
+            // ── 3. approve and squash-merge ─────────────────────────────────
+            await github.rest.pulls.createReview({
+              owner, repo, pull_number: pr.number, event: 'APPROVE',
+              body: 'Auto-approved: every changed path is under `community/'
+                  + `${login}/\` and the format lint passed. No human read this content — `
+                  + 'see `community/README.md` for what that means. / '
+                  + '自動承認（community 棚・形式 lint 合格）。内容は誰もレビューしていません。',
+            });
+            try {
+              await github.rest.pulls.merge({
+                owner, repo, pull_number: pr.number, merge_method: 'squash',
+                commit_title: `community: ${login} shelf (#${pr.number})`,
+              });
+              core.notice(`merged #${pr.number}`);
+            } catch (e) {
+              core.warning(`merge failed: ${e.status || ''} ${e.message}`);
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr.number,
+                body: 'The lint passed and this PR is approved, but the merge did not go through '
+                    + `(\`${e.status || 'error'}\`) — usually a conflict with \`main\`. Rebase and push again. / `
+                    + 'lint は通り承認済みですが、マージが通りませんでした（多くは `main` との衝突）。rebase して push し直してください。',
+              });
+              core.setFailed('merge failed');
+            }
