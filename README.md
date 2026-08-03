@@ -155,6 +155,22 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it works.
 
+**Optional but recommended: a verifier from a different model lineage.** This kit is built around the assumption that AI output can be wrong — that's the whole reason the approval queue and the verifiers exist. But there's a blind spot: if the model that checks the work shares a lineage with the model that did the work, a failure mode common to that lineage slips past both. (Research on inference-time scaling reports a pattern — getting pulled off track by irrelevant context the longer a model reasons — that shows up across a model *family*, not just one model: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417).) So it's worth wiring in one checker from a different vendor.
+
+- **What:** the [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) — an official plugin that calls OpenAI's Codex CLI from inside Claude Code — plus the Codex CLI itself and an OpenAI-side login. Its usage quota is billed separately from Claude usage, so reaching for it doesn't eat into your main work's budget.
+- **When to reach for it:** (1) a second diagnosis when you're stuck, (2) designing a fix for your *own* blind spot — don't ask the side that has the blind spot to design around it, (3) an independent check before a big publish or delivery. Having it review this kit's own verifiers, or a distilled change to the judgment model, is the typical case.
+- **How to install** (verified against the plugin's own README):
+
+  ```bash
+  # inside Claude Code
+  /plugin marketplace add openai/codex-plugin-cc
+  /plugin install codex@openai-codex
+  /reload-plugins
+  /codex:setup   # checks whether Codex is ready; can install/log you in if not
+  ```
+
+  Requires a ChatGPT subscription (Free tier included) or an OpenAI API key, and Node.js 18.18+. Full requirements and usage: the plugin's own [README](https://github.com/openai/codex-plugin-cc).
+
 ---
 
 ## 4. What's in the box

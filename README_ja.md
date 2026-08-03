@@ -155,6 +155,22 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 仕組みは [`docs/judgment-distillation.md`](docs/judgment-distillation.md) を参照。
 
+**任意だが推奨: 血統の違うモデルによる検算器。** このキットは「AIの出力は間違いうる」ことを前提に組んである——承認キューも検証器も、そのために存在する。だが1つ死角がある: 検証する側と作業する側が同じ血統のモデルだと、**その血統に共通する失敗モードは両方をすり抜ける**。（推論を長くするほど無関係な文脈に引きずられる、という失敗パターンが個々のモデルでなくモデル*系列*全体に現れるとする研究がある: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417)。）だから、別ベンダーの検算役を1本つないでおく価値がある。
+
+- **何を**: [Claude Code 用 Codex プラグイン](https://github.com/openai/codex-plugin-cc)——OpenAI の Codex CLI を Claude Code の中から呼び出す公式プラグイン——と Codex CLI 本体、OpenAI 側のログイン。利用枠は Claude の利用枠と別会計なので、検算に回しても本業の枠を食わない。
+- **どう使うか**: ①詰まったときのもう1つの診断 ②**自分の弱点への対策の設計**（弱点を持つ側に、その弱点を埋める設計を発注しない）③大きな公開・納品の前の独立検品。このキット自身の検証器や、蒸留した価値判断モデルの改訂案を、別血統に検品させるのが典型。
+- **導入手順**（プラグイン本体の README で裏取り済み）:
+
+  ```bash
+  # Claude Code 内で
+  /plugin marketplace add openai/codex-plugin-cc
+  /plugin install codex@openai-codex
+  /reload-plugins
+  /codex:setup   # Codexの準備状況を確認し、未導入ならインストール/ログインを提案してくれる
+  ```
+
+  ChatGPT サブスクリプション（Free でも可）または OpenAI API キー、Node.js 18.18 以降が必要。詳細な要件と使い方はプラグイン本体の [README](https://github.com/openai/codex-plugin-cc) を参照。
+
 ---
 
 ## 4. 中身の早見表
