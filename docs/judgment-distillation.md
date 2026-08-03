@@ -140,6 +140,8 @@ graph LR
 
 設計の本体は3段目だ。**検知できることに賭けず、検知できなくても沈黙のまま死なないことに賭ける**——1・2段が全部すり抜けても、期限が最後に必ず拾う。だから「検証」欄には、当たり／外れのトリガーだけでなく*いつ判定するか*も書く。
 
+> **実運転で分かったこと: 1段目が「たまたま漏れる」のではなく、構造的に取れない日がある。** 初回の週次蒸留で記帳漏れが6件見つかり、その根本原因は**その日の会話記録がまるごと欠けていた**ことだった（記録の設定が入っていなかった）。現場採取は入力が存在することを前提にしているので、入力が丸ごと無い日には**1段目が動く余地がない**——注意力の問題ではない。2段目（週次の機械抽出）は独立した入力源を持つので、これを拾った。**多段にする理由は「取りこぼしを減らす」ことではなく、「段ごとに入力源が違う」ことにある。** 同じ入力源を2回見る2段は、1段と同じ強さしかない。
+
 仮説の一生をまとめるとこうなる（差し戻し → 現場記帳 → 3分岐の答え合わせ → 当たり／外れのループ → 原則昇格）:
 
 ```mermaid
@@ -205,6 +207,14 @@ L1 に `≤160行・≤32原則` の上限を課すのは、美観ではなく**
 
 とくにモデル名の行が効く。「いま使っているモデルは X」のような**時変情報を原則本文に焼き込むと、変わった瞬間にモデル全体の信頼が落ちる**。時変事項は `judgment_model.md` の鮮度セクションに隔離し、原則本文は不変の判断規範だけにする。
 
+### 事前コミットした閾値を持たせる — 「検証器を足した」で満足しないために
+
+同じクラスの失敗が繰り返されたとき、次の一手を**その場で考えると必ず「文言を強める」になる**。だから台帳に書く時点で閾値を先にコミットしておく——「このクラスがあと N 回出たら、文言の追加ではなく**出力前の強制実行の設計**に移る」。以後は再発を数えるだけで自動的に次の一手が決まる。
+
+初回の実走で、実際にこの事前コミットが発火した。**機械層の検証器は存在するのに、同じクラスの誤りが閾値を超えて積み上がっていた**——書いてあることと、出力の直前に必ず通ることは別だからだ。この観測の値打ちは、**「検証器を1本足す」という処方それ自体に上限があると分かった**ことにある。検証器は必要だが十分ではない。足りないぶんを埋めるのは文言ではなく、**いつ・何によって強制的に実行されるか**の設計だ。
+
+（そして閾値が発火したあとの機構設計は、上表の🟡＝重い保留になる。自分の失敗モードを自分で設計すると同じ井戸を掘るので、独立した第二の頭に当てる。）
+
 ---
 
 ## 週次蒸留の7段手順
@@ -218,6 +228,21 @@ L1 に `≤160行・≤32原則` の上限を課すのは、美観ではなく**
 5. **lint**（機械）: L1 が行数・原則数の予算内か機械チェック。超過したら改訂を巻き戻して「圧縮が必要」と報告。
 6. **失効・検証スイープ**: (a) 曝露あたり反証率が高い／長期に曝露ゼロの原則を**休眠候補**として報告（勝手に消さない・経過週は唯一根拠にしない）。(b) 台帳の「検証」欄と外部結果列をスイープし、**判定期限を過ぎたのに未判定の仮説／実結果が空のエントリ**を洗い出して承認者へ。裏付け／反証のカウントは[クラスタ1票](#失効昇格ルール--判断を風化させない)。時変参照先が古ければ注記。
 7. **報告 + 通知**: `distill_YYYY-MM-DD.md` に「今週変えたこと / 保留（承認待ち）/ 失効候補 / 承認者への確認事項」を書き、ntfy でセルフ通知。
+
+### 保留（承認待ち）は「新しさ」でなく「承認の重さ」で並べる
+
+初回の実走で分かったのは、**保留に回るものの大半は新規原則ではない**ということだ。実際に出てきた4件を種類で分けると、承認者に要求するものがまるで違った:
+
+| 種類 | 中身 | 承認の重さ |
+|---|---|---|
+| **裁定済みの形式確認** | 承認者が既に口頭で裁定し、運用ルールにも反映済み。残っているのは「L1 本文への落とし込み表現が過不足ないか」だけ | 🟢 **安い。** 読んで頷くだけ |
+| **機構の新設** | 「こういう仕組みを作るべき」という提案。設計そのものが未定義 | 🟡 重い。**自分の失敗モードを自分で設計しても同じ井戸を掘る**ので、独立した第二の頭に当てる価値がある |
+| **n=1 の観測** | 筋は良いが今週1件しか根拠がない | 🟢 **寝かせる。** 2件目が出たら昇格候補、それまでは台帳の観測に留める |
+| **書式・規約** | 原則の中身ではなく、引き方・書き方の規約 | 🟢 安い |
+
+**保留ファイルの各項目にこのラベルを付ける。** 承認者は「安いものから片付ける／重いものだけ腰を据える」という読み方ができ、パスが速くなる。ラベルが無いと全項目が同じ重さに見えて、**一番安い形式確認のために一番重い議論の腰を据えることになる**。
+
+なお **n=1 を寝かせる規律は、記録しないという意味ではない**。台帳には観測として残し、「次に同型が1件出たら検証器へ昇格」と**昇格条件を先に書いておく**。書いておかないと、2件目が来たときに1件目を思い出せない。
 
 **思考の重い部分だけ最強の頭に。** 裏付け強化・出典追記は安いモデルで直接反映してよいが、**新規原則の設計・矛盾解決だけは、あなたの一番強いモデルに一発で諮る**設計にできる。実装では pending への書き出しで止め、承認時に強いモデルへ渡す。抽出・lint・ローテは機械、突合・整形は中量モデル、原則の新設だけ最重量——という三層に分けるとコストが締まる。
 
@@ -256,6 +281,10 @@ L1 に `≤160行・≤32原則` の上限を課すのは、美観ではなく**
 
 判断を含む報告を書くときの型は **推奨 + 根拠（原則 ID を引用）+ 代替案**。原則を引用できない判断が続くなら、それはモデルの穴だ——台帳に `[working hypothesis]` で書いて次の蒸留に回す。
 
+> **引用は安定 ID のみ。表示番号では引かない。** 実運転で `principle:` 欄の記入率を数えたら、**128 エントリ中3件**まで落ちていた。原因の一つは番号スキームの衝突だった——L1 を節に分けて並べ替えたことで、**節内の表示番号と安定 ID がずれ、「P17」が二通りに読める状態**になっていた。曖昧な ID は、間違うのが怖くて誰も引かなくなる。**ID を振り直すのではなく、引く側を安定 ID に統一する**（ID の不変性は準憲法層なので renumber は打てない）。
+>
+> ここは自己診断が効く箇所でもある: **`principle:` の記入率は、モデルが実際に使われているかの実測値**だ。原則が増えているのに引用率が落ちているなら、増えた原則は誰にも読まれていない。月に一度、`grep` で数えるだけでよい。
+
 ---
 
 ## English summary
@@ -277,5 +306,7 @@ L1 に `≤160行・≤32原則` の上限を課すのは、美観ではなく**
 **The value-judgment model describes behavior, not norms.** Fidelity to the approver is a *constraint/prior*, not the objective — a perfect mimic reproduces the approver's own flaws (fatigue, haste) and amplifies loss with zero corrections. The objective is the risk-adjusted external outcome per unit of the approver's time under their stated values; a past flaw is never promoted to a norm just because it recurred. And the loop's promise is made falsifiable: pre-commit a losing condition, and measure with a *bundle* of metrics — never a lone approver-load number, which is gamed by mechanically shrinking the queue — always recording queue arrival rate alongside processing rate.
 
 **Reasons are collected at the scene, not derived after the fact.** Facts alone underdetermine *why* a call was made — the same "picked A, rejected B" is equally explained by several principles, so a reason reconstructed later from the journal is invention, not derivation. The reason must be captured as a *hypothesis* at the moment of the ruling, while the rejected artifact and the discarded alternatives are still in view. So the journal is a *store of reason-hypotheses*, not a place you derive reasons from — and **distillation never invents a hypothesis;** it only reconciles, promotes, and expiry-manages the ones collected at the scene (and counts the ones that were missed). Each hypothesis carries a **verification** line — what would settle it as right or wrong — of one of three types: *immediate* (the next revised draft is accepted or re-corrected — weak evidence), *repeated* (predict with the hypothesis the next time a like case arrives; a hit never promotes it to a principle — only the owner's explicit confirming utterance does), or *awaiting-exposure* (name the situation that would decide it; if it hasn't arrived in ~8 weeks, re-surface it for the owner).
+
+**What the first live runs taught (empirical, not design).** Three things only showed up once the loop actually ran. (1) **Multi-stage detection earns its keep because each stage has a *different input source*, not because more passes catch more.** A day whose conversation record was missing entirely gave the on-the-scene stage nothing to work with — no amount of diligence would have helped — and the weekly mining pass, drawing on an independent source, backfilled six missed entries. Two stages over the same input are as strong as one. (2) **Most pending items are not new principles**, so sort the pending file by *cost to approve*, not by novelty: already-ruled-and-just-needs-wording (cheap), a genuinely new mechanism (expensive — and worth an independently-lineaged second head, since designing around your own failure mode from inside it draws from the same well), an n=1 observation (park it, with the promotion condition written down), and pure formatting conventions (cheap). Without those labels every item looks equally heavy and the cheapest one soaks up the deepest deliberation. (3) **"We added a verifier" is not "the hole is closed."** A machine-layer check existed and the same class of error still recurred past its pre-committed threshold — because *being written down* and *being executed right before output* are different properties. Pre-commit the threshold ("if this class recurs N more times, stop strengthening the wording and design the forced execution point"), so a recurrence count decides the next move for you. A related, cheap self-diagnostic: **the fill rate of the journal's `principle:` field measures whether the model is actually being used.** Ours had collapsed to 3 of 128 entries, traced partly to display-position numbers diverging from stable IDs so that one citation could be read two ways — and an ambiguous ID simply stops being cited. The fix is to cite by stable ID only, never to renumber (ID stability is quasi-constitutional).
 
 **Weekly distillation (7 steps, inward-only):** mine the last 7 days -> backfill missed events into the journal with quotes -> reconcile against existing principles -> apply reinforcements directly but route new principles and contradictions to a `*_pending.md` for the owner to confirm -> lint the budget -> sweep for expiry -> report and self-ping. It proposes; it does not silently rewrite the model that governs the agent's calls.
