@@ -183,6 +183,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | `docs/design.md` | Implementation guide: the four parts + mandate, mapped to files. |
 | **`docs/judgment-distillation.md`** | The feedback side in full: 4 layers, 8 triggers, event sourcing, the weekly 7-step, three-layer change governance. |
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
+| **`docs/decision-cards.md`** | Decision cards — cognitive design of the approval hand-off: the artifact itself, one recommendation, a no-answer default, severity marks, ≤3 per batch. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 
 ---

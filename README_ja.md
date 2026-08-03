@@ -183,6 +183,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |
 | **`docs/judgment-distillation.md`** | フィードバック側の全体: 4層・8トリガー・イベントソーシング・週次7段・三層の変更ガバナンス。 |
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
+| **`docs/decision-cards.md`** | 判断カード——承認の差し出しを認知設計する: 現物・推奨・無回答時・重み・1バッチ3枚。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
 
 ---
