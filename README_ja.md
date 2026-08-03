@@ -201,6 +201,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
 | **`docs/decision-cards.md`** | 判断カード——承認の差し出しを認知設計する: 現物・推奨・無回答時・重み・1バッチ3枚。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
+| **`evidence/`** | **一周が実走している証拠**——著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`evidence/README.md`](evidence/README.md) に明記。 |
 
 ---
 
@@ -226,7 +227,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 - **`verifiers.md` へ**——却下が**機械的**な穴（曜日ミス・宛名漏れ・未検証の数値）なら、検証器を1本足せばそのクラスのエラーは機械層で死ぬ。同じ指摘を二度しない。
 - **`judgment_model.md` へ**——却下が**判断**（「このトーンは違う」「価格は工数から積め」）なら、薄い価値判断モデルの原則に蒸留する。エージェントは次のセッションでそれを読み一次判断する——だからその案はそもそもキューに届かない。
 
-訂正が最も重い理由: **裁定**（どの案を選ぶか）はやがてモデルが自分で当てられる。**訂正**（あなたが出力を曲げる）は**モデルとあなたの差分**であり、この信号は枯れない。ここが既製のエージェント製品——他人が凍結した基準——には決して持てない部分だ: **それは*あなたの*判断を学ばない。** 全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)。
+訂正が最も重い理由: **裁定**（どの案を選ぶか）はやがてモデルが自分で当てられる。**訂正**（あなたが出力を曲げる）は**モデルとあなたの差分**であり、この信号は枯れない。ここが既製のエージェント製品——他人が凍結した基準——には決して持てない部分だ: **それは*あなたの*判断を学ばない。** 全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)。**この一周が実際に閉じた証拠——無人発火した蒸留の実ログと、このリポジトリの原則1本の裏にある台帳エントリ:** [`evidence/`](evidence/README.md)。
 
 ---
 
@@ -241,7 +242,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 ```text
 kagemusha/                     ← あなたの clone ＝ あなたの実走環境
-├── README.md  docs/  scripts/  templates/  ✓ 追跡（キット本体）
+├── README.md  docs/  scripts/  templates/  evidence/  ✓ 追跡（キット本体）
 ├── CLAUDE.md (または AGENTS.md)  エージェント指示——実走環境の憲法
 ├── system_map.md                 1画面の盤面
 ├── approval_queue.md             外向き操作が積まれるキュー

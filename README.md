@@ -201,6 +201,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
 | **`docs/decision-cards.md`** | Decision cards — cognitive design of the approval hand-off: the artifact itself, one recommendation, a no-answer default, severity marks, ≤3 per batch. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
+| **`evidence/`** | **Proof the loop actually runs** — hand-redacted excerpts from the author's live instance: one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`evidence/README.md`](evidence/README.md). |
 
 ---
 
@@ -226,7 +227,7 @@ Then there's a second level. **The reasons you reject or edit are the most valua
 - **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
 - **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
 
-Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md).
+Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`evidence/`](evidence/README.md).
 
 ---
 
@@ -241,7 +242,7 @@ And you run all of it **directly inside the clone**. The allowlist `.gitignore` 
 
 ```text
 kagemusha/                     ← your clone = your instance
-├── README.md  docs/  scripts/  templates/  ✓ tracked (the kit)
+├── README.md  docs/  scripts/  templates/  evidence/  ✓ tracked (the kit)
 ├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
 ├── system_map.md                 the one-screen board
 ├── approval_queue.md             the queue outward operations pile into

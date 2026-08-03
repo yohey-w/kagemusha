@@ -2,7 +2,9 @@
 # Allowlist .gitignore — you live INSIDE this clone.
 #
 # Everything at the root is ignored by default; only the OSS-shipped files
-# below are un-ignored (tracked). So the instance data setup.sh scaffolds
+# below are un-ignored (tracked) — including evidence/, which holds
+# hand-redacted excerpts of the author's live loop, added file by file on
+# purpose (see evidence/README.md). So the instance data setup.sh scaffolds
 # next to them — ssot/, judgment/, projects/, briefs/, logs/, local/
 # (machine-local scripts & secrets), system_map.md, approval_queue.md,
 # verifiers.md, config.env, CLAUDE.md / AGENTS.md — can never be committed,
@@ -21,6 +23,7 @@
 !/README_ja.md
 !/config.env.example
 !/docs
+!/evidence
 !/scripts
 !/templates
 !/tests
