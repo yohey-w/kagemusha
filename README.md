@@ -187,6 +187,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`templates/system_map.md`** | **System map** — the one-screen board (standing mechanisms + one card per project + roadmap). Scaffolds to the instance root. |
 | **`templates/charter.md`** | **Project charter** — per-project *deltas* only (≤60 lines); the judgment model itself never splits. Copy into `projects/<name>/charter.md`. |
 | **`templates/agent_instructions.md`** | **The instance constitution** — saved as `CLAUDE.md` (Claude Code) / `AGENTS.md` (Codex) / your tool's rules file. |
+| **`templates/starter-disciplines.md`** | **Starter disciplines** — a *menu, not a template* (deliberately **not** scaffolded by `setup.sh`): disciplines burned in the author's live instance, each with the burn it came from, a portability label, and a paste target. Take only the ones whose hole you've already fallen into. |
 | **`templates/inbound_sweep.md`** | **Inbound sweep procedure (Tier 1)** — the inbox trigger run through your assistant's MCP connectors: lanes, closed-enum triage, append-only ledger, quiet hours. |
 | `.gitignore` | Allowlist — only the kit is tracked, so your instance data can never be committed. |
 | `scripts/setup.sh` | Scaffold all of the above into the clone itself (default) or a target dir (safe to re-run). |
@@ -230,6 +231,21 @@ Then there's a second level. **The reasons you reject or edit are the most valua
 Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`evidence/`](evidence/README.md).
 
 ---
+
+## This kit grows — and that is the design, not a slogan
+
+§6 is about your rejections becoming your assets. The same circuit runs one level up, on the kit itself.
+
+- **From the author's live instance.** This repository is not written *about* a loop; it is written *from inside* one. The author runs it on real work daily, and the weekly distiller turns that week's rejections into principles. Whatever survives having the client, the profession, and the environment stripped off comes back here as a change to the templates and docs.
+- **From yours.** A discipline only one person has been burned by is n=1. The second person to report the same hole is what turns it into something worth shipping — so issues and PRs are the other inflow, especially "this rule didn't transfer to my setup, and here's what broke."
+
+Why growth is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why §6 sends your rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material is split along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
+
+The first thing shipped out of that inflow is **[`templates/starter-disciplines.md`](templates/starter-disciplines.md)** — a **menu, not a template**, and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
+
+---
+
+Want to contribute a discipline forged in your own loop? A proper contribution lane (auto-merged community shelves + a curated starter set) is being built — until it lands, **open an issue** with the one-line discipline and the failure it was forged from.
 
 ## 7. Running multiple projects — charters, the system map, and living in the clone
 
