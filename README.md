@@ -201,6 +201,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`docs/judgment-distillation.md`** | The feedback side in full: 4 layers, 8 triggers, event sourcing, the weekly 7-step, three-layer change governance. |
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
 | **`docs/decision-cards.md`** | Decision cards — cognitive design of the approval hand-off: the artifact itself, one recommendation, a no-answer default, severity marks, ≤3 per batch. |
+| **`docs/provenance.md`** | Provenance table — which idea entered the kit, in which file, in which commit, and what set it off. Every trigger cell carries a tag saying how strongly it is sourced. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 | **`evidence/`** | **Proof the loop actually runs** — hand-redacted excerpts from the author's live instance: one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`evidence/README.md`](evidence/README.md). |
 

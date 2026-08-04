@@ -1,0 +1,44 @@
+# provenance.md — 来歴表 / where each idea entered the kit
+
+この表は、**思想 → 実装 → 時点 → きっかけ** の4列で、このキットの中身が「いつ・どこに・何を受けて」入ったかを追う台帳だ。置いてある理由は一つ——**「育つ」と言うだけなら誰でも言える。育った履歴が引けることだけが、その証明になる。** 対になる読み物（同じ作者の本）は「**なぜ規律が折れたか**」の記録で、この表はその裏返し——「**折れた結果、リポジトリのどこが何日に変わったか**」の索引だ。そしてこの表自体もコミットで育つ。行が増えたら、それはキットが一度動いた跡である。
+
+**この表が引くのは、日付とファイルと並び順だけだ。** 「この出来事があったから、この行が書かれた」という因果そのものは、ここでは主張しない（[`../evidence/ledger_excerpt.md`](../evidence/ledger_excerpt.md) が同じ理由で同じ強さに留めている）。だから **きっかけ欄には出所タグを必ず付ける**:
+
+| タグ | 意味 |
+|---|---|
+| **［台帳］** | その変更を要求した判断が、実インスタンスの判断台帳に記帳されている（公開表なので、案件名・相手・金額・内部文書名・エントリ番号は落とし、出来事だけを一行に匿名化してある。匿名化の水準は [`../evidence/README.md`](../evidence/README.md) と同じ） |
+| **［commit］** | 台帳の裏付けは引けない。一次記録はコミットとその diff そのもの |
+| **［docs］／［script］** | 台帳の裏付けは引けない。一次記録は**追加された本文自身**が書いている理由 |
+
+> **In English.** Four columns — *idea → implementation → commit & date → what set it off*. The kit claims to grow; a claim like that is worth nothing unless the growth is retrievable, so this is the retrieval. The companion book records **why a rule broke**; this table records **what changed in the repo, on what date, as a result**. What the table actually proves is dates, files and ordering — not the causal link itself, which is why every trigger cell carries a provenance tag: ［台帳］ = a ruling for it exists in the live journal (anonymised to the same level as `evidence/`); ［commit］／［docs］／［script］ = no journal entry could be pulled, and the primary record is the commit, or the added text's own stated reason. This file grows by commit like everything else here.
+
+---
+
+## 来歴表 / the table
+
+| 思想（本の章） | OSSでの実装（ファイル・節） | 反映コミット・日付 | きっかけ |
+|---|---|---|---|
+| **承認ゲートは「外向き/内向き」でなく「戻せるか」で切る**（第4章・第6章） | README／README_ja §2 の4部品表マンデート行＋§8／`templates/judgment_model.md` P1（**追加でなく本文差し替え**・ID不変）／`docs/design.md`（分類表を「近似」と明記し、近似が外す2箇所を追記）／`templates/charter.md` 委任境界／`templates/agent_instructions.md` 規律1／`templates/decisions_journal.md` に P1 の出典エントリを新設し旧エントリへ `revises:` で接続 | `0205ae3`・`9525f30`（2026-08-03） | ［台帳］承認者が一言で既存規律を曲げた（実発話「だってもどせるから」）。台帳に記帳 → その週の無人蒸留が保留として差し出し → 裁可。抜粋は [`../evidence/ledger_excerpt.md`](../evidence/ledger_excerpt.md)。**2本目のコミットは1本目の取りこぼしの追随**——「軸を変えたら典拠文書を全部追え」という自分でその場に足した検証器を、その場で守れていなかった |
+| **確かめずに言えてしまう断定は、否定だけではない**（第4章・第9章） | `templates/verifiers.md` (A)機械層に2行——「未確認の断定（否定・**帰属・因果・数量・評価**）」と「否定命題の射程（**①どこを ②どこまで見たか を先に書く**）」 | `0205ae3`（2026-08-03） | ［台帳］同じ日に否定の誤断定を5回出したことの記帳（2026-07-28）。その後、肯定形の断定でも同じ型が続き、対象を帰属・因果・数量・評価まで広げた |
+| **書いたら読み戻す。成功応答は反映の証明ではない**（第9章） | `templates/verifiers.md` 機械層に1行（外部書き込みの読み戻し。**書き込みと読み戻しでひと操作**と数える） | `a4af8a6`（2026-08-03） | ［commit］この行を要求した台帳エントリは引けない。一次記録はコミットと追加された本文（部分適用を黙って成功と返す置換系 API が実在する）。**答え合わせは翌日**——公開作業にこの検証器を適用し、公開先を読み戻して 200 を実測した記帳がある（2026-08-04） |
+| **承認は読解ではなく再認**（第6章） | `docs/decision-cards.md`（差し出しの設計ミス4つ・背後の原理・カードの型・重みと枚数）＋`templates/approval_queue.md` のエントリ型に3行追加（**現物／推奨／無回答時**）・見出しへ重み記号（🔴🟡）・**1バッチ≦3枚** | `acd084d`（2026-08-03） | ［docs］出所は追加された本文自身——「判断を求めるときの提示が読みにくい」という実走のフィードバックから焼き直した、と冒頭に書いてある。**この文言を裏付ける台帳エントリは引けなかった** |
+| **蒸留は提案止まり・確定は人間**（第8章） | `scripts/weekly_distill.sh.example` 冒頭の三重の縛り: **INWARD-ONLY**（送信・公開・push・共有正本の更新を一切しない）／既存原則の補強は自動・**新設と矛盾は `*_pending.md` へ**／証拠要件・撤回権・生ログ保持・監査率は**当のジョブが編集できない不変層** | `8dbfd14`（2026-07-28・v0.1） | ［script］理由はスクリプト本体が書いている——エージェントの判断を統べるモデルを無人で書き換えることは、このキットが門を置いている当の不可逆変更だから |
+| **借り物の原則は、自分で焼いた原則と同じ枠を食う**（第8章・第10章） | `templates/starter-disciplines.md`（実走出自11本・可搬性ラベル3種［単体で効く/機構前提/型だけ持ち帰れ］・冒頭に「**踏んだ穴のものだけ入れろ**」・L1 へ貼るときは検証マーク `△`）＋README／README_ja の「このキットは育つ」節 | `76ccc9f`（2026-08-04） | ［台帳］承認者が汎用規律の公開を授権。選別ゲートは4つ——①承認者固有の好み・文体を除く ②顧客文脈を除く ③出典は「実走で焼いた」と正直に書く ④**AI協働の物理に限る**（④は承認者が足した） |
+| **回せると回っているは違う**（第8章・第14章） | `evidence/`——無人発火した週次蒸留の実ログ抜粋（**非ゼロ終了もそのまま公開**）・訂正から L1 原則の差し替えまでを含む台帳2件・匿名化方針・「何を証明していないか」の節。あわせて `.gitignore` の allowlist を拡張し、**リーク検査がこのディレクトリも走査する**ようにした | `76a2bdb`（2026-08-04） | ［台帳］承認者が3点の公開を裁可 |
+| **同じ血統の検収は、同じ血統の失敗を見つけられない**（第11章） | README／README_ja に、**別ベンダーのコーディングエージェントを検証者として立てる**導入節（プラグイン導入コマンド付き） | `d3998f0`（2026-08-04） | ［台帳］別血統のモデルに自分の成果物を撃たせた結果、同血統の検収が素通ししていた欠陥群（**読者が一目で確かめられる、約束と現物の食い違い**）が実在した |
+| **育つのは本だけではない**（第15章） | `.github/workflows/community-automerge.yml`／`community-remove.yml`／`community/README.md`／`.github/CONTRIBUTING.md` の2レーン制（個人の棚は自動マージ・本流は裁定。3ガード＝**本人一致・パス固定・トラバーサル拒否**、削除botは自分の棚だけ、プライバシー lint がマージを止める） | `5ee9e74`（2026-08-04） | ［台帳］コンセプトの言語化——「作者も育てるし、読者も使って育てる」。本の初版完結・継続増補型と対になる |
+| **看板は中身と一致していなければならない**（第2章） | README／README_ja の第一行を「仕事は夜のうちに進む」から「**内向きは勝手に進む・外へ出るものは承認で止まる・却下も資産**」へ差し替え。朝の物語も、生成トリガーが日中のみである設計に合わせて是正 | `49271d9`（2026-07-29） | ［台帳］承認者の指摘——**看板が自分の設計書と正反対だった**（`docs/design.md` の停止規則は「夜間停止」、`docs/faq.md` に「なぜ夜間に回さないのか」がある） |
+| **検収ゲートを売る側にも、検収ゲートが掛かる**〔対応章なし——本文はこの議論を持っていない。キット側だけの規律〕 | `scripts/test.sh`（単一ランナーの受入ゲート）＋`tests/` 5群（構文 lint／`setup.sh` 実地スモーク／個人情報ガード／allowlist gitignore の構造検証／cron 配線）＋`.github/workflows/ci.yml` | `4f37461`（2026-07-29）／`bd771dc`（2026-07-29・CI の checkout 版上げ） | ［台帳］**検収ゲートを売る側にテストとCIが無い**、という不整合の是正。設計の骨は「skip という原語を持たない（道具が無ければ fail）」「ガードのガード（検知器に違反を食わせて落ちることを検証）」。この作業中に、出荷版の受信箱スクリプトが**構造的に一度も動けない実装だった**実バグを発見して修正している |
+| **運転していない型は輸出しない**（第14章） | v0.1 初回リリース——README 英日・`docs/` 5本・`scripts/` 6本・`templates/` 12本ほか計28ファイル | `8dbfd14`（2026-07-28） | ［台帳］前日（2026-07-27）の裁定「**運転済みの型だけ輸出・未運転はラベル（beta）**」。理由は「実業が先・記録が後」が OSS にも同じく効くから——破ると動かない汎用例で信頼を毀損し、自分の実践の穴が輸出品の陰に隠れる |
+| **自分の時間を六つの箱で数える**（付録A） | README／README_ja §9 の G/S/D/V/I/R コードブック（**S・V・I・R は D に数えない**、の一則つき） | `8dbfd14`（2026-07-28・v0.1） | ［commit］**この行だけ向きが逆**。箱の数え方は本より先に OSS 側にあり、本の付録がその写しになった |
+
+---
+
+## この表の読み方 / how to read it
+
+- **［台帳］以外の行は、弱い行だ。** 出所タグは飾りではなく、その行がどこまで支えられているかの申告だ。タグを見て、弱い行は弱いものとして読んでほしい。**引けないものを引けたことにしないのが、この表を置く意味の全部**であり、それはこのキットが最初のページから言っていることでもある。
+- **一つのコミットが複数行に出てくる**（`0205ae3` は2行、`8dbfd14` は3行）。コミットは作業の単位であって、思想の単位ではないからだ。
+- **1行目の2本目のコミット（`9525f30`）が、この表でいちばん自分に不利な記述だ。** 直前のコミットで自分が足した検証器を、そのコミット自身が守れていなかった、という追随コミットである（だから独立の行ではなく、1行目の中に残してある）。載せてあるのは、**守れなかった回を消すと、守れた回の意味も消えるから**だ。
+- ここに無いコミットもある。CI の細かい修正や、キットの外側（実インスタンス）の変更は載せていない。**「これで尽きている」とは書かない**——落ちている行を見つけたら issue を立ててほしい。
+
+> **In English.** Rows tagged anything other than ［台帳］ are the weak ones, and the tag says so on purpose — not pretending to a link you cannot pull is the entire point of publishing this. One commit can appear on several rows: a commit is a unit of work, not a unit of thought. The least flattering entry is the second hash on row 1, `9525f30` — a follow-up commit that existed only because the *previous* commit failed to obey a verifier it had just added, kept inside that row rather than given one of its own, because deleting the times the discipline failed would empty out the times it held. This table is not exhaustive; open an issue if you find a row that should be here.

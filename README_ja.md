@@ -201,6 +201,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`docs/judgment-distillation.md`** | フィードバック側の全体: 4層・8トリガー・イベントソーシング・週次7段・三層の変更ガバナンス。 |
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
 | **`docs/decision-cards.md`** | 判断カード——承認の差し出しを認知設計する: 現物・推奨・無回答時・重み・1バッチ3枚。 |
+| **`docs/provenance.md`** | 来歴表——どの思想が・どのファイルに・どのコミットで・何をきっかけに入ったか。きっかけ欄には「どこまで裏が取れているか」の出所タグが必ず付く。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
 | **`evidence/`** | **一周が実走している証拠**——著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`evidence/README.md`](evidence/README.md) に明記。 |
 
