@@ -253,6 +253,33 @@ g_run > "$TEST_TMP/g_run6.out" 2>&1
 assert_grep "G10: with nothing pending it goes back to SKIPPED" "SKIPPED" "$TEST_TMP/g_run6.out"
 assert_absent "G10: …and does not invoke the model" "$TEST_TMP/g_args6.txt"
 
+# ── case 5b: the next batch carries only what came AFTER the marker ─────────
+# Without this, every run would re-send material already distilled: the reviewer
+# would see the same correction proposed week after week, and its "confidence"
+# would climb on nothing but re-reading.
+python3 - "$G_LOGS" <<'PY'
+import json, os, sys, time
+d = sys.argv[1]
+now = int(time.time()) - 300
+ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now))
+with open(os.path.join(d, "cccccccc-three.jsonl"), "w", encoding="utf-8") as f:
+    f.write(json.dumps({"type": "assistant", "timestamp": ts,
+                        "message": {"content": [{"type": "text", "text": "FRESHREPLY を書きました"}]}},
+                       ensure_ascii=False) + "\n")
+    f.write(json.dumps({"type": "user", "timestamp": ts,
+                        "message": {"content": "そうじゃなくて FRESHBATCH のほうを直して"}},
+                       ensure_ascii=False) + "\n")
+PY
+assert_ok "G10b: a new correction is harvested after the marker" g_scan
+assert_eq "G10b: …and is the only thing pending" "1" "$(g_pending)"
+G_ARGS="$TEST_TMP/g_args6b.txt"; G_DRYRUN=1
+write_g_cfg "$G_STUB" 1 7
+g_run > "$TEST_TMP/g_run6b.out" 2>&1
+G_DRYRUN=0
+assert_grep "G10b: the next prompt carries the new material" "FRESHBATCH" "$TEST_TMP/g_run6b.out"
+assert_no_grep "G10b: …and not what was already distilled before the marker" \
+  'そうじゃなくて、送る前に見せて' "$TEST_TMP/g_run6b.out"
+
 # ── case 6: the weekly fallback — fires on a light week, never on an empty one ─
 # A clock that started 9 days ago and has never fired, with 1 pending: due.
 # (Note what is NOT here: a brand-new state whose clock has not started. "Never
@@ -288,5 +315,15 @@ assert_empty_str "G12: the model was never asked to send, publish or push" \
   "$(printf '%s' "$g_all_args" | grep -iE 'curl |git push|ntfy\.sh' || true)"
 assert_grep "G12: the shipped prompt refuses to promote anything itself" \
   "a review is a person" "$G_KIT/templates/distill-prompt.md"
+
+# The prompt is meant to be rewritten by its owner ("edit it; it is yours"), so
+# the queue has to carry the shape too — otherwise the format survives only in
+# the file users are invited to change. Both must name the same fields.
+for g_field in type evidence scope exception confidence counter-evidence destination freshness; do
+  assert_grep "G13: the prompt names the field '$g_field'" \
+    "**$g_field:**" "$G_KIT/templates/distill-prompt.md"
+  assert_grep "G13: the queue template shows the field '$g_field'" \
+    "**$g_field:**" "$G_KIT/templates/promotion_queue.md"
+done
 assert_no_grep "G12: no correction vocabulary is baked into the scanner" \
   'そうじゃなく' "$G_SCAN"

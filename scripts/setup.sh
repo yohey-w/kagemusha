@@ -56,10 +56,12 @@ copy "$TEMPLATES/system_map.md"     "$TARGET/system_map.md"
 copy "$TEMPLATES/decisions_journal.md" "$TARGET/judgment/decisions_journal.md"
 copy "$TEMPLATES/judgment_model.md"    "$TARGET/judgment/judgment_model.md"
 
-# distillation courier: the queue you review, and the pattern menu you cut down
-# (docs/distillation-loop.md). No cron line is installed for you — see below.
-copy "$TEMPLATES/promotion_queue.md"             "$TARGET/judgment/promotion_queue.md"
-copy "$TEMPLATES/correction_patterns.example.txt" "$TARGET/judgment/correction_patterns.txt"
+# distillation courier: the queue you review (docs/distillation-loop.md).
+# The correction-pattern MENU is deliberately NOT scaffolded, for the same
+# reason starter-disciplines.md isn't: copying it to the path the scanner reads
+# would make a shipped vocabulary everyone's default without anyone choosing it.
+# Copying it yourself is the act of cutting it down — see step 10 below.
+copy "$TEMPLATES/promotion_queue.md" "$TARGET/judgment/promotion_queue.md"
 
 # project-context layer: copy the charter template into each new project
 # folder as projects/<name>/charter.md (card = folder = charter, 1:1:1)
@@ -99,7 +101,10 @@ done. next:
   9. cron  17 21 * * 0  $SCRIPT_DIR/weekly_distill.sh   (once a week — see docs/judgment-distillation.md)
 
   distillation courier (harvest daily, distill only when material piles up):
- 10. edit  $TARGET/judgment/correction_patterns.txt  (cut it down to YOUR phrases)
+ 10. cp    $TEMPLATES/correction_patterns.example.txt \\
+              $TARGET/judgment/correction_patterns.txt
+      then CUT IT DOWN to the phrases you actually use. It is a menu, not a default:
+      nothing is scaffolded here on purpose, and the scanner refuses to run without it.
  11. cron  7 6 * * *  $SCRIPT_DIR/correction_scan.py --patterns $TARGET/judgment/correction_patterns.txt \\
                         --material $TARGET/judgment/correction_material.md \\
                         --state $TARGET/judgment/distill_state.json --since 1d

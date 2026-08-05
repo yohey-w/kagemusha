@@ -209,7 +209,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`scripts/weekly_distill.sh.example`** | 週次フィードバックトリガー——採掘 → 台帳 → モデルへ蒸留（提案止まり・承認者が確定）。 |
 | **`scripts/correction_scan.py`** | 毎日の採取（LLM不使用）。前日の訂正を**イベント**に束ねてローカルの素材ファイルへ追記する。訂正の語彙は同梱しない——`--patterns` で自分のものを渡す（メニュー: `templates/correction_patterns.example.txt`）。 |
 | **`scripts/distill.sh`** | **材料**トリガー——貯まった時だけ焚く（7日フォールバックは1件以上ある時のみ）。書いてよいのは審査キューだけ。FIRED / SKIPPED / **FAILED** を潰さない。→ [`docs/distillation-loop.md`](docs/distillation-loop.md) |
-| **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | 蒸留プロンプト（8欄の審査書式・既存原則との競合は**解決せず保留枠へ**）と、人が手で空にする審査キュー——昇格だけは人間に残る工程。 |
+| **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | 蒸留プロンプト（規律案1行＋8欄の審査書式・既存原則との競合は**解決せず保留枠へ**）と、人が手で空にする審査キュー——昇格だけは人間に残る工程。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |

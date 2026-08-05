@@ -12,6 +12,20 @@ Machine-written, human-emptied. `scripts/distill.sh` appends one dated section p
 
 **Rules expire.** Give each promoted rule a freshness date, and when the discipline audit reports it as a dead-letter candidate (no firing all week, trace type), decide deliberately: keep, rewrite in a form that can fire, or retire it. Retiring is *dormancy*, not deletion — the ID stays, so it can come back if the situation that earned it returns. See [`../docs/discipline-audit.md`](../docs/discipline-audit.md).
 
+**The shape of an entry.** `distill.sh` appends candidates in the format below, and the same field names live in [`distill-prompt.md`](distill-prompt.md) — if you rewrite that prompt (you should, it is yours), keep the field names in step, or the queue stops being skimmable in one pass. Every field is always present: `none on record` is information about what the material did not contain, a missing line is not.
+
+```
+### C-2026-01-31-1 · Hit the primary source once before asserting a version number
+- **type:** trace (rewritten from the prohibition "don't assert what you haven't checked")
+- **evidence:** [event 3f2a] "no, you're quoting the changelog from memory again — go read it"
+- **scope:** any claim about a version, price, or API shape that came from recall
+- **exception:** none on record
+- **confidence:** 1 event this batch; 2 similar in the journal (cluster-one-vote)
+- **counter-evidence:** none found
+- **destination:** verifier checklist (machine layer), not the instructions file
+- **freshness:** 2026-01-31 — re-check when the tooling changes
+```
+
 ---
 
 <!-- distill.sh appends below this line. Newest sections at the bottom. -->
