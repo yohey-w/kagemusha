@@ -68,9 +68,15 @@ Mechanical, no judgment. If one hits, the workflow comments with the rule name a
 | absolute path | `/home/…`, `/Users/…`, `/mnt/<drive>/…`, `C:\…` |
 | parent-directory reference | `../` anywhere in the text |
 | link host | any `http(s)` link outside `github.com` and `zenn.dev` |
+| credential shape | a `-----BEGIN … PRIVATE KEY-----` block, or a GitHub / `sk-` / AWS / Google / Slack token shape |
 | kit leak guard | the identifiers in `tests/forbidden_patterns.txt` |
 | size / count | over 50 KB per file, over 3 files per PR |
+| not plain text | a symlink, a submodule, a non-UTF-8 byte, or a C0 control character |
 | **path ownership** | **any changed file outside `cookbook/community/<the PR author's own login>/`** |
+
+Every text rule above is applied **twice**: to the bytes as written, and to their Unicode NFKC normalisation. A full-width `＠` or a compatibility `㈱` is the same string to a reader and a different string to a regex, so both spellings are checked and the second one is reported as `… (after NFKC)`.
+
+Two things about how it fails. **It fails closed**: anything the workflow cannot read with certainty — a file mode it cannot fetch, a blob it cannot decode — is not merged; it goes to the maintainer. And **the lane has a switch**: the repository variable `COMMUNITY_AUTOMERGE_ENABLED` must be `true`. It is default-off, so if you send a PR and it is simply labelled for the maintainer with no lint verdict, the lane is switched off rather than broken.
 
 The last row is not a lint failure — the PR is left alone and labelled for the maintainer's adjudication lane. Nothing is rejected, nothing is closed; a human decides. (This is also what happens if you send a PR that changes both your shelf and something in the kit — split it into two PRs and the shelf half merges on its own. A PR into the pre-split root `community/` lands here too.)
 
@@ -159,9 +165,15 @@ cookbook/community/<あなたの GitHub ログイン名>/disciplines.md
 | 絶対パス | `/home/…`, `/Users/…`, `/mnt/<ドライブ>/…`, `C:\…` |
 | 親ディレクトリ参照 | 本文中の `../` |
 | リンク先 | `github.com` と `zenn.dev` 以外への `http(s)` リンク |
+| 資格情報の形 | `-----BEGIN … PRIVATE KEY-----` ブロック、GitHub / `sk-` / AWS / Google / Slack のトークン形状 |
 | キットの漏洩ガード | `tests/forbidden_patterns.txt` の識別子 |
 | サイズ・件数 | 1ファイル 50 KB 超、1 PR 3ファイル超 |
+| 素のテキストでない | symlink・submodule・非 UTF-8 バイト・C0 制御文字 |
 | **パスの所有** | **`cookbook/community/<PR作者自身のログイン名>/` の外にある変更ファイルが1つでもある場合** |
+
+上の文字ルールはすべて**2回**適用されます——書かれたままのバイト列と、その Unicode NFKC 正規化に対して。全角の `＠` や互換文字の `㈱` は、読む人には同じ文字列で、正規表現には別の文字列です。だから両方を検査し、後者で当たった場合は `…（after NFKC）` として報告します。
+
+失敗の仕方について2つ。**倒す方向は「管理者へ」です**（fail closed）——ファイルモードが取れない・blob が復号できないなど、ワークフローが確信を持って読めなかったものは、マージせず管理者に回します。もう1つ、**このレーンにはスイッチがあります**。リポジトリ変数 `COMMUNITY_AUTOMERGE_ENABLED` が `true` である必要があり、**既定は off** です。PR を出したのに lint の判定が付かず管理者ラベルだけが付いた場合、壊れているのではなくスイッチが切れています。
 
 最後の行だけは lint 失敗ではありません。その PR は**自動処理せず**「管理者裁定レーン」のラベルが付くだけです。却下もクローズもされず、人が判断します。（自分の棚とキット本体を同時に変更した PR もここに入ります。2つの PR に割れば、棚のほうは自動でマージされます。移転前の直下 `community/` 宛の PR もここに入ります。）
 

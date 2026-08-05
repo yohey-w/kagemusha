@@ -24,6 +24,10 @@
 #   I3  the removal workflow reads BOTH roots (migration window) and its
 #       shelf-name extraction is not fooled by the new prefix
 #   I4  the docs that tell people where to post agree with the workflow
+#   I5  the guards on WHAT is readable at all: the credential/NFKC/control
+#       rules are extracted and executed; the structural ones (file mode via
+#       the tree API, UTF-8 round trip, kill switch) can only be asserted as
+#       present, and are labelled that way rather than implied to be exercised
 # ═══════════════════════════════════════════════════════════════════════════
 # shellcheck shell=bash
 # shellcheck disable=SC2154  # globals come from scripts/test.sh
@@ -178,3 +182,76 @@ assert_grep "I4: the PR template offers the cookbook/community box" \
 assert_grep "I4: the removal issue template asks for the new path" \
   "cookbook/community/<your-login>/" \
   "$REPO_ROOT/.github/ISSUE_TEMPLATE/community-removal.md"
+
+# ─── I5. the guards that decide what is even readable ──────────────────────
+# Same principle as I2: the rule table is EXTRACTED and executed, not restated.
+# The structural guards (mode, UTF-8, kill switch) cannot be executed without a
+# live PR, so those are asserted as present-and-in-the-right-order instead —
+# and this file says so out loud rather than implying they were exercised.
+assert_grep "I5: the kill switch is wired to a repository variable" \
+  'COMMUNITY_AUTOMERGE_ENABLED: ${{ vars.COMMUNITY_AUTOMERGE_ENABLED }}' "$I_MERGE"
+assert_grep "I5: …and off is the default (anything but \"true\" stops the lane)" \
+  "if (process.env.COMMUNITY_AUTOMERGE_ENABLED !== 'true') {" "$I_MERGE"
+assert_grep "I5: symlink mode is refused" "e.mode === '120000'" "$I_MERGE"
+assert_grep "I5: submodule mode/type is refused" \
+  "e.mode === '160000' || e.type === 'commit'" "$I_MERGE"
+assert_grep "I5: modes come from the tree API, not a checkout" \
+  "github.rest.git.getTree({ owner: root.owner, repo: root.repo, tree_sha: sha })" "$I_MERGE"
+assert_no_grep "I5: the mode read never uses a truncatable recursive tree" \
+  "recursive: true" "$I_MERGE"
+assert_grep "I5: an unreadable head tree fails CLOSED (to the maintainer)" \
+  "await adminLane('could not read the head tree" "$I_MERGE"
+assert_grep "I5: UTF-8 is decided by a byte round trip" \
+  "Buffer.compare(Buffer.from(content, 'utf8'), raw) !== 0" "$I_MERGE"
+assert_grep "I5: every text rule is re-run on the NFKC normalisation" \
+  "const norm = lines.map((t) => t.normalize('NFKC'));" "$I_MERGE"
+# the PR's own code is still never checked out — the property the whole
+# pull_request_target design rests on
+assert_no_grep "I5: the workflow never checks out the PR head" \
+  "ref: \${{ github.event.pull_request.head" "$I_MERGE"
+
+I_RULES="$TEST_TMP/i_rules.tsv"
+node - "$I_MERGE" > "$I_RULES" <<'NODE'
+const fs = require('fs');
+const src = fs.readFileSync(process.argv[2], 'utf8');
+const rulesM = src.match(/const RULES = \[[\s\S]*?\n {12}\];/);
+const ctrlM = src.match(/const CONTROL_RE = (\/.*\/);/);
+if (!rulesM || !ctrlM) { console.log('extract\tfail'); process.exit(0); }
+console.log('extract\tok');
+const RULES = new Function(`${rulesM[0]}\nreturn RULES;`)();
+const CONTROL_RE = new Function(`return ${ctrlM[1]};`)();
+
+const hits = (s) => RULES.filter((r) => r.re.test(s)).map((r) => r.rule);
+const hitsNFKC = (s) => RULES.filter((r) => r.re.test(s.normalize('NFKC'))).map((r) => r.rule);
+
+const table = [
+  ['a private-key block is caught', hits('-----BEGIN RSA PRIVATE KEY-----').length > 0],
+  ['a GitHub token shape is caught', hits('ghp_' + 'a'.repeat(36)).length > 0],
+  ['a GitHub fine-grained PAT is caught', hits('github_pat_' + 'A1b2'.repeat(8)).length > 0],
+  ['an sk- key shape is caught', hits('sk-' + 'x'.repeat(32)).length > 0],
+  ['an AWS access key id is caught', hits('AKIA' + 'ABCDEFGH12345678').length > 0],
+  ['a Slack token shape is caught', hits('xoxb-1234567890-abcdefghij').length > 0],
+  // the reason the credential rules are shaped and not "long random string":
+  // a corpus full of hashes and dates must not be a wall of false positives
+  ['a plain sentence trips nothing', hits('The scope is written before the negation.').length === 0],
+  ['a commit sha trips nothing', hits('see commit a4af8a6c1d2e3f405162738495a6b7c8d9e0f112').length === 0],
+  ['a date trips nothing', hits('2026-08-05 の裁定').length === 0],
+  // NFKC: same string to a reader, different string to a regex
+  ['a full-width email slips the raw pattern', hits('ａｂｃ＠ｅｘａｍｐｌｅ．ｃｏｍ').length === 0],
+  ['…and is caught after NFKC', hitsNFKC('ａｂｃ＠ｅｘａｍｐｌｅ．ｃｏｍ').length > 0],
+  ['a compatibility ㈱ is caught after NFKC', hitsNFKC('㈱の話').length > 0],
+  // control characters
+  ['a NUL is a control character', CONTROL_RE.test('a\u0000b')],
+  ['an escape byte is a control character', CONTROL_RE.test('a\u001Bb')],
+  ['tab and CR are NOT control characters', !CONTROL_RE.test('a\tb\r')],
+];
+for (const [name, ok] of table) console.log(`${name}\t${ok ? 'ok' : 'fail'}`);
+NODE
+
+i_k=0
+while IFS=$'\t' read -r i_name i_res; do
+  [[ -n "$i_name" ]] || continue
+  i_k=$((i_k + 1))
+  assert_eq "I5: $i_name" "ok" "$i_res"
+done < "$I_RULES"
+assert_ge "I5: the rule table ran" "$i_k" 16

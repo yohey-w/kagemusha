@@ -19,7 +19,21 @@ name: community-automerge
 # pull_request_target is used deliberately: fork PRs need a write token to be
 # approved and merged. The PR's code is NEVER checked out and NEVER executed —
 # the only checkout is the BASE branch (for tests/forbidden_patterns.txt), and
-# the PR's files are read as data through the blob API.
+# the PR's files are read as data through the blob API and the tree API.
+#
+# Beyond the path prefix, the gate refuses anything it cannot read as plain
+# text it can be sure of: symlinks and submodules (read from the head TREE's
+# file mode — metadata, never a checkout), non-UTF-8 bytes (byte round trip,
+# not a hunt for replacement characters), C0 control characters, and credential
+# shapes. Every text rule is applied a second time to the NFKC normalisation,
+# so a compatibility spelling is not a way past a regex. All of it FAILS
+# CLOSED: anything unreadable goes to the maintainer, never to merge.
+#
+# The whole lane is armed by a repository variable, COMMUNITY_AUTOMERGE_ENABLED.
+# Unset or anything but "true" ⇒ nothing is auto-merged and every PR goes to
+# the maintainer. It is default-off on purpose: a lane that merges with no
+# human in it must be switched on by a human, and a fork must not inherit one
+# already armed.
 # ═══════════════════════════════════════════════════════════════════════════
 
 on:
@@ -51,6 +65,11 @@ jobs:
           persist-credentials: false
 
       - uses: actions/github-script@v7
+        env:
+          # the kill switch. A repository VARIABLE (not a secret), so a
+          # maintainer can flip the lane off from the settings UI without
+          # touching this file. Unset reads as empty ⇒ the lane is off.
+          COMMUNITY_AUTOMERGE_ENABLED: ${{ vars.COMMUNITY_AUTOMERGE_ENABLED }}
         with:
           script: |
             const fs = require('fs');
@@ -129,6 +148,19 @@ jobs:
               return;
             }
 
+            // ── 0b. the kill switch ─────────────────────────────────────────
+            // Checked BEFORE anything is read or judged: during an incident the
+            // wanted behaviour is "the bot stops acting", not "the bot keeps
+            // posting lint verdicts it will not act on". Default-off is
+            // deliberate — a lane that merges without a human must be switched
+            // on by a human, and a fork of this repository must not inherit an
+            // armed one.
+            if (process.env.COMMUNITY_AUTOMERGE_ENABLED !== 'true') {
+              await adminLane('auto-merge is switched off (repository variable '
+                + 'COMMUNITY_AUTOMERGE_ENABLED is not "true")');
+              return;
+            }
+
             // ── 1. the changed paths ────────────────────────────────────────
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner, repo, pull_number: pr.number, per_page: 100,
@@ -172,7 +204,83 @@ jobs:
               return;
             }
 
+            // ── 1b. what KIND of object each path is ────────────────────────
+            // listFiles does not carry the file mode, and the mode is where two
+            // whole classes of trouble live: a symlink (mode 120000) whose
+            // "content" is a path into the checkout, and a submodule (160000 /
+            // type "commit") that points at another repository entirely. Both
+            // are read from the PR head's TREE — metadata, never a checkout,
+            // never execution. Everything here FAILS CLOSED: if the mode cannot
+            // be read for any reason, the PR goes to the maintainer.
+            const ALLOWED_MODES = ['100644', '100755'];
+
+            async function headTreeRoot() {
+              const tries = [{ owner, repo }];   // fork heads live in our object store too
+              if (pr.head.repo) {
+                tries.push({ owner: pr.head.repo.owner.login, repo: pr.head.repo.name });
+              }
+              for (const t of tries) {
+                try {
+                  const c = await github.rest.git.getCommit({ ...t, commit_sha: pr.head.sha });
+                  return { ...t, tree: c.data.tree.sha };
+                } catch (e) { /* try the next place */ }
+              }
+              return null;
+            }
+
+            // walk the tree segment by segment. Never a recursive listing: past
+            // a size limit GitHub truncates one, and a truncated tree drops the
+            // entry we needed without saying which one it dropped.
+            async function entryOf(root, path) {
+              const segs = path.split('/');
+              let sha = root.tree;
+              for (let i = 0; i < segs.length; i++) {
+                let t;
+                try {
+                  t = await github.rest.git.getTree({ owner: root.owner, repo: root.repo, tree_sha: sha });
+                } catch (e) { return null; }
+                if (t.data.truncated) return null;
+                const e = t.data.tree.find((x) => x.path === segs[i]);
+                if (!e) return null;
+                if (i === segs.length - 1) return e;
+                if (e.type !== 'tree') return null;
+                sha = e.sha;
+              }
+              return null;
+            }
+
+            const root = await headTreeRoot();
+            if (root === null) {
+              await adminLane('could not read the head tree — file modes unverifiable');
+              return;
+            }
+            for (const f of files) {
+              if (f.status === 'removed') continue;
+              const e = await entryOf(root, f.filename);
+              if (e === null) {
+                await adminLane(`${f.filename}: not found in the head tree (mode unverifiable)`);
+                return;
+              }
+              if (e.mode === '120000') {
+                await adminLane(`${f.filename}: symlink`);
+                return;
+              }
+              if (e.mode === '160000' || e.type === 'commit') {
+                await adminLane(`${f.filename}: submodule`);
+                return;
+              }
+              if (e.type !== 'blob' || !ALLOWED_MODES.includes(e.mode)) {
+                await adminLane(`${f.filename}: not a regular file (mode ${e.mode}, type ${e.type})`);
+                return;
+              }
+            }
+
             // ── 2. the format lint ──────────────────────────────────────────
+            // C0 control characters, minus the three that legitimately occur in
+            // text (\t \n \r). A NUL is the classic way to make one file read
+            // differently to a human and to a scanner.
+            const CONTROL_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
+
             const RULES = [
               { rule: 'email-address', re: /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/ },
               // shaped, not generic: a bare digit-group regex fires on dates
@@ -182,6 +290,12 @@ jobs:
               { rule: 'money-amount', re: /[¥$]\s?\d{2,}|[¥$]\s?\d+[.,]\d|[0-9０-９]\s?(?:円|万円)/ },
               { rule: 'absolute-path (/home/, /Users/, /mnt/, C:\\)', re: /\/home\/|\/Users\/|\/mnt\/[a-z]\/|\b[A-Za-z]:\\/ },
               { rule: 'parent-directory reference (..)', re: /\.\.\// },
+              // credential SHAPES. Deliberately narrow: a generic "looks like a
+              // long random string" rule fires on hashes and base64 the corpus
+              // is full of, and a rule that cries wolf gets switched off.
+              { rule: 'private-key block', re: /-----BEGIN[ A-Z]*PRIVATE KEY-----/ },
+              { rule: 'API-token shape (GitHub)', re: /\bgh[pousr]_[A-Za-z0-9]{16,}\b|\bgithub_pat_[A-Za-z0-9_]{20,}\b/ },
+              { rule: 'API-token shape (sk-/AWS/Google/Slack)', re: /\bsk-[A-Za-z0-9_-]{16,}\b|\bAKIA[0-9A-Z]{16}\b|\bAIza[0-9A-Za-z_-]{30,}\b|\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },
             ];
 
             // The kit's own leak guard, applied at merge time. ci.yml does run group
@@ -224,20 +338,51 @@ jobs:
                 problems.push({ file: f.filename, rule: `larger than ${MAX_BYTES} bytes` });
                 continue;
               }
-              const content = Buffer.from(blob.data.content, blob.data.encoding || 'base64').toString('utf8');
+              // UTF-8 or nothing. The test is a byte round trip, not a hunt for
+              // U+FFFD: `toString('utf8')` REPLACES invalid bytes silently, so
+              // the decoded string alone can never tell you they were there.
+              const raw = Buffer.from(blob.data.content, blob.data.encoding || 'base64');
+              const content = raw.toString('utf8');
+              if (Buffer.compare(Buffer.from(content, 'utf8'), raw) !== 0) {
+                problems.push({ file: f.filename, rule: 'not valid UTF-8' });
+                continue;
+              }
+
               const lines = content.split('\n');
+
+              // A NUL or other C0 byte makes a file read one way to a person and
+              // another way to a scanner — the premise of every lint below is
+              // that what a reader sees is what was scanned.
+              lines.forEach((text, i) => {
+                if (CONTROL_RE.test(text)) {
+                  problems.push({ file: f.filename, line: i + 1, rule: 'control character (NUL / C0)' });
+                }
+              });
+
+              // Every text rule runs TWICE: on the bytes as written, and on the
+              // NFKC normalisation. Full-width and compatibility spellings
+              // (＠, ￥, ㈱ decomposing to 株式会社) are the same string to a
+              // reader and a different string to a regex.
+              const norm = lines.map((t) => t.normalize('NFKC'));
 
               for (const r of RULES) {
                 lines.forEach((text, i) => {
-                  if (r.re.test(text)) problems.push({ file: f.filename, line: i + 1, rule: r.rule });
+                  if (r.re.test(text)) {
+                    problems.push({ file: f.filename, line: i + 1, rule: r.rule });
+                  } else if (r.re.test(norm[i])) {
+                    // named distinctly: the author cannot reproduce this match
+                    // by grepping their own file, and needs to know why
+                    problems.push({ file: f.filename, line: i + 1, rule: `${r.rule} (after NFKC)` });
+                  }
                 });
               }
               lines.forEach((text, i) => {
-                if (KIT_PATTERNS.some((re) => re.test(text))) {
+                if (KIT_PATTERNS.some((re) => re.test(text) || re.test(norm[i]))) {
                   problems.push({ file: f.filename, line: i + 1, rule: 'identifier on the kit leak-guard list' });
                 }
               });
-              for (const line of urlProblems(lines)) {
+              const urlLines = new Set([...urlProblems(lines), ...urlProblems(norm)]);
+              for (const line of urlLines) {
                 problems.push({
                   file: f.filename, line,
                   rule: `link to a host outside the allowlist (${URL_HOSTS.join(', ')})`,

@@ -42,7 +42,9 @@ A pull request is auto-approved and squash-merged when **all** of the following 
 - **Every changed path** — including the old name of a rename — is `cookbook/community/<the PR author's own login>/<name>.md`. The prefix is built from the PR author's login, so touching another person's shelf and touching the kit are the same case. **The pre-split root `community/` is no longer this lane**: a PR into it goes to the maintainer.
 - At most **3 files** in the PR, at most **50 KB** per file.
 - The PR is **not a draft** and targets the **default branch**.
-- The content passes the format lint: no email address, no phone number, no company-form word (`株式会社` / `Inc.` / `LLC` / `Ltd` …), no `¥`/`$`/`円` amount, no absolute path (`/home/…`, `/Users/…`, `C:\…`), no `../`, no `http(s)` link outside `github.com` / `zenn.dev`, and nothing matching the kit's leak guard (`tests/forbidden_patterns.txt`).
+- The content passes the format lint: no email address, no phone number, no company-form word (`株式会社` / `Inc.` / `LLC` / `Ltd` …), no `¥`/`$`/`円` amount, no absolute path (`/home/…`, `/Users/…`, `C:\…`), no `../`, no `http(s)` link outside `github.com` / `zenn.dev`, no private-key block or API-token shape, and nothing matching the kit's leak guard (`tests/forbidden_patterns.txt`). **Every one of those rules is applied twice** — to the bytes as written, and to their Unicode NFKC normalisation — so a full-width or compatibility spelling is not a way past it.
+- The changed files are **plain UTF-8 text blobs**. A symlink, a submodule, a non-UTF-8 byte, or a C0 control character leaves the lane. File modes are read from the PR head's tree — **metadata, never a checkout of the PR's code** — and anything unreadable fails closed to the maintainer.
+- The repository variable `COMMUNITY_AUTOMERGE_ENABLED` is `true`. This is the maintainer's kill switch and it is **default-off**: while it is unset or set to anything else, **nothing is auto-merged** and every PR in this lane goes to the adjudication lane instead. A fork of this repository therefore does not inherit an armed auto-merger.
 
 If a path is outside the lane, the PR is **labelled `管理者裁定レーン`** and left for a maintainer — untouched otherwise. If the lint hits, the workflow comments with **the rule name and the line number only**, never quoting the matched text: that comment is public and permanent, and quoting the match would spread exactly what the rule exists to stop.
 
@@ -93,7 +95,9 @@ The full rule table, the format for an entry, and the removal procedure live in 
 - **変更ファイルが全て**（リネーム前の名前も含む）`cookbook/community/<PR作者自身のログイン名>/<名前>.md` であること。接頭辞は PR 作者のログイン名から組み立てるので、**他人の棚を触ること**と**キット本体を触ること**は同じ扱いになります。**移転前の直下 `community/` はもうこのレーンではありません**——そこへの PR は管理者に回ります。
 - 1 PR **3ファイル**まで、1ファイル **50 KB** まで。
 - **draft でない**こと、**デフォルトブランチ宛て**であること。
-- 形式 lint に合格すること: メールアドレス・電話番号・法人格語（`株式会社` / `Inc.` / `LLC` / `Ltd` …）・`¥`/`$`/`円` の金額・絶対パス（`/home/…`, `/Users/…`, `C:\…`）・`../`・`github.com` と `zenn.dev` 以外への `http(s)` リンク・キットの漏洩ガード（`tests/forbidden_patterns.txt`）に当たるものが無いこと。
+- 形式 lint に合格すること: メールアドレス・電話番号・法人格語（`株式会社` / `Inc.` / `LLC` / `Ltd` …）・`¥`/`$`/`円` の金額・絶対パス（`/home/…`, `/Users/…`, `C:\…`）・`../`・`github.com` と `zenn.dev` 以外への `http(s)` リンク・秘密鍵ブロックや API トークンの形・キットの漏洩ガード（`tests/forbidden_patterns.txt`）に当たるものが無いこと。**これら全ての規則は2回**——書かれたままのバイト列と、その Unicode NFKC 正規化——に対して適用されるので、全角や互換文字での書き換えは抜け道になりません。
+- 変更ファイルが**素の UTF-8 テキスト**であること。symlink・submodule・非 UTF-8 バイト・C0 制御文字はレーンから外れます。ファイルモードは PR head の tree から読みます（**メタ情報だけ・PR のコードは checkout しません**）。読めなかったものは全て「管理者へ」に倒します（fail closed）。
+- リポジトリ変数 `COMMUNITY_AUTOMERGE_ENABLED` が `true` であること。これは管理者の**緊急停止スイッチ**で、**既定は off**です——未設定または `true` 以外の間は**自動マージを一切行わず**、このレーンの PR も管理者裁定レーンに回ります。したがって、このリポジトリを fork しても「起動済みの自動マージ機」は付いてきません。
 
 レーン外のパスが1つでもあれば、その PR は **`管理者裁定レーン` ラベルが付くだけ**で、他には何もせず管理者に回ります。lint に当たった場合、ワークフローは**ルール名と行番号だけ**をコメントします——**該当箇所は引用しません**。そのコメントも公開・恒久であり、引用したら、そのルールが止めようとしているものをそのまま広げることになるからです。
 
