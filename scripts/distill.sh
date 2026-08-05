@@ -67,6 +67,11 @@ MATERIAL="${DISTILL_MATERIAL_FILE:?set DISTILL_MATERIAL_FILE in config.env}"
 STATE="${DISTILL_STATE_FILE:?set DISTILL_STATE_FILE in config.env}"
 QUEUE="${DISTILL_QUEUE_FILE:?set DISTILL_QUEUE_FILE in config.env}"
 PROMPT_TPL="${DISTILL_PROMPT_FILE:-$REPO_ROOT/templates/distill-prompt.md}"
+# The candidate SHAPE lives in exactly one file and is substituted into the prompt
+# at {{CANDIDATE_FORMAT}}. The prompt is a file its owner is invited to rewrite, so
+# a format written out inside it is a format that drifts away from the queue the
+# reviewer reads. One copy, two consumers.
+CANDIDATE_TPL="${DISTILL_CANDIDATE_FILE:-$REPO_ROOT/templates/promotion_candidate.md}"
 THRESHOLD="${DISTILL_THRESHOLD:-5}"
 # The weekly fallback is OFF by default (0). A fallback that fires on a single
 # pending correction is the exact failure the threshold exists to prevent, on a
@@ -95,6 +100,10 @@ log_state() {  # log_state <STATE> <detail>
 
 [[ -f "$PROMPT_TPL" ]] || { echo "prompt template not found: $PROMPT_TPL" >&2
   log_state FAILED "prompt template missing: $PROMPT_TPL"; exit 1; }
+# A missing candidate format is a LOUD failure, not a prompt with a hole in it: a
+# model given no format invents one, and the queue stops being skimmable in one pass.
+[[ -f "$CANDIDATE_TPL" ]] || { echo "candidate format not found: $CANDIDATE_TPL" >&2
+  log_state FAILED "candidate format missing: $CANDIDATE_TPL"; exit 1; }
 
 # ─── the decision ──────────────────────────────────────────────────────────
 STATUS="$(python3 "$SCRIPT_DIR/correction_scan.py" --state "$STATE" --status 2>>"$LOG")"
@@ -168,6 +177,9 @@ PROMPT="${PROMPT//\{\{RULES_FILE\}\}/$RULES_NAME}"
 PROMPT="${PROMPT//\{\{PRINCIPLES_BLOCK\}\}/$PRINCIPLES_BLOCK}"
 PROMPT="${PROMPT//\{\{BATCH_ID\}\}/$BATCH_ID}"
 PROMPT="${PROMPT//\{\{EVENT_COUNT\}\}/$BATCH_N}"
+PROMPT="${PROMPT//\{\{CANDIDATE_FORMAT\}\}/$(cat "$CANDIDATE_TPL")}"
+# MATERIAL last: it is untrusted text, and a placeholder appearing inside it must
+# never be expanded by a later substitution.
 PROMPT="${PROMPT//\{\{MATERIAL\}\}/$MATERIAL_TEXT}"
 
 # ─── DRY RUN: decide and print, fire nothing (no cost) ──────────────────────

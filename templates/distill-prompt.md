@@ -4,6 +4,11 @@
 This file IS the prompt. distill.sh reads it and substitutes:
   {{TODAY}} {{PENDING}} {{THRESHOLD}} {{MATERIAL_FILE}} {{QUEUE_FILE}}
   {{RULES_FILE}} {{PRINCIPLES_BLOCK}} {{MATERIAL}} {{BATCH_ID}} {{EVENT_COUNT}}
+  {{CANDIDATE_FORMAT}}  ← the eight-field candidate shape, read from
+                          templates/promotion_candidate.md (DISTILL_CANDIDATE_FILE).
+                          Do NOT paste the fields in here by hand: two copies of one
+                          format is one copy that goes stale, and this file is the one
+                          you are invited to rewrite.
 Everything above the line is a comment and gets sent along harmlessly; the
 substitutions are plain text replacement, so the placeholders must stay spelled
 exactly as above. Delete a placeholder and that context simply stops arriving.
@@ -47,19 +52,15 @@ You are distilling correction material into **promotion candidates** for a human
 
 ## The format — every candidate gets all eight fields
 
-Missing fields are not omitted; they are written as `—` or `none on record`. A blank field is information (it tells the reviewer what the material did not contain); a silently dropped field is not.
+The format below is substituted in from `templates/promotion_candidate.md`, which is
+its single source of truth. It is the same text the reviewer's queue points at, so
+what you write and what they read are the same shape by construction. Follow it
+exactly; do not add fields, do not drop the ones with nothing in them. The
+`<YYYY-MM-DD>` in the candidate id is {{TODAY}}.
 
-```
-### C-{{TODAY}}-<n> · <one-line rule, imperative, trace form if possible>
-- **type:** trace | prohibition (and if prohibition: the trace-form rewrite you propose)
-- **evidence:** verbatim quote(s) from the material, with the event id. Never paraphrase.
-- **scope:** when this applies — the situations where it should fire
-- **exception:** where it should NOT apply (if the material shows none, write "none on record")
-- **confidence:** N event(s) in this batch; prior support if any. Cluster-one-vote.
-- **counter-evidence:** anything in the material pointing the other way (or "none found")
-- **destination:** agent instructions / verifier checklist / journal-only observation
-- **freshness:** {{TODAY}} — re-check by <a date or a condition>
-```
+──── candidate format ────
+{{CANDIDATE_FORMAT}}
+──── end ────
 
 ## Conflicts with what you already believe
 
