@@ -1,0 +1,136 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# discipline_catalog.example.yaml — the input to scripts/discipline_scan.py.
+#
+# WHAT THIS IS: the list of disciplines you want audited, each with the regex
+# that would catch it in your own session logs. Copy it somewhere your own
+# instance data lives (e.g. judgment/discipline_catalog.yaml — outside the
+# tracked kit) and edit it down to the disciplines you actually adopted.
+#
+#   scripts/discipline_scan.py --catalog judgment/discipline_catalog.yaml --since 7d
+#
+# WHAT IT IS NOT: a scoring rubric. The scanner quotes matching passages and
+# stops there. See docs/discipline-audit.md.
+#
+# ── the two types, because they decide what a number means ─────────────────
+#   type: trace        a discipline that COMMANDS AN ACTION. Obeying it leaves
+#                      a trace, so `fire:` can find it, firings are countable,
+#                      and zero firings is a real dead-letter signal.
+#   type: prohibition  a discipline that COMMANDS RESTRAINT. Obeying it is the
+#                      sentence you did NOT write — no log contains it, so
+#                      FIRINGS ARE UNOBSERVABLE and `fire:` is rejected by the
+#                      parser. Only `breach:` works, and zero breaches proves
+#                      nothing. Never call a prohibition a dead letter.
+#   The practical consequence: if you want a discipline to be auditable, WRITE
+#   IT AS A TRACE. "Don't assert what you haven't checked" is unmeasurable;
+#   "hit the primary source once before you assert" leaves a mark.
+#
+# ── fields ─────────────────────────────────────────────────────────────────
+#   id           short stable handle (appears in the report)
+#   type         trace | prohibition
+#   name         the discipline as one readable sentence
+#   origin       where it came from (file, section, journal id) — optional
+#   role         whose turns `fire:` is searched in: assistant | user | any
+#                (default: assistant)
+#   breach_role  same, for `breach:` (default: whatever `role` is). Breaches
+#                are often visible only as the APPROVER correcting you, which
+#                is why this can differ.
+#   fire         regex for the discipline being obeyed  (trace only)
+#   breach       regex for it being broken              (optional)
+#   note         one line carried into the report — optional
+#
+# ── format ─────────────────────────────────────────────────────────────────
+# A tiny YAML subset (parsed by the script itself, so nothing to install):
+# one `disciplines:` list, `- key: value` items, scalars only.
+# QUOTE YOUR REGEXES WITH SINGLE QUOTES — inside them everything is literal
+# (backslashes included) and '' means one quote. Bare values run to the end of
+# the line, so they cannot carry a trailing # comment.
+#
+# ── writing the patterns ───────────────────────────────────────────────────
+# Aim for the discipline's VOCABULARY, not its meaning: the words that only
+# appear when it is being obeyed. Over-broad is survivable (you drop the
+# candidate when you read the fragment); over-narrow is not (you get a false
+# dead letter and delete a discipline that was working). Include the languages
+# you actually work in. Every catalog is local by construction — these
+# patterns are examples, not a standard.
+#
+# The entries below audit the disciplines in templates/starter-disciplines.md
+# section A. Keep the ones you took; delete the rest.
+# ═══════════════════════════════════════════════════════════════════════════
+
+disciplines:
+  - id: A1
+    type: trace
+    name: An ask is a deliverable — artifact, one recommendation, default if no answer.
+    origin: starter-disciplines A1 / docs/decision-cards.md
+    role: assistant
+    fire: '(recommend(ation)?\s*[:：]|if (you|I) (get |hear )?no (answer|reply)|no-answer default|推奨\s*[:：]|無回答(の場合|なら|時)|既定動作)'
+    breach: '(どっちが|どれが)?(いい|良い)(です)?か[?？]|which (one )?(do you|would you) (want|prefer)[?？]'
+    breach_role: assistant
+    note: breach pattern = an open question handed over with no recommendation attached.
+
+  - id: A2
+    type: trace
+    name: Report the board (waiting on you / in flight / done / not started), not the event.
+    origin: starter-disciplines A2
+    role: assistant
+    fire: '(手つかず|判断(が|を)要る|走行中|not started|in flight|awaiting (your|a) (call|decision|approval))'
+    breach: '(いま|今)(何|なに)(が|を)(進|走|残)|what.{0,12}(status|state) (of|on) everything|全部で(いま|今)どうなって'
+    breach_role: user
+    note: breach = the approver having to ASK for the board is the board not being delivered.
+
+  - id: A3
+    type: trace
+    name: Deliver diffs at work boundaries; a scheduled digest carries only changes, and stays silent when empty.
+    origin: starter-disciplines A3
+    role: assistant
+    fire: '(前回から(の)?差分|差分だけ|since (the )?last (report|run|brief)|changed since|全部空なら)'
+    breach: '(また|まだ)?同じ(の|こと)を(書|言)|you already (told|said) (me )?that'
+    breach_role: user
+
+  - id: A4
+    type: trace
+    name: The file is the archive; the conversation is the delivery — one point per turn.
+    origin: starter-disciplines A4
+    role: assistant
+    fire: '(一問一答|1ターン1論点|one (point|question) (per|at a) (turn|time)|想定(→|->)実際)'
+    breach: '(読んでおいて|目を通して|see the (doc|file|md)|read (the )?(doc|file) (and|then))'
+    breach_role: assistant
+    note: breach is self-detecting on purpose — handing over a long document instead of delivering the point is something the agent does, not the human.
+
+  - id: A5
+    type: trace
+    name: Put the deliverable on a channel the reader already has open.
+    origin: starter-disciplines A5
+    role: assistant
+    fire: '(通知(で|へ|に)(送|流|出)|push (the )?notification|already (has|have) open|タップ(1|一)回|one tap)'
+
+  - id: A6
+    type: trace
+    name: Report a search by the shelves you swept, naming the ones you did not.
+    origin: starter-disciplines A6
+    role: assistant
+    fire: '(掃いた棚|未掃|(shelves|sources) (I )?swept|did not (search|check|sweep)|snapshot as of|時点のスナップショット)'
+    breach: '(調べ|探し|見)た(けど|が)?(見つから|無|な)い(です)?ね?$'
+    breach_role: assistant
+    note: a search report whose first block is not a shelf list has not fired this one.
+
+  # ── prohibitions: breach-only by construction ─────────────────────────────
+  # Note the shape. Each of these is the RESTRAINT half of a discipline whose
+  # ACTION half is a trace entry above. That pairing is the recommended way to
+  # keep a prohibition auditable: forbid the thing, but also command the
+  # observable action that replaces it, and audit the action.
+
+  - id: A6-P
+    type: prohibition
+    name: Never claim a search was exhaustive — you can only claim the shelves you swept.
+    origin: starter-disciplines A6
+    role: assistant
+    breach: '(網羅(した|的に(調査|確認|検索|見))|exhaustive(ly)? (search|review|list)|(all|every) (the )?(source|shelf|shelves|place)s? (were|was|have been) (check|search|swept))'
+    note: firings unobservable — the audit reads the A6 trace entry, not this one.
+
+  - id: A3-P
+    type: prohibition
+    name: A scheduled job with nothing to say sends nothing — no all-clear pings.
+    origin: starter-disciplines A3
+    role: assistant
+    breach: '(異常なし|特に(問題|変化)(は)?(あり|ござい)ません|nothing to report|all clear|no changes to report)'
