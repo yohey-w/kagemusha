@@ -155,6 +155,16 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it works.
 
+**Or start with the light lane: harvest daily, distill only when there is material.**
+
+```bash
+# 5'. Cut templates/correction_patterns.example.txt down to phrases YOU use, then:
+#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d
+#    23 6 * * *  scripts/distill.sh     # fires only past the threshold; silent otherwise
+```
+
+`correction_scan.py` costs nothing (no LLM) and groups the day's corrections into **events** — four rephrasings of one point are one event, never four witnesses. `distill.sh` runs daily and almost always does nothing: a model asked to distill principles from two thin corrections will not say "not enough", it will produce two thin principles, so the threshold is what keeps the output honest. What it produces is a **promotion queue** for you to read — never an edit to your rules file. [`docs/distillation-loop.md`](docs/distillation-loop.md).
+
 **Optional but recommended: a verifier from a different model lineage.** This kit is built around the assumption that AI output can be wrong — that's the whole reason the approval queue and the verifiers exist. But there's a blind spot: if the model that checks the work shares a lineage with the model that did the work, a failure mode common to that lineage slips past both. (Research on inference-time scaling reports a pattern — getting pulled off track by irrelevant context the longer a model reasons — that shows up across a model *family*, not just one model: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417).) So it's worth wiring in one checker from a different vendor.
 
 - **What:** the [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) — an official plugin that calls OpenAI's Codex CLI from inside Claude Code — plus the Codex CLI itself and an OpenAI-side login. Its usage quota is billed separately from Claude usage, so reaching for it doesn't eat into your main work's budget.
@@ -197,6 +207,9 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`scripts/filter_judgments.py`** | Bucket those turns into RULE/REJECT/CORRECT/… (vocab configurable, EN+JP defaults). |
 | **`scripts/discipline_scan.py`** | **Is a discipline you adopted doing anything?** Walks your own session logs and quotes the passages where each one fired or broke. It matches and quotes; **it does not judge**. See [`docs/discipline-audit.md`](docs/discipline-audit.md). |
 | **`scripts/weekly_distill.sh.example`** | The weekly feedback trigger — mine → journal → distill into the model (proposes; you confirm). |
+| **`scripts/correction_scan.py`** | The daily harvest, no LLM: yesterday's corrections, grouped into **events**, appended to a local material file. Your correction vocabulary is not shipped — you supply `--patterns` (menu: `templates/correction_patterns.example.txt`). |
+| **`scripts/distill.sh`** | The **material** trigger — fires only when enough corrections have piled up (or a 7-day fallback with ≥1 pending), writes candidates to a promotion queue and nothing else, and keeps FIRED / SKIPPED / **FAILED** apart. [`docs/distillation-loop.md`](docs/distillation-loop.md). |
+| **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | The distillation prompt (eight-field candidate format; conflicts with your existing principles are *held*, not resolved) and the queue you empty by hand — the promotion step that stays a person. |
 | **`scripts/inbound_watch.sh.example`** | The inbox trigger, Tier 2 — inward-only inbound watch for unattended scheduler runs (Slack / Gmail-IMAP / RSS lanes; immutable ledger; quiet-hours roll-up). |
 | `scripts/test.sh` | The kit's own acceptance gate — run `./scripts/test.sh` (needs `shellcheck`); CI runs this exact command. It really executes `setup.sh` in a throwaway clone, proves the allowlist `.gitignore` makes instance data uncommittable, and drives `morning_brief.sh` with a fake CLI. No skips: a missing tool is a failure. |
 | `docs/design.md` | Implementation guide: the four parts + mandate, mapped to files. |
@@ -204,6 +217,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
 | `docs/fixed-point-sweep.md` | Fixed-point sweep — the diff-shaped watcher pattern: a baseline of the known, the three states NEW / NOCHANGE / FAILED kept apart, an append-only baseline advanced on success only, and why a silent run still has to be logged. |
 | **`docs/decision-cards.md`** | Decision cards — cognitive design of the approval hand-off: the artifact itself, one recommendation, a no-answer default, severity marks, ≤3 per batch. |
+| **`docs/distillation-loop.md`** | The distillation courier — harvest daily for free, fire on **material** rather than the clock, and why the run may write only a promotion queue: moving text needs no gate, promoting a correction into a rule does. |
 | **`docs/discipline-audit.md`** | Discipline audit — what it proves is **not** that a discipline works, but that the mechanism detecting breaches is running. **Trace** vs **prohibition** (compliance with a prohibition is unobservable), why an auditable discipline must be written as a trace, and the weekly three steps. |
 | **`docs/provenance.md`** | Provenance table — which idea entered the kit, in which file, in which commit, and what set it off. Every trigger cell carries a tag saying how strongly it is sourced. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |

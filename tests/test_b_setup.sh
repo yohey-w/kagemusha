@@ -29,8 +29,10 @@ b_expected="$(LC_ALL=C sort <<'MANIFEST'
 CLAUDE.md
 approval_queue.md
 config.env
+judgment/correction_patterns.txt
 judgment/decisions_journal.md
 judgment/judgment_model.md
+judgment/promotion_queue.md
 projects/_charter_template.md
 ssot/decisions.md
 ssot/glossary.md

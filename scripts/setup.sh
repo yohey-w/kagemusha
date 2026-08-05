@@ -56,6 +56,11 @@ copy "$TEMPLATES/system_map.md"     "$TARGET/system_map.md"
 copy "$TEMPLATES/decisions_journal.md" "$TARGET/judgment/decisions_journal.md"
 copy "$TEMPLATES/judgment_model.md"    "$TARGET/judgment/judgment_model.md"
 
+# distillation courier: the queue you review, and the pattern menu you cut down
+# (docs/distillation-loop.md). No cron line is installed for you — see below.
+copy "$TEMPLATES/promotion_queue.md"             "$TARGET/judgment/promotion_queue.md"
+copy "$TEMPLATES/correction_patterns.example.txt" "$TARGET/judgment/correction_patterns.txt"
+
 # project-context layer: copy the charter template into each new project
 # folder as projects/<name>/charter.md (card = folder = charter, 1:1:1)
 copy "$TEMPLATES/charter.md" "$TARGET/projects/_charter_template.md"
@@ -92,4 +97,13 @@ done. next:
   7. edit  $TARGET/judgment/judgment_model.md  (seed a few of your own principles)
   8. copy  $SCRIPT_DIR/weekly_distill.sh.example -> weekly_distill.sh, edit its CONFIG
   9. cron  17 21 * * 0  $SCRIPT_DIR/weekly_distill.sh   (once a week — see docs/judgment-distillation.md)
+
+  distillation courier (harvest daily, distill only when material piles up):
+ 10. edit  $TARGET/judgment/correction_patterns.txt  (cut it down to YOUR phrases)
+ 11. cron  7 6 * * *  $SCRIPT_DIR/correction_scan.py --patterns $TARGET/judgment/correction_patterns.txt \\
+                        --material $TARGET/judgment/correction_material.md \\
+                        --state $TARGET/judgment/distill_state.json --since 1d
+ 12. cron  23 6 * * *  $SCRIPT_DIR/distill.sh   (fires only past the threshold — docs/distillation-loop.md)
+      then review $TARGET/judgment/promotion_queue.md by hand: promotion is the one step
+      that stays manual, because a rule nobody reviewed would govern every run after it.
 DONE

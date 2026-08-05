@@ -155,6 +155,16 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 仕組みは [`docs/judgment-distillation.md`](docs/judgment-distillation.md) を参照。
 
+**あるいは軽いレーンから: 採取は毎日・蒸留は材料が貯まった日だけ。**
+
+```bash
+# 5'. templates/correction_patterns.example.txt を「自分の言い回し」だけに削ってから:
+#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d
+#    23 6 * * *  scripts/distill.sh     # 閾値未満は黙ってスキップ（無料）
+```
+
+`correction_scan.py` はLLMを使わず（＝ただ）、その日の訂正を**イベント**に束ねる——4回言い直したことは4人の証人ではない。`distill.sh` は毎日走るがほぼ何もしない: **薄い2件を渡されたモデルは「材料が足りません」とは言わず、薄い2件ぶんの原則をひねり出す**からだ。閾値は出力を正直に保つ仕掛けであって、節約ではない。出てくるのは**あなたが読む審査キュー**で、規則ファイルへの書き込みではない。→ [`docs/distillation-loop.md`](docs/distillation-loop.md)
+
 **任意だが推奨: 血統の違うモデルによる検算器。** このキットは「AIの出力は間違いうる」ことを前提に組んである——承認キューも検証器も、そのために存在する。だが1つ死角がある: 検証する側と作業する側が同じ血統のモデルだと、**その血統に共通する失敗モードは両方をすり抜ける**。（推論を長くするほど無関係な文脈に引きずられる、という失敗パターンが個々のモデルでなくモデル*系列*全体に現れるとする研究がある: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417)。）だから、別ベンダーの検算役を1本つないでおく価値がある。
 
 - **何を**: [Claude Code 用 Codex プラグイン](https://github.com/openai/codex-plugin-cc)——OpenAI の Codex CLI を Claude Code の中から呼び出す公式プラグイン——と Codex CLI 本体、OpenAI 側のログイン。利用枠は Claude の利用枠と別会計なので、検算に回しても本業の枠を食わない。
@@ -197,6 +207,9 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`scripts/filter_judgments.py`** | それを RULE/REJECT/CORRECT/… にバケット分類（語彙は設定可・日英デフォルト）。 |
 | **`scripts/discipline_scan.py`** | **取り入れた規律は、自分の環境で動いているか。** 自分のセッションログを走査し、規律ごとに発火・破れの原文断片を引用する。引用して止まる——**判定はしない**。→ [`docs/discipline-audit.md`](docs/discipline-audit.md) |
 | **`scripts/weekly_distill.sh.example`** | 週次フィードバックトリガー——採掘 → 台帳 → モデルへ蒸留（提案止まり・承認者が確定）。 |
+| **`scripts/correction_scan.py`** | 毎日の採取（LLM不使用）。前日の訂正を**イベント**に束ねてローカルの素材ファイルへ追記する。訂正の語彙は同梱しない——`--patterns` で自分のものを渡す（メニュー: `templates/correction_patterns.example.txt`）。 |
+| **`scripts/distill.sh`** | **材料**トリガー——貯まった時だけ焚く（7日フォールバックは1件以上ある時のみ）。書いてよいのは審査キューだけ。FIRED / SKIPPED / **FAILED** を潰さない。→ [`docs/distillation-loop.md`](docs/distillation-loop.md) |
+| **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | 蒸留プロンプト（8欄の審査書式・既存原則との競合は**解決せず保留枠へ**）と、人が手で空にする審査キュー——昇格だけは人間に残る工程。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |
@@ -204,6 +217,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
 | `docs/fixed-point-sweep.md` | 定点掃引——差分型監視の設計パターン: 既知の基線・3状態（NEW / NOCHANGE / FAILED）を潰さない・基線は成功時のみの一方向ラチェット・沈黙した回もログに残す。 |
 | **`docs/decision-cards.md`** | 判断カード——承認の差し出しを認知設計する: 現物・推奨・無回答時・重み・1バッチ3枚。 |
+| **`docs/distillation-loop.md`** | 蒸留便——採取は毎日ただで・発火は**時刻でなく材料**で。書いてよいのが審査キューだけである理由: 移動に関門は要らないが、**訂正を規律へ昇格させるには要る**。 |
 | **`docs/discipline-audit.md`** | 規律の監査——証明できるのは「規律が効いている証拠」ではなく**「破れを検出する仕組みが動いている証拠」**。**痕跡型と禁止型**（禁止型の遵守は観測不能）・監査したい規律は痕跡形で書け・週次の3ステップ。 |
 | **`docs/provenance.md`** | 来歴表——どの思想が・どのファイルに・どのコミットで・何をきっかけに入ったか。きっかけ欄には「どこまで裏が取れているか」の出所タグが必ず付く。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
