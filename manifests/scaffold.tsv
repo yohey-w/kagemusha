@@ -8,11 +8,11 @@
 # copy list out as data makes a boundary violation show up in the diff, and
 # lets the acceptance gate (test group H) assert on it directly.
 #
-# STATUS: this file is currently a FAITHFUL TRANSCRIPT of what
-# scripts/setup.sh already copies, at commit dad9c59. setup.sh does NOT read
-# it yet — wiring the script to this manifest is a later, separately reviewed
-# step. Until then the two must be kept in sync by hand, and group H is what
-# notices when they are not.
+# STATUS: LIVE. scripts/setup.sh reads this file and copies exactly these rows
+# — there is no second copy list anywhere in the script. Add a row and the
+# scaffolder copies it; delete one and it stops. The validation rules below are
+# enforced by setup.sh itself (a bad row is exit 2, never a silently skipped
+# line) and asserted again by test group H.
 #
 # ─── FORMAT ────────────────────────────────────────────────────────────────
 #   source <TAB> dest <TAB> guard
@@ -53,6 +53,14 @@
 #   · config.env.example -> config.env — the source is NOT under templates/,
 #     so it cannot be a row here without weakening validation rule 2. It is a
 #     machine-local config seed, not a template.
+#   · judgment/correction_patterns.txt — created by setup.sh from a heredoc, not
+#     copied from anywhere, and containing COMMENTS ONLY. It is not a row here
+#     because there is no template to copy: the phrases you type when you
+#     overrule an agent cannot be shipped, and the scanner refuses to run until
+#     you write your own.
+#   · templates/promotion_candidate.md — read by scripts/distill.sh and pasted
+#     into the prompt it fires. It is a format definition the machinery consumes
+#     in place, not a file the user fills in, so it is not scaffolded.
 #   · templates/starter-disciplines.md, templates/correction_patterns.example.txt,
 #     templates/discipline_catalog.example.yaml, templates/distill-prompt.md,
 #     templates/discipline-audit-prompt.md, templates/inbound_sweep.md
