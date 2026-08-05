@@ -1,17 +1,20 @@
 name: community-automerge
 
 # ═══════════════════════════════════════════════════════════════════════════
-# The community/ lane: a pull request that touches ONLY community/<author>/
-# and passes a mechanical format lint is approved and squash-merged with no
-# maintainer in the loop. Everything else is left alone and labelled for the
-# maintainer's adjudication lane — this workflow never rejects, never closes,
-# and never merges anything outside one directory.
+# The cookbook/community/ lane: a pull request that touches ONLY
+# cookbook/community/<author>/ and passes a mechanical format lint is approved
+# and squash-merged with no maintainer in the loop. Everything else is left
+# alone and labelled for the maintainer's adjudication lane — this workflow
+# never rejects, never closes, and never merges anything outside one directory.
 #
 # The whole gate rests on ONE invariant: every changed path must start with
-# `community/<the PR author's own login>/`. That prefix is built from
-# pull_request.user.login (which the author cannot forge), not from anything
-# in the diff — so "touch someone else's shelf" and "touch the kit" are the
-# same case, and both leave the lane.
+# `cookbook/community/<the PR author's own login>/`. That prefix is built from
+# COMMUNITY_ROOT (a constant below) plus pull_request.user.login (which the
+# author cannot forge), not from anything in the diff — so "touch someone
+# else's shelf" and "touch the kit" are the same case, and both leave the lane.
+#
+# The root `community/` path is NO LONGER the auto-merge lane: a PR into it is
+# outside the prefix and therefore goes to the maintainer's lane, unmerged.
 #
 # pull_request_target is used deliberately: fork PRs need a write token to be
 # approved and merged. The PR's code is NEVER checked out and NEVER executed —
@@ -56,6 +59,13 @@ jobs:
             const { owner, repo } = context.repo;
             const login = pr.user.login;
 
+            // ── the ONE place the lane's location is written ────────────────
+            // Every path check, every message, and every doc link below is
+            // derived from this constant. Changing the lane's home is this line
+            // plus the docs it names — never a second literal somewhere else.
+            const COMMUNITY_ROOT = 'cookbook/community';
+            const COMMUNITY_README = `${COMMUNITY_ROOT}/README.md`;
+
             const MAX_FILES = 3;
             const MAX_BYTES = 50 * 1024;
             const ADMIN_LABEL = '管理者裁定レーン';
@@ -71,7 +81,7 @@ jobs:
                   if (e.status !== 404) throw e;
                   await github.rest.issues.createLabel({
                     owner, repo, name: ADMIN_LABEL, color: 'ededed',
-                    description: 'Outside the community/ auto-merge lane — a maintainer decides.',
+                    description: `Outside the ${COMMUNITY_ROOT}/ auto-merge lane — a maintainer decides.`,
                   });
                 }
                 await github.rest.issues.addLabels({
@@ -82,8 +92,8 @@ jobs:
                 core.warning(`could not label (${e.status || e.message}) — commenting instead`);
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: pr.number,
-                  body: 'This PR is outside the `community/` auto-merge lane, so a maintainer will review it. / '
-                      + 'この PR は `community/` の自動マージ対象外のため、管理者が裁定します。',
+                  body: `This PR is outside the \`${COMMUNITY_ROOT}/\` auto-merge lane, so a maintainer will review it. / `
+                      + `この PR は \`${COMMUNITY_ROOT}/\` の自動マージ対象外のため、管理者が裁定します。`,
                 });
               }
             }
@@ -96,18 +106,18 @@ jobs:
               await github.rest.issues.createComment({
                 owner, repo, issue_number: pr.number,
                 body: [
-                  'Automatic merge declined by the `community/` format lint. Fix and push again — the check re-runs.',
+                  `Automatic merge declined by the \`${COMMUNITY_ROOT}/\` format lint. Fix and push again — the check re-runs.`,
                   '',
                   list,
                   '',
                   'The matched text is deliberately not quoted here (this comment is public and permanent). '
-                    + 'See [`community/README.md`](../blob/HEAD/community/README.md) for the rule list.',
+                    + `See [\`${COMMUNITY_README}\`](../blob/HEAD/${COMMUNITY_README}) for the rule list.`,
                   '',
                   '---',
                   '',
-                  '`community/` の形式 lint に引っかかったため自動マージしませんでした。修正して push し直すと再判定されます。',
+                  `\`${COMMUNITY_ROOT}/\` の形式 lint に引っかかったため自動マージしませんでした。修正して push し直すと再判定されます。`,
                   '該当箇所の**中身はここに引用しません**（このコメントは公開・恒久のため）。ルール一覧は '
-                    + '[`community/README.md`](../blob/HEAD/community/README.md)。',
+                    + `[\`${COMMUNITY_README}\`](../blob/HEAD/${COMMUNITY_README})。`,
                 ].join('\n'),
               });
               core.setFailed(`community lint: ${problems.length} problem(s)`);
@@ -136,8 +146,12 @@ jobs:
             // THE load-bearing check: the prefix comes from the PR author's own
             // login, never from the diff. GitHub logins are unique
             // case-insensitively, so the directory is compared case-folded.
-            const prefix = `community/${login.toLowerCase()}/`;
-            const SAFE_PATH = /^community\/[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]+\.md$/;
+            const prefix = `${COMMUNITY_ROOT}/${login.toLowerCase()}/`;
+            // built FROM the constant, so the root can never drift between the
+            // prefix check and the shape check (COMMUNITY_ROOT has no regex
+            // metacharacters — keep it that way).
+            const SAFE_PATH = new RegExp(
+              '^' + COMMUNITY_ROOT + '/[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]+\\.md$');
 
             const outside = [];
             for (const f of files) {
@@ -147,7 +161,7 @@ jobs:
                 if (p.includes('..') || p.includes('\\') || p.startsWith('/')) {
                   outside.push(`${p} (unsafe path)`);
                 } else if (!SAFE_PATH.test(p)) {
-                  outside.push(`${p} (not community/<login>/<name>.md)`);
+                  outside.push(`${p} (not ${COMMUNITY_ROOT}/<login>/<name>.md)`);
                 } else if (!p.toLowerCase().startsWith(prefix)) {
                   outside.push(`${p} (not this author's shelf)`);
                 }
@@ -239,10 +253,10 @@ jobs:
             // ── 3. approve and squash-merge ─────────────────────────────────
             await github.rest.pulls.createReview({
               owner, repo, pull_number: pr.number, event: 'APPROVE',
-              body: 'Auto-approved: every changed path is under `community/'
-                  + `${login}/\` and the format lint passed. No human read this content — `
-                  + 'see `community/README.md` for what that means. / '
-                  + '自動承認（community 棚・形式 lint 合格）。内容は誰もレビューしていません。',
+              body: `Auto-approved: every changed path is under \`${COMMUNITY_ROOT}/${login}/\` `
+                  + 'and the format lint passed. No human read this content — '
+                  + `see \`${COMMUNITY_README}\` for what that means. / `
+                  + `自動承認（\`${COMMUNITY_ROOT}/\` 棚・形式 lint 合格）。内容は誰もレビューしていません。`,
             });
             try {
               await github.rest.pulls.merge({

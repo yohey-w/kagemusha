@@ -1,18 +1,22 @@
 <!--
-  Two lanes — see .github/CONTRIBUTING.md
-    · main lane      : the kit itself. A maintainer rules on it.
-    · community lane : community/<your GitHub login>/*.md only.
+  Three places, two kinds of review — see .github/CONTRIBUTING.md
+    · core            : the kit itself. A maintainer rules on it.
+    · cookbook/author : the author's sample loop. A maintainer rules on it.
+    · cookbook/community : cookbook/community/<your GitHub login>/*.md only.
                        Format lint passes → auto-approved and squash-merged,
-                       and NOBODY reads the content. See community/README.md.
+                       and NOBODY reads the content.
+                       See cookbook/community/README.md.
   Delete the section that does not apply.
 
-  2つのレーン（.github/CONTRIBUTING.md 参照）。該当しない側の節は消してください。
+  3つの置き場所・2つの審査（.github/CONTRIBUTING.md 参照）。
+  該当しない側の節は消してください。
 -->
 
-## Lane / レーン
+## Where / 置き場所
 
-- [ ] **main** — the kit (`templates/`, `docs/`, `scripts/`, formats) / キット本体。管理者が裁定します
-- [ ] **community** — only `community/<my GitHub login>/*.md` / 自分の棚のみ。lint 合格で自動マージされます
+- [ ] **core** — the kit (`templates/`, `docs/`, `scripts/`, formats) / キット本体。管理者が裁定します
+- [ ] **`cookbook/author/`** — the author's sample loop / 標本ループ。管理者が裁定します
+- [ ] **`cookbook/community/`** — only `cookbook/community/<my GitHub login>/*.md` / 自分の棚のみ。lint 合格で自動マージされます
 
 ---
 
@@ -34,7 +38,7 @@
 
 ---
 
-## main lane only / main レーンのみ
+## core lane only / core レーンのみ
 
 The gate is `templates/starter-disciplines.md` §増やし方 — four axes:
 

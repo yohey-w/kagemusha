@@ -1,6 +1,6 @@
 ---
 name: "Remove my community shelf / community 棚の削除依頼"
-about: "Delete community/<your-login>/ from main. Only the shelf's owner can ask. / 自分の棚を main から削除する（本人のみ）"
+about: "Delete cookbook/community/<your-login>/ from main. Only the shelf's owner can ask. / 自分の棚を main から削除する（本人のみ）"
 title: "community: remove my shelf"
 labels: community-removal
 assignees: ""
@@ -20,11 +20,16 @@ assignees: ""
 ## Path to remove / 削除するパス
 
 ```
-community/<your-login>/
+cookbook/community/<your-login>/
 ```
 
-Replace the line above with your own shelf, e.g. `community/octocat/`.
-上の行を自分の棚に書き換えてください（例: `community/octocat/`）。
+Replace the line above with your own shelf, e.g. `cookbook/community/octocat/`.
+上の行を自分の棚に書き換えてください（例: `cookbook/community/octocat/`）。
+
+If your shelf was posted before the move and still lives at the old root, the
+pre-split form `community/<your-login>/` is accepted too — the workflow removes
+the shelf from both roots. / 移転前に置いた棚が旧パスに残っている場合、
+`community/<ログイン名>/` の形でも受け付けます（新旧どちらからも削除します）。
 
 ## Read this before you file / 出す前に読む
 

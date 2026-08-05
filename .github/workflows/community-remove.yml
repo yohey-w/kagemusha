@@ -4,14 +4,24 @@ name: community-remove
 # Take-down of a community shelf, on the owner's own request.
 #
 # The rule is one line: the issue's AUTHOR must be the owner of the directory.
-# The path that gets deleted is built as `community/<verified shelf name>` in
-# the removal step — the `community/` prefix is hard-coded, so no issue body
-# can ever aim this workflow at the kit. The shelf name is accepted only if it
-# is a plain GitHub login AND equals the issue author's login case-insensitively.
+# The paths that get deleted are built as `<root>/<verified shelf name>` for
+# each hard-coded root in the removal step — the roots are literals in this
+# file, so no issue body can ever aim this workflow at the kit. The shelf name
+# is accepted only if it is a plain GitHub login AND equals the issue author's
+# login case-insensitively.
+#
+# MIGRATION WINDOW (one release). The live lane is `cookbook/community/`; the
+# old lane was `community/` at the repository root. New shelves are only ever
+# created under the new root by community-automerge.yml, but a shelf merged
+# before the switch still sits under the old one — and a person asking for it
+# back will write the path they were told to write. So this workflow reads
+# BOTH forms in the issue body and removes the shelf from BOTH roots if it
+# exists in both. Drop the legacy root from ROOTS/LEGACY_ROOT once the old
+# directory is gone.
 #
 # What this workflow does NOT do: rewrite history. A shelf that was public is
 # public in the git history of every clone and fork that already pulled it.
-# See community/README.md — deleting is not un-publishing.
+# See cookbook/community/README.md — deleting is not un-publishing.
 # ═══════════════════════════════════════════════════════════════════════════
 
 on:
@@ -45,6 +55,10 @@ jobs:
             const login = issue.user.login;
             const body = issue.body || '';
 
+            // the live lane first, the pre-split lane second (migration window)
+            const COMMUNITY_ROOT = 'cookbook/community';
+            const LEGACY_ROOT = 'community';
+
             core.setOutput('ok', 'false');
 
             async function refuse(msgEn, msgJa, close) {
@@ -69,19 +83,34 @@ jobs:
               return;
             }
 
-            // every community/... path claimed anywhere in the issue body
-            const claimed = [...body.matchAll(/community\/[A-Za-z0-9._/-]*/g)].map((m) => m[0]);
+            // every shelf path claimed anywhere in the issue body, in either
+            // form. The optional `cookbook/` is consumed first because matchAll
+            // scans left to right, so `cookbook/community/x` yields ONE match,
+            // not a nested pair.
+            const claimed = [...body.matchAll(/(?:cookbook\/)?community\/[A-Za-z0-9._/-]*/g)]
+              .map((m) => m[0]);
             if (claimed.length === 0) {
               await refuse(
-                'Please state the path to remove, in the form `community/<your GitHub login>/`.',
-                '削除対象を `community/<あなたの GitHub ログイン名>/` の形で本文に書いてください。',
+                `Please state the path to remove, in the form \`${COMMUNITY_ROOT}/<your GitHub login>/\`.`,
+                `削除対象を \`${COMMUNITY_ROOT}/<あなたの GitHub ログイン名>/\` の形で本文に書いてください。`,
                 false);
               return;
             }
 
             const MINE = 'Only the owner of a shelf can ask for it to be removed. '
               + 'The requested path does not belong to this account.';
-            const MINE_JA = 'ご本人からの依頼のみ受け付けます（対象パスの `community/<ログイン名>/` が起票者と一致しません）。';
+            const MINE_JA = `ご本人からの依頼のみ受け付けます（対象パスの \`${COMMUNITY_ROOT}/<ログイン名>/\` が起票者と一致しません）。`;
+
+            // strip whichever root the writer used, THEN take the first segment.
+            // Doing it the other way round (split('/')[1]) reads `community` as
+            // the shelf name for the new form — a correct request refused.
+            function shelfSegment(p) {
+              for (const root of [COMMUNITY_ROOT, LEGACY_ROOT]) {
+                if (p === root || p === `${root}/`) return '';
+                if (p.startsWith(`${root}/`)) return p.slice(root.length + 1).split('/')[0];
+              }
+              return '';
+            }
 
             const shelves = new Set();
             for (const p of claimed) {
@@ -89,9 +118,9 @@ jobs:
                 await refuse(MINE, MINE_JA, true);
                 return;
               }
-              const seg = p.split('/')[1] || '';
-              // not a login-shaped segment → the template's own `community/<your-login>/`
-              // placeholder, or a mention of community/README.md. Ignore, don't refuse.
+              const seg = shelfSegment(p);
+              // not a login-shaped segment → the template's own `<your-login>/`
+              // placeholder, or a mention of the shelf README. Ignore, don't refuse.
               if (!LOGIN_RE.test(seg)) continue;
               if (seg.toLowerCase() !== login.toLowerCase()) {
                 await refuse(MINE, MINE_JA, true);
@@ -101,8 +130,8 @@ jobs:
             }
             if (shelves.size !== 1) {
               await refuse(
-                'Please state exactly one path to remove, in the form `community/<your GitHub login>/`.',
-                '削除対象を `community/<あなたの GitHub ログイン名>/` の形で、1つだけ本文に書いてください。',
+                `Please state exactly one shelf to remove, in the form \`${COMMUNITY_ROOT}/<your GitHub login>/\`.`,
+                `削除対象を \`${COMMUNITY_ROOT}/<あなたの GitHub ログイン名>/\` の形で、1つだけ本文に書いてください。`,
                 false);
               return;
             }
@@ -110,7 +139,8 @@ jobs:
             const shelf = [...shelves][0];
             core.setOutput('shelf', shelf);
             core.setOutput('ok', 'true');
-            core.notice(`verified: ${login} may remove community/${shelf}/`);
+            core.notice(`verified: ${login} may remove the shelf "${shelf}" from `
+              + `${COMMUNITY_ROOT}/ and (migration window) ${LEGACY_ROOT}/`);
 
       - if: steps.verify.outputs.ok == 'true'
         uses: actions/checkout@v7
@@ -132,15 +162,20 @@ jobs:
           esac
           # Shelf ownership is decided case-insensitively (GitHub logins are unique
           # case-insensitively), so the directory on disk may differ in case from
-          # what the issue says. Resolve the real name — the search root
-          # `community` is hard-coded, and -mindepth/-maxdepth 1 keep it to one
-          # level, so nothing outside community/ can ever be the target.
-          target=""
-          if [ -d community ]; then
-            target="$(find community -mindepth 1 -maxdepth 1 -type d -iname "$SHELF" | head -n 1)"
-          fi
+          # what the issue says. Resolve the real name under each hard-coded root
+          # — `cookbook/community` is the live lane, `community` is the pre-split
+          # one during the migration window. -mindepth/-maxdepth 1 keep the search
+          # to one level, so nothing outside those two roots can be a target.
+          targets=()
+          for root in cookbook/community community; do
+            [ -d "$root" ] || continue
+            found="$(find "$root" -mindepth 1 -maxdepth 1 -type d -iname "$SHELF" | head -n 1)"
+            # an if, not `[ ... ] && ...`: under `set -e` a failing AND-list as
+            # the last command of the loop body would end the step
+            if [ -n "$found" ]; then targets+=("$found"); fi
+          done
 
-          if [ -z "$target" ] || [ ! -d "$target" ]; then
+          if [ "${#targets[@]}" -eq 0 ]; then
             echo "state=absent" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -149,46 +184,49 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git rm -r --quiet -- "$target"
-          git commit -q -m "community: remove $target at its owner's request (closes #$ISSUE)"
+          git rm -r --quiet -- "${targets[@]}"
+          list="${targets[*]}"
+          git commit -q -m "community: remove $list at its owner's request (closes #$ISSUE)"
           git push -q origin "$branch"
 
           gh pr create --base "$BASE" --head "$branch" \
-            --title "community: remove $target (#$ISSUE)" \
+            --title "community: remove $list (#$ISSUE)" \
             --body "Requested by the shelf's owner in #$ISSUE. Verified automatically: the issue author's login matches the directory. / 棚の本人からの削除依頼（#$ISSUE）。起票者とディレクトリ名の一致は自動照合済み。"
           gh pr merge "$branch" --squash --delete-branch
 
           echo "state=removed" >> "$GITHUB_OUTPUT"
-          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "targets=$list" >> "$GITHUB_OUTPUT"
 
       - if: steps.verify.outputs.ok == 'true'
         uses: actions/github-script@v7
         env:
           STATE: ${{ steps.rm.outputs.state }}
           SHELF: ${{ steps.verify.outputs.shelf }}
-          TARGET: ${{ steps.rm.outputs.target }}
+          TARGETS: ${{ steps.rm.outputs.targets }}
         with:
           script: |
             const { owner, repo } = context.repo;
             const issue_number = context.payload.issue.number;
             const removed = process.env.STATE === 'removed';
-            const shelf = removed
-              ? (process.env.TARGET || '').replace(/^community\//, '')
-              : process.env.SHELF;
+            // what was actually deleted (one path, or both roots during the
+            // migration window) — reported verbatim, not reconstructed
+            const paths = (process.env.TARGETS || '').split(/\s+/).filter(Boolean);
+            const removedList = paths.map((p) => `\`${p}/\``).join(', ');
+            const missing = `\`cookbook/community/${process.env.SHELF}/\``;
 
             const en = removed
-              ? `\`community/${shelf}/\` has been removed from \`main\`.\n\n`
+              ? `${removedList} has been removed from \`main\`.\n\n`
                 + '**This is not un-publishing.** The content stays in the git history of this repository '
                 + 'and of every clone, fork, and mirror that already pulled it. If a secret was in it, '
                 + 'rotate the secret — that is the only action that actually takes effect.'
-              : `There is no \`community/${shelf}/\` on \`main\` — nothing was removed. `
-                + 'If the shelf is under a different name, reopen with the exact path.';
+              : `There is no ${missing} on \`main\` (nor under the pre-split \`community/\` root) — `
+                + 'nothing was removed. If the shelf is under a different name, reopen with the exact path.';
             const ja = removed
-              ? `\`community/${shelf}/\` を \`main\` から削除しました。\n\n`
+              ? `${removedList} を \`main\` から削除しました。\n\n`
                 + '**これは「公開の取り消し」ではありません。** 内容はこのリポジトリと、'
                 + '既に pull した全ての clone / fork / ミラーの git 履歴に残ります。'
                 + '秘密情報が含まれていたなら、**実際に効く対処はローテーションだけ**です。'
-              : `\`main\` に \`community/${shelf}/\` は見当たらず、**何も削除していません**。`
+              : `\`main\` に ${missing} は見当たらず（移行前の \`community/\` 直下にもありません）、**何も削除していません**。`
                 + '別名の棚であれば、正確なパスを添えて再度お願いします。';
 
             await github.rest.issues.createComment({

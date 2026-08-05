@@ -26,12 +26,12 @@
 #
 # H6 IS STILL A FRAME, and this note is deliberately not deleted. It asserts
 # the subset that can be stated without the design ruling's 15-item acceptance
-# list, whose text has not been located in this repository, in any branch's
-# history, or in the session transcripts on this machine (searched: git log
-# --all, a full-tree grep including untracked files, and every .jsonl under
-# ~/.claude/projects/-home-tono-kagemusha/ — only the journal's reference to it
-# survives, D-2026-08-05-09). Widening H6 needs that list. Until somebody puts
-# it in the repository, this is a known gap, not a pass.
+# list. That list is NOT in this repository: it lives in the author's untracked
+# instance data (the same allowlist .gitignore that keeps judgment/ and local/
+# uncommittable keeps it out), so the kit cannot cite it and this group cannot
+# be driven from it. The items of it that concern the community lane — which
+# paths the bots accept, and which they refuse — are measured in group I, on
+# the shipped workflow. The rest of the list stays a known gap, not a pass.
 # ═══════════════════════════════════════════════════════════════════════════
 # shellcheck shell=bash
 # shellcheck disable=SC2154  # globals come from scripts/test.sh
@@ -419,10 +419,12 @@ assert_grep "H6: cookbook/README.md says the two layers share one git history" \
 assert_grep "H6: author shelf states it is not a recommendation" \
   "推奨ではありません" "$REPO_ROOT/cookbook/author/README.md"
 
-# community/ under cookbook/ is a signpost only while the bots still use the
-# old prefix — it must say so, or people will file PRs into a dead lane
-assert_grep "H6: cookbook/community/README.md points submissions at the live lane" \
-  "まだ投稿先ではありません" "$REPO_ROOT/cookbook/community/README.md"
+# cookbook/community/ IS the lane now (the bots switched prefix in Phase 4).
+# The shelf README must not still deny being a privacy boundary by omission:
+# it moved under cookbook/, and the one thing people will read into that move
+# is privacy. Whether it points at the right path is group I's job.
+assert_grep "H6: cookbook/community/README.md denies that the move buys privacy" \
+  "より private になる" "$REPO_ROOT/cookbook/community/README.md"
 
 # the shelf is tracked by git — the allowlist .gitignore must un-ignore it, or
 # the split would be uncommittable by the same construction that protects

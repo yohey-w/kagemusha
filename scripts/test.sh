@@ -19,6 +19,7 @@
 #
 # Groups: A syntax/lint · B setup.sh · C leak guard · D .gitignore · E cron
 #         F discipline scanner · G distillation courier · H layer boundary
+#         I community lane
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -26,8 +27,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
 
-ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers)
-MIN_ASSERTIONS=425   # floor for a full run (currently 434); raise it as you add tests
+ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
+            i_community_lane)
+MIN_ASSERTIONS=468   # floor for a full run (currently 477); raise it as you add tests
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }
@@ -35,7 +37,10 @@ die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }
 git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || die "not a git work tree: $REPO_ROOT (the suite tests the TRACKED files)"
 [[ -d "$TESTS_DIR" ]] || die "missing tests/ directory"
-for t in git bash python3 tar find grep sed awk sha256sum cmp comm timeout curl; do
+# node is required, not optional: group I evaluates the community workflows'
+# own path gate in the engine actions/github-script runs it in. Re-implementing
+# that gate in another language would test the re-implementation.
+for t in git bash python3 node tar find grep sed awk sha256sum cmp comm timeout curl; do
   command -v "$t" >/dev/null 2>&1 || die "required tool not found: $t"
 done
 
