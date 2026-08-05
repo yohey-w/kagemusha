@@ -85,6 +85,16 @@ assert_eq "D: git add -A stages nothing new" \
 # ── positive control: the test CAN see a change when there is one ──────────
 printf '\n<!-- ci positive control -->\n' >> "$D_FX/README.md"
 printf 'new kit file\n' > "$D_FX/docs/newdoc.md"
+# the cookbook shelf and the manifests dir are KIT, not instance data: the
+# allowlist must let them through, or the two-layer split would be
+# uncommittable by the same construction that protects ssot/ and judgment/.
+mkdir -p "$D_FX/cookbook/author" "$D_FX/manifests"
+printf 'a sample, deliberately tracked\n' > "$D_FX/cookbook/author/newsample.md"
+printf 'templates/x.md\tx.md\tskip-if-exists\n' > "$D_FX/manifests/newmanifest.tsv"
 git -C "$D_FX" status --porcelain > "$TEST_TMP/d_status.txt"
 assert_grep "D: control — an edit to a tracked kit file IS reported" "README.md" "$TEST_TMP/d_status.txt"
 assert_grep "D: control — a NEW file under docs/ IS reported" "docs/newdoc.md" "$TEST_TMP/d_status.txt"
+assert_grep "D: a NEW file under cookbook/ IS committable (kit, not instance data)" \
+  "cookbook/author/newsample.md" "$TEST_TMP/d_status.txt"
+assert_grep "D: a NEW file under manifests/ IS committable" \
+  "manifests/newmanifest.tsv" "$TEST_TMP/d_status.txt"

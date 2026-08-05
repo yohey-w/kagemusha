@@ -18,7 +18,7 @@
 #     run red instead of making it faster.
 #
 # Groups: A syntax/lint · B setup.sh · C leak guard · D .gitignore · E cron
-#         F discipline scanner · G distillation courier
+#         F discipline scanner · G distillation courier · H layer boundary
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -26,8 +26,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
 
-ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill)
-MIN_ASSERTIONS=325   # floor for a full run (currently 334); raise it as you add tests
+ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers)
+MIN_ASSERTIONS=350   # floor for a full run (currently 361); raise it as you add tests
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }

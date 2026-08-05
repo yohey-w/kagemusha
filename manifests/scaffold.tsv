@@ -1,0 +1,77 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# manifests/scaffold.tsv — every file the scaffolder is allowed to copy.
+#
+# WHY THIS IS DATA AND NOT CODE. The two-layer boundary (docs/layers.md) says
+# core must never read, copy, or execute anything on the sample shelf. A rule
+# lives only inside scripts/setup.sh is a rule nobody can see being broken:
+# one added `cp` line and the sample shelf has become a default. Pulling the
+# copy list out as data makes a boundary violation show up in the diff, and
+# lets the acceptance gate (test group H) assert on it directly.
+#
+# STATUS: this file is currently a FAITHFUL TRANSCRIPT of what
+# scripts/setup.sh already copies, at commit dad9c59. setup.sh does NOT read
+# it yet — wiring the script to this manifest is a later, separately reviewed
+# step. Until then the two must be kept in sync by hand, and group H is what
+# notices when they are not.
+#
+# ─── FORMAT ────────────────────────────────────────────────────────────────
+#   source <TAB> dest <TAB> guard
+#
+#   source  path of the file to copy, relative to the REPO ROOT
+#   dest    path to create, relative to the SCAFFOLD TARGET ($TARGET in
+#           setup.sh — the repo root itself by default)
+#   guard   when the copy is skipped:
+#             skip-if-exists                     dest already exists
+#             skip-if-any-exists:A,B             any of A,B exists at the
+#                                                target root (never clobber
+#                                                an agent-instructions file)
+#
+#   Blank lines and lines whose first non-space character is `#` are comments.
+#
+# ─── VALIDATION RULES (what a checker must enforce) ────────────────────────
+#   1. exactly 3 tab-separated fields per data row; no leading/trailing space
+#   2. source MUST be relative and MUST start with `templates/`
+#   3. dest   MUST be relative; MUST NOT start with `/`
+#   4. NO `..` path segment anywhere, in any field
+#   5. the sample-shelf prefix — the word cook·book followed by a slash — must
+#      not appear ANYWHERE IN THIS FILE, comments included. Not in a field, not
+#      in a note, not in an example. This is the machine form of the one-way
+#      dependency rule, and it is kept absolute on purpose: a checker that has
+#      to tell a "real" path from a "merely quoted" one is a checker with an
+#      argument in it. Nothing here needs to name that directory; if you need
+#      to explain the boundary, link docs/layers.md instead. (That is also why
+#      this very rule spells the word with a separator.)
+#   6. every source MUST exist in the repo
+#   7. no duplicate dest
+#
+# ─── DELIBERATELY NOT IN THIS MANIFEST ─────────────────────────────────────
+# These are things setup.sh does that are NOT source->dest template copies,
+# listed here so their absence reads as a decision rather than an omission:
+#
+#   · mkdir only, no content: ssot/ briefs/ logs/ local/ projects/_archive/
+#     judgment/mining/ judgment/reports/ judgment/logs/
+#   · config.env.example -> config.env — the source is NOT under templates/,
+#     so it cannot be a row here without weakening validation rule 2. It is a
+#     machine-local config seed, not a template.
+#   · templates/starter-disciplines.md, templates/correction_patterns.example.txt,
+#     templates/discipline_catalog.example.yaml, templates/distill-prompt.md,
+#     templates/discipline-audit-prompt.md, templates/inbound_sweep.md
+#     — NOT scaffolded, on purpose. Copying a menu to the path a scanner reads
+#     would make a shipped vocabulary everyone's default without anyone
+#     choosing it. The act of copying is where the user chooses. See
+#     docs/layers.md, "why the copying is left to the user".
+# ═══════════════════════════════════════════════════════════════════════════
+#
+#source	dest	guard
+templates/decisions.md	ssot/decisions.md	skip-if-exists
+templates/tasks.md	ssot/tasks.md	skip-if-exists
+templates/glossary.md	ssot/glossary.md	skip-if-exists
+templates/people.md	ssot/people.md	skip-if-exists
+templates/approval_queue.md	approval_queue.md	skip-if-exists
+templates/verifiers.md	verifiers.md	skip-if-exists
+templates/system_map.md	system_map.md	skip-if-exists
+templates/decisions_journal.md	judgment/decisions_journal.md	skip-if-exists
+templates/judgment_model.md	judgment/judgment_model.md	skip-if-exists
+templates/promotion_queue.md	judgment/promotion_queue.md	skip-if-exists
+templates/charter.md	projects/_charter_template.md	skip-if-exists
+templates/agent_instructions.md	CLAUDE.md	skip-if-any-exists:CLAUDE.md,AGENTS.md
