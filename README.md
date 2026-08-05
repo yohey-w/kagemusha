@@ -188,12 +188,14 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`templates/charter.md`** | **Project charter** — per-project *deltas* only (≤60 lines); the judgment model itself never splits. Copy into `projects/<name>/charter.md`. |
 | **`templates/agent_instructions.md`** | **The instance constitution** — saved as `CLAUDE.md` (Claude Code) / `AGENTS.md` (Codex) / your tool's rules file. |
 | **`templates/starter-disciplines.md`** | **Starter disciplines** — a *menu, not a template* (deliberately **not** scaffolded by `setup.sh`): disciplines burned in the author's live instance, each with the burn it came from, a portability label, and a paste target. Take only the ones whose hole you've already fallen into. |
+| **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | The audit's two halves: the catalog of disciplines you want watched (with the regex that catches each one), and the weekly prompt that turns candidates into a ≤30-line finding. |
 | **`templates/inbound_sweep.md`** | **Inbound sweep procedure (Tier 1)** — the inbox trigger run through your assistant's MCP connectors: lanes, closed-enum triage, append-only ledger, quiet hours. |
 | `.gitignore` | Allowlist — only the kit is tracked, so your instance data can never be committed. |
 | `scripts/setup.sh` | Scaffold all of the above into the clone itself (default) or a target dir (safe to re-run). |
 | `scripts/morning_brief.sh` | The time trigger — an inward-only, read-only morning stock-take. |
 | **`scripts/mine_conversations.py`** | Extract the approver's own turns from AI-CLI logs (rulings/corrections). |
 | **`scripts/filter_judgments.py`** | Bucket those turns into RULE/REJECT/CORRECT/… (vocab configurable, EN+JP defaults). |
+| **`scripts/discipline_scan.py`** | **Is a discipline you adopted doing anything?** Walks your own session logs and quotes the passages where each one fired or broke. It matches and quotes; **it does not judge**. See [`docs/discipline-audit.md`](docs/discipline-audit.md). |
 | **`scripts/weekly_distill.sh.example`** | The weekly feedback trigger — mine → journal → distill into the model (proposes; you confirm). |
 | **`scripts/inbound_watch.sh.example`** | The inbox trigger, Tier 2 — inward-only inbound watch for unattended scheduler runs (Slack / Gmail-IMAP / RSS lanes; immutable ledger; quiet-hours roll-up). |
 | `scripts/test.sh` | The kit's own acceptance gate — run `./scripts/test.sh` (needs `shellcheck`); CI runs this exact command. It really executes `setup.sh` in a throwaway clone, proves the allowlist `.gitignore` makes instance data uncommittable, and drives `morning_brief.sh` with a fake CLI. No skips: a missing tool is a failure. |
@@ -202,6 +204,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
 | `docs/fixed-point-sweep.md` | Fixed-point sweep — the diff-shaped watcher pattern: a baseline of the known, the three states NEW / NOCHANGE / FAILED kept apart, an append-only baseline advanced on success only, and why a silent run still has to be logged. |
 | **`docs/decision-cards.md`** | Decision cards — cognitive design of the approval hand-off: the artifact itself, one recommendation, a no-answer default, severity marks, ≤3 per batch. |
+| **`docs/discipline-audit.md`** | Discipline audit — what it proves is **not** that a discipline works, but that the mechanism detecting breaches is running. **Trace** vs **prohibition** (compliance with a prohibition is unobservable), why an auditable discipline must be written as a trace, and the weekly three steps. |
 | **`docs/provenance.md`** | Provenance table — which idea entered the kit, in which file, in which commit, and what set it off. Every trigger cell carries a tag saying how strongly it is sourced. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 | **`evidence/`** | **Proof the loop actually runs** — hand-redacted excerpts from the author's live instance: one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`evidence/README.md`](evidence/README.md). |

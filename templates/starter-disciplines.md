@@ -217,6 +217,12 @@
 
 ---
 
+## 取り入れたあとに
+
+**ここから持ち帰った規律が自分の環境で動いているかは、[`../scripts/discipline_scan.py`](../scripts/discipline_scan.py) で監査できる**（A 群を監査可能な形に書いたカタログの実例が [`discipline_catalog.example.yaml`](discipline_catalog.example.yaml)、設計思想は [`../docs/discipline-audit.md`](../docs/discipline-audit.md)）。つまみ食いの当たり外れは、ラベルではなくあなたのログが決める。
+
+---
+
 ## English summary
 
 A **menu, not a template** — `setup.sh` deliberately does not scaffold this file. It collects disciplines the author burned in a live instance of this loop, stripped of client, profession, and environment until only the proposition was left.
@@ -230,3 +236,5 @@ Every entry carries a **portability label**, because skimming disciplines off so
 Each entry also names its **paste target** (L1 judgment model / agent instructions file / `verifiers.md`) and the **burn it came from**. Paste into L1 with the `△` mark (provisional, pending the approver's confirmation): rewrite the source tag to your own `[C:]`/`[D:]` the day your journal confirms it, delete it the day your journal contradicts it. Your one rejection outranks any borrowed principle.
 
 The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
+
+Whether the ones you took are doing anything in *your* environment is answerable only from your own logs: [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py) audits them (section A written up as a working catalog in [`discipline_catalog.example.yaml`](discipline_catalog.example.yaml); the design note is [`../docs/discipline-audit.md`](../docs/discipline-audit.md)).

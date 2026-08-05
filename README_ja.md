@@ -188,12 +188,14 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`templates/charter.md`** | **プロジェクト憲章**——案件ごとの*差分*だけ（≤60行）。価値判断モデル自体は割らない。`projects/<案件>/charter.md` へコピーして使う。 |
 | **`templates/agent_instructions.md`** | **実走環境の憲法**——`CLAUDE.md`（Claude Code）/ `AGENTS.md`（Codex）/ 使うツールのルールファイルとして保存。 |
 | **`templates/starter-disciplines.md`** | **スターター規律集**——*雛形ではなくメニュー*（`setup.sh` は意図的に展開しない）: 作者の実走で焼けた規律集。各本に「焼けた出自」・可搬性ラベル・貼り先が付く。**自分が踏んだ穴のものだけ**持ち帰る。 |
+| **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | 規律監査の両輪——監査したい規律のカタログ（規律ごとの検出パターン付き）と、候補を30行以内の所見に変える週次プロンプト雛形。 |
 | **`templates/inbound_sweep.md`** | **受信箱スイープ手順書（Tier 1）**——アシスタントの MCP コネクタで回す受信箱トリガー: レーン・閉じた enum 分類・追記専用台帳・quiet hours。 |
 | `.gitignore` | allowlist 方式——キットだけを追跡。あなたの実データは構造上 commit 不能。 |
 | `scripts/setup.sh` | 上記一式を clone 自身（既定）または任意 dir へ展開（再実行安全）。 |
 | `scripts/morning_brief.sh` | 時刻トリガー——内向き専用・読み取り専用の朝の棚卸し。 |
 | **`scripts/mine_conversations.py`** | AI CLI ログから承認者の発話（裁定・訂正）を抽出。 |
 | **`scripts/filter_judgments.py`** | それを RULE/REJECT/CORRECT/… にバケット分類（語彙は設定可・日英デフォルト）。 |
+| **`scripts/discipline_scan.py`** | **取り入れた規律は、自分の環境で動いているか。** 自分のセッションログを走査し、規律ごとに発火・破れの原文断片を引用する。引用して止まる——**判定はしない**。→ [`docs/discipline-audit.md`](docs/discipline-audit.md) |
 | **`scripts/weekly_distill.sh.example`** | 週次フィードバックトリガー——採掘 → 台帳 → モデルへ蒸留（提案止まり・承認者が確定）。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
@@ -202,6 +204,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
 | `docs/fixed-point-sweep.md` | 定点掃引——差分型監視の設計パターン: 既知の基線・3状態（NEW / NOCHANGE / FAILED）を潰さない・基線は成功時のみの一方向ラチェット・沈黙した回もログに残す。 |
 | **`docs/decision-cards.md`** | 判断カード——承認の差し出しを認知設計する: 現物・推奨・無回答時・重み・1バッチ3枚。 |
+| **`docs/discipline-audit.md`** | 規律の監査——証明できるのは「規律が効いている証拠」ではなく**「破れを検出する仕組みが動いている証拠」**。**痕跡型と禁止型**（禁止型の遵守は観測不能）・監査したい規律は痕跡形で書け・週次の3ステップ。 |
 | **`docs/provenance.md`** | 来歴表——どの思想が・どのファイルに・どのコミットで・何をきっかけに入ったか。きっかけ欄には「どこまで裏が取れているか」の出所タグが必ず付く。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
 | **`evidence/`** | **一周が実走している証拠**——著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`evidence/README.md`](evidence/README.md) に明記。 |
