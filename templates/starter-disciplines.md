@@ -106,6 +106,18 @@
 
 **機械化**: 成果物を出す前に「これは相手が今日すでに開く面か」を1問。No なら、届く面へ転記するまでが完了条件。
 
+### A6. Report a search by the shelves you swept.
+
+**［単体で効く］**
+**貼り先**: `verifiers.md` (B) ——**該当行は同梱されていないので新規行として足す**
+
+調査・リサーチの報告は、**冒頭に「掃いた棚のリスト」を置く**（媒体×ソース×どこまで）。**掃かなかった棚も「未掃」と名指す。**「網羅した」と書くのは禁止——書けるのは「この棚をここまで掃いた」だけだ。競合・市場のような**動く対象を一度きり調べたときは、「◯月◯日時点のスナップショット」と明記**する（継続監視が要るなら定点便を提案する）。
+
+> 焼けた出自: 競合調査が1つの棚（SNS 検索）だけで終わり、別の棚（イベント／動画コミュニティ）の最前線を丸ごと落とした。**依頼した側から網羅性は監査できない**——中身を全部知っていなければ結論は検品できないからだ。**棚のリストなら10秒で穴を刺せる。**
+
+**機械化**: 報告の第1ブロックが棚リスト（未掃を含む）でなければ出さない、を出荷条件にする。
+※ 一度きりを定点の便に変えるときの設計は [`../docs/fixed-point-sweep.md`](../docs/fixed-point-sweep.md)。
+
 ---
 
 ## B. 仕事の割り振り
@@ -217,4 +229,4 @@ Every entry carries a **portability label**, because skimming disciplines off so
 
 Each entry also names its **paste target** (L1 judgment model / agent instructions file / `verifiers.md`) and the **burn it came from**. Paste into L1 with the `△` mark (provisional, pending the approver's confirmation): rewrite the source tag to your own `[C:]`/`[D:]` the day your journal confirms it, delete it the day your journal contradicts it. Your one rejection outranks any borrowed principle.
 
-The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
+The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
