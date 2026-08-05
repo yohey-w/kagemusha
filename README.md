@@ -26,6 +26,39 @@ git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/setu
 
 Then open the folder with your AI assistant (Claude Code / Codex / any) — details in [Quickstart](#3-quickstart-30-minutes-copy-paste).
 
+### What that command expands, and what it deliberately does not
+
+This repository is **two layers**, and the line between them is the answer to "what did I just install?"
+
+| | **Core** — `scripts/` `templates/` `docs/` `tests/` `manifests/` (the repository root) | **[`cookbook/`](cookbook/README.md)** — the sample shelf |
+|---|---|---|
+| What it is | the **mechanism**: scaffolding, scripts, **empty forms**, the acceptance gate | **content**: disciplines the author burned in a live loop, evidence excerpts, other people's shelves |
+| `setup.sh` | **touches only this.** Every file it copies is listed in [`manifests/scaffold.tsv`](manifests/scaffold.tsv) | **never read, never copied, never executed** — not one file |
+| What you get | forms with nothing filled in: zero principles, zero active patterns, zero dated entries | nothing, until **you read it, pick a line, and move it by hand** |
+
+**Core holds no opinion about which judgments you should adopt.** A borrowed principle eats the same budget as one you burned yourself, so the shelf is not a default and copying from it is a manual act on purpose — that act is where you choose. Boundary in full: [`docs/layers.md`](docs/layers.md). What the shelf's stamps do and don't mean: [`cookbook/README.md`](cookbook/README.md).
+
+⚠️ The split is **not a privacy boundary**: `cookbook/` and core are the same repository and the same permanent history.
+
+<details>
+<summary><b>core-only checkout</b> — don't want other people's content in your working tree at all?</summary>
+
+Because core never reads the shelf, you can simply not check it out. Verified end to end (clone → `ls` → `setup.sh` exits 0):
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/yohey-w/kagemusha.git
+cd kagemusha
+git sparse-checkout set --no-cone '/*' '!/cookbook'
+git checkout
+./scripts/setup.sh          # runs exactly as it does with the shelf present
+```
+
+`--filter=blob:none` only saves bandwidth (it is ignored by some transports, harmlessly); the pattern pair is what leaves `cookbook/` out. Get it back any time with `git sparse-checkout disable`.
+
+**What this does not buy — read this before you rely on it.** It is a **checkout-size convenience, and nothing else.** The shelf is still in the remote, still in this clone's object database, and still in the history: `git log`, `git show`, and any later `git checkout` reach it. It grants no privacy, no isolation, and no guarantee about content — the same disclaimer as [`docs/layers.md`](docs/layers.md) and [`cookbook/README.md`](cookbook/README.md). **Do not call it a privacy mode.** The kit's own acceptance gate measures the underlying property directly: test group H deletes `cookbook/` outright and proves `setup.sh` still exits 0 and creates exactly the same set of files.
+
+</details>
+
 > 📖 Background article (Japanese, Zenn): **[Loop engineering isn't just for engineers anymore — running it on real work, the fourth thing you have to design turned out to be "mandate" (authority)](https://zenn.dev/shio_shoppaize/articles/loop-mandate-design)**
 
 ---
@@ -199,7 +232,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`templates/system_map.md`** | **System map** — the one-screen board (standing mechanisms + one card per project + roadmap). Scaffolds to the instance root. |
 | **`templates/charter.md`** | **Project charter** — per-project *deltas* only (≤60 lines); the judgment model itself never splits. Copy into `projects/<name>/charter.md`. |
 | **`templates/agent_instructions.md`** | **The instance constitution** — saved as `CLAUDE.md` (Claude Code) / `AGENTS.md` (Codex) / your tool's rules file. |
-| **`templates/starter-disciplines.md`** | **Starter disciplines** — a *menu, not a template* (deliberately **not** scaffolded by `setup.sh`): disciplines burned in the author's live instance, each with the burn it came from, a portability label, and a paste target. Take only the ones whose hole you've already fallen into. |
+| **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** | **Starter disciplines** — on the **sample shelf**, a *menu, not a template* (deliberately **not** scaffolded by `setup.sh`): disciplines burned in the author's live instance, each with the burn it came from, a portability label, and a paste target. Take only the ones whose hole you've already fallen into. |
 | **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | The audit's two halves: the catalog of disciplines you want watched (with the regex that catches each one), and the weekly prompt that turns candidates into a ≤30-line finding. |
 | **`templates/inbound_sweep.md`** | **Inbound sweep procedure (Tier 1)** — the inbox trigger run through your assistant's MCP connectors: lanes, closed-enum triage, append-only ledger, quiet hours. |
 | `.gitignore` | Allowlist — only the kit is tracked, so your instance data can never be committed. |
@@ -223,7 +256,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`docs/discipline-audit.md`** | Discipline audit — what it proves is **not** that a discipline works, but that the mechanism detecting breaches is running. **Trace** vs **prohibition** (compliance with a prohibition is unobservable), why an auditable discipline must be written as a trace, and the weekly three steps. |
 | **`docs/provenance.md`** | Provenance table — which idea entered the kit, in which file, in which commit, and what set it off. Every trigger cell carries a tag saying how strongly it is sourced. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
-| **`evidence/`** | **Proof the loop actually runs** — hand-redacted excerpts from the author's live instance: one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`evidence/README.md`](evidence/README.md). |
+| **[`cookbook/author/evidence/`](cookbook/author/evidence/README.md)** | **Proof the loop actually runs** — on the **sample shelf**: hand-redacted excerpts from the author's live instance, one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md). |
 
 ---
 
@@ -249,7 +282,7 @@ Then there's a second level. **The reasons you reject or edit are the most valua
 - **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
 - **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
 
-Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`evidence/`](evidence/README.md).
+Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
 
 ---
 
@@ -264,14 +297,14 @@ Why growth is structural rather than a promise: **append-only artifacts accrete;
 
 **The step has a name here: *promoting a correction* (訂正の昇格).** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
 
-The first thing shipped out of that inflow is **[`templates/starter-disciplines.md`](templates/starter-disciplines.md)** — a **menu, not a template**, and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
+The first thing shipped out of that inflow is **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** — a **menu, not a template**, on the sample shelf and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
 
 ---
 
-Want to contribute a discipline forged in your own loop? There are **two lanes**, and they are judged by different things — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
+Want to contribute a discipline forged in your own loop? There are **three places and two kinds of review** — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
 
-- **The kit itself** (`templates/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
-- **Your own shelf** — [`community/<your GitHub login>/`](community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`community/README.md`](community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
+- **The curated set and the kit itself** (`cookbook/author/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
+- **Your own shelf** — [`cookbook/community/<your GitHub login>/`](cookbook/community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`cookbook/community/README.md`](cookbook/community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
 
 ## 7. Running multiple projects — charters, the system map, and living in the clone
 
@@ -284,7 +317,10 @@ And you run all of it **directly inside the clone**. The allowlist `.gitignore` 
 
 ```text
 kagemusha/                     ← your clone = your instance
-├── README.md  docs/  scripts/  templates/  evidence/  community/  ✓ tracked (the kit)
+├── README.md  docs/  scripts/  templates/  tests/  manifests/     ✓ tracked (core)
+├── cookbook/                    ✓ tracked (the sample shelf — never scaffolded)
+│   ├── author/                  the author's burned disciplines + evidence excerpts
+│   └── community/               one directory per contributor, format-lint only
 ├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
 ├── system_map.md                 the one-screen board
 ├── approval_queue.md             the queue outward operations pile into

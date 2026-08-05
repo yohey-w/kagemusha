@@ -1,6 +1,6 @@
 # 規律の監査 — 取り入れた規律が、自分の環境で動いているか
 
-規律はつまみ食いできる。**ただし、効くものと効かないものがある**（[`../templates/starter-disciplines.md`](../templates/starter-disciplines.md) の可搬性ラベル）。どちらだったかは、貼った本人のログにしか出ない。ここに置くのはそれを測る道具の設計思想で、実物は [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py)（走査）と [`../templates/discipline_catalog.example.yaml`](../templates/discipline_catalog.example.yaml)（カタログ）と [`../templates/discipline-audit-prompt.md`](../templates/discipline-audit-prompt.md)（週次の判定）。
+規律はつまみ食いできる。**ただし、効くものと効かないものがある**（[`../cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md) の可搬性ラベル）。どちらだったかは、貼った本人のログにしか出ない。ここに置くのはそれを測る道具の設計思想で、実物は [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py)（走査）と [`../templates/discipline_catalog.example.yaml`](../templates/discipline_catalog.example.yaml)（カタログ）と [`../templates/discipline-audit-prompt.md`](../templates/discipline-audit-prompt.md)（週次の判定）。
 
 ## この監査が証明するもの・しないもの
 

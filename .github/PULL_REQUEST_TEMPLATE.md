@@ -40,7 +40,7 @@
 
 ## core lane only / core レーンのみ
 
-The gate is `templates/starter-disciplines.md` §増やし方 — four axes:
+The gate is `cookbook/author/starter-disciplines.md` §増やし方 — four axes:
 
 - [ ] **Burned from an actual rejection or accident**, not correct-in-theory / 実際の却下・事故から焼けた（理屈だけで正しい規律ではない）
 - [ ] **The proposition survives having the profession stripped off** — the physics of working with an AI. Working standalone is not a reason to include it / 職業を落としても命題が残る（AIとの協働の物理）。単体で効くことは理由にならない

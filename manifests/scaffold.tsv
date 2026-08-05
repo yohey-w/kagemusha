@@ -61,13 +61,18 @@
 #   · templates/promotion_candidate.md — read by scripts/distill.sh and pasted
 #     into the prompt it fires. It is a format definition the machinery consumes
 #     in place, not a file the user fills in, so it is not scaffolded.
-#   · templates/starter-disciplines.md, templates/correction_patterns.example.txt,
+#   · templates/correction_patterns.example.txt,
 #     templates/discipline_catalog.example.yaml, templates/distill-prompt.md,
 #     templates/discipline-audit-prompt.md, templates/inbound_sweep.md
 #     — NOT scaffolded, on purpose. Copying a menu to the path a scanner reads
 #     would make a shipped vocabulary everyone's default without anyone
 #     choosing it. The act of copying is where the user chooses. See
 #     docs/layers.md, "why the copying is left to the user".
+#   · templates/starter-disciplines.md — same rule, and now also the wrong
+#     layer: the burned-discipline menu is somebody's CONTENT, so it moved to
+#     the sample shelf and this path is a signpost stub. Not scaffolded before
+#     the move, not scaffolded after. See docs/layers.md and
+#     docs/path-migrations.md.
 # ═══════════════════════════════════════════════════════════════════════════
 #
 #source	dest	guard

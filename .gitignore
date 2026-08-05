@@ -2,9 +2,12 @@
 # Allowlist .gitignore — you live INSIDE this clone.
 #
 # Everything at the root is ignored by default; only the OSS-shipped files
-# below are un-ignored (tracked) — including evidence/, which holds
-# hand-redacted excerpts of the author's live loop, added file by file on
-# purpose (see evidence/README.md). So the instance data setup.sh scaffolds
+# below are un-ignored (tracked) — including cookbook/, the sample shelf that
+# holds the hand-redacted excerpts of the author's live loop, added file by
+# file on purpose (see cookbook/README.md). The old roots evidence/ and
+# community/ stay un-ignored too, but they now hold only compat stubs
+# pointing at the shelf — the artifacts themselves are under cookbook/author/
+# and cookbook/community/. So the instance data setup.sh scaffolds
 # next to them — ssot/, judgment/, projects/, briefs/, logs/, local/
 # (machine-local scripts & secrets), system_map.md, approval_queue.md,
 # verifiers.md, config.env, CLAUDE.md / AGENTS.md — can never be committed,

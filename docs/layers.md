@@ -29,7 +29,9 @@ kagemusha/
 
 ### なぜ「コピーするという行為」を利用者に残すのか
 
-キットが持つ唯一の非対称な資産は**あなた自身の却下から焼けた判断**で、借り物の原則はそれと**同じ枠を食う**。だから標本を既定で展開しないのは不親切ではなく、**設計**だ。コピーの手間そのものが「これは自分が踏んだ穴か」を1回問う関門になっている。`setup.sh` が `starter-disciplines.md` を意図的に展開しないのも、`correction_patterns.example.txt` を実運用名へコピーしないのも、同じ1つの規範の現れである。
+キットが持つ唯一の非対称な資産は**あなた自身の却下から焼けた判断**で、借り物の原則はそれと**同じ枠を食う**。だから標本を既定で展開しないのは不親切ではなく、**設計**だ。コピーの手間そのものが「これは自分が踏んだ穴か」を1回問う関門になっている。`setup.sh` が [`../cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md) を意図的に展開しないのも、`judgment/correction_patterns.txt` を**メニューのコピーではなくコメントだけの空ファイルとして生成する**のも、同じ1つの規範の現れである。
+
+> ⚠️ **訂正パターンの扱いは一度変わっている。** 以前ここには「`correction_patterns.example.txt` を実運用名へコピーしない」と書いてあった。現在の `setup.sh` はそもそも**コピーしない**——`judgment/correction_patterns.txt` を heredoc から**中身ゼロ（コメントのみ）で生成**し、走査スクリプトは利用者が自分の語彙を書くまで動くことを拒否する。「配らない」の実装が *コピーの省略* から *空の生成* に変わったので、記述をそこへ合わせてある（`manifests/scaffold.tsv` の "DELIBERATELY NOT IN THIS MANIFEST" 節が同じことを書いている）。
 
 ---
 

@@ -22,7 +22,7 @@ Read [`cookbook/community/README.md`](../cookbook/community/README.md) before us
 
 ## The maintainer's lane — the kit itself, and the sample loop
 
-The kit's curated discipline set is [`templates/starter-disciplines.md`](../templates/starter-disciplines.md). Its own `## 増やし方` section states the gate, and a PR into that file is measured against it — **three conditions, plus the metadata every entry carries.**
+The kit's curated discipline set is [`cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md). Its own `## 増やし方` section states the gate, and a PR into that file is measured against it — **three conditions, plus the metadata every entry carries.**
 
 1. **Burned from an actual rejection or accident.** *「実際の却下・事故から焼けたこと。理屈だけで正しい規律は入れない。」* A discipline that is merely correct in theory does not go in. The PR body has to say what went wrong, in a live loop, that produced it.
 2. **The proposition survives having the profession stripped off.** *「職業を落としても命題が残ること。」* Only the physics of working with an AI — holes anyone delegating work to an agent falls into, whatever their trade. **Working standalone is not a reason to include it**: a discipline that belongs to your profession goes to your own `judgment/judgment_model.md`, or to the `cookbook/community/` lane here. This is the condition most PRs fail.
@@ -75,7 +75,7 @@ The full rule table, the format for an entry, and the removal procedure live in 
 
 ## 管理者裁定レーン — キット本体と標本ループ
 
-選別済みの規律集は [`templates/starter-disciplines.md`](../templates/starter-disciplines.md) で、そのファイル自身の `## 増やし方` が門になっています。この PR はその門で測ります——**3条件＋各エントリが必ず持つメタ情報**の4軸。
+選別済みの規律集は [`cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md) で、そのファイル自身の `## 増やし方` が門になっています。この PR はその門で測ります——**3条件＋各エントリが必ず持つメタ情報**の4軸。
 
 1. **実際の却下・事故から焼けたこと。** 原文: 「理屈だけで正しい規律は入れない。」PR 本文に、実走ループで**何が壊れてこの規律が出たか**を書いてください。
 2. **職業を落としても命題が残ること。** 載るのは「AIとの協働の物理」だけ——職業も業種も問わず、AIに仕事を任せる人間なら同じ形で踏む穴に限ります。**技術的に単体で効くことは、ここに載せる理由になりません**。職業の規律の置き場所はあなたの `judgment/judgment_model.md` か、この repo なら `cookbook/community/` レーンです。**落ちる PR の大半はここ。**

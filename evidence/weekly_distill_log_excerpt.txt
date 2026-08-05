@@ -1,80 +1,24 @@
 ═══════════════════════════════════════════════════════════════════════════
-evidence/weekly_distill_log_excerpt.txt
+evidence/weekly_distill_log_excerpt.txt — MOVED / 移転しました
 
-Excerpt from the author's live instance: logs/weekly_distill_2026-08-02.log
-plus the matching line from logs/weekly_distill_cron.log.
+  The log excerpt is now at:
 
-WHAT IT IS: one unattended run of the weekly feedback trigger, fired by the
-OS scheduler at 21:04 on Sunday 2026-08-02 (cron entry: `4 21 * * 0`).
-The run mined the week's AI-CLI transcripts, bucketed the approver's own
-turns, wrote the week's judgment file, and lint-checked the L1 model.
+      cookbook/author/evidence/weekly_distill_log_excerpt.txt
 
-REDACTIONS (hand-applied; the shape of every line is preserved):
-  [HOME]     — the author's home directory
-  [dir-1/2]  — local project-directory slugs of the mined transcripts
-Nothing else was altered. Lines are contiguous — no line was dropped.
+  THE ARTIFACT ITSELF — the real run log, non-zero exit and all — LIVES ON
+  THE SHELF, NOT HERE. This file is a signpost kept so the old path keeps
+  resolving; it contains no evidence. Nothing in the excerpt was edited by
+  the move: the run log is quoted verbatim there, exactly as it was here.
 
-NOTE ON LABELS: this instance runs its own copy of the mining scripts, whose
-column labels differ from the kit's current scripts/*.py (the kit prints
-"human turns" / "by source" where this run prints "lord records" /
-"recent by src"). The counts mean the same thing.
+  実ログの現物は cookbook 側にあります。ここにあるのは案内だけで、
+  証拠は1行も入っていません。移動で本文は書き換えていません
+  （実ログ内に書かれた当時のパス表記も、証拠性を壊さないため無変更）。
 
-NOTE ON THE NON-ZERO EXIT: the run is NOT a clean pass, and it is published
-as it was written. What can be established from the files:
+  Why it moved: the repository is two layers — core (mechanism: scaffolding,
+  scripts, empty forms, the acceptance gate) and cookbook/ (samples: somebody's
+  filled-in content). Excerpts from the author's live instance are samples.
 
-  · the deterministic steps completed — 142 entries mined, and the L1 lint
-    ran afterwards and passed (75/160 lines, 31/32 principles);
-  · the distillation DID produce its output — the run's pending list
-    (briefs/distill_pending_2026-08-02.md, 5,605 bytes) was written at
-    21:20, and its four pending items are the ones ruled on the next day in
-    ledger_excerpt.md;
-  · and yet the AI step printed `Execution error` and the wrapper recorded
-    `exit=124` at 21:22:26 — a single run, a single cron line.
-
-So this is a run that delivered its work product under a non-zero exit code.
-Why the CLI ended that way is NOT determined by these files and is not
-guessed at here. It stays in because a log that only ever shows green is not
-evidence of a running loop — and because "the exit code said failure, the
-artifact said otherwise" is the exact kind of thing this kit's `verifiers.md`
-exists to catch. Believing the exit code alone would have been wrong in both
-directions.
+      boundary          docs/layers.md
+      old-path lookup   docs/path-migrations.md
+      the shelf         cookbook/README.md
 ═══════════════════════════════════════════════════════════════════════════
-
---- logs/weekly_distill_2026-08-02.log ---------------------------------------
-
-[2026-08-02 21:04:01] === weekly_distill start (2026-08-02) ===
-[step0] mine.py --since 7d && filter.py --week
-since 7d cutoff: 2026-07-26T12:04:01.695987+00:00
-recent records: 591  (of 1964 total)
-recent by dir: [('[dir-1]', 379), ('[dir-2]', 212)]
-recent by src: [('queued', 349), ('typed', 118), ('system', 100), ('sdk', 21), ('', 2), ('suggestion_accepted', 1)]
-written: [HOME]/kagemusha/judgment/mining/corpus_user_recent.jsonl
-mode: week  input: corpus_user_recent.jsonl
-lord records total: 469  matched: 142
-bucket counts: {'RULE': 27, 'REJECT': 22, 'CORRECT': 64, 'VALUE': 15, 'PROBE': 35, 'TEMP+': 4, 'INT': 7, 'TEMP-': 12}
-judgments_week.md bytes: 43350
-[step0] judgments_week.md entries=142
-Execution error[2026-08-02 21:22:26] [lint] OK L1本文=75行/上限160・原則数=31/上限32
-
---- logs/weekly_distill_cron.log ---------------------------------------------
-
-[2026-08-02 21:22:26] weekly_distill exit=124 lint=OK week_entries=142
-
-------------------------------------------------------------------------------
-
-HOW TO READ THE BUCKET COUNTS
-
-  RULE     27   a ruling was made
-  REJECT   22   the agent's output was refused
-  CORRECT  64   the agent's output was overruled and rewritten
-  VALUE    15   a value/priority was stated
-  PROBE    35   a question that tests the agent's reasoning
-  TEMP+ 4 / TEMP- 12   temperature (praise / displeasure)
-  INT       7   an intent or wish, not yet a rule
-
-CORRECT is the largest bucket, and that is the point of the whole mechanism:
-a correction is the delta between the model and the approver (README §6).
-Of the 469 records the filter classified, 142 carried a judgment signal —
-about 30%. That is not a ratio the kit's README asserts anywhere; it is what
-this one instance measured in this one week, and it is the reason a weekly
-cadence is worth the cron entry.

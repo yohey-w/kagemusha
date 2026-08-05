@@ -199,7 +199,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`templates/system_map.md`** | **システム地図**——1画面の盤面（恒久機構＋案件カード＋ロードマップ）。実走 dir の直下に展開。 |
 | **`templates/charter.md`** | **プロジェクト憲章**——案件ごとの*差分*だけ（≤60行）。価値判断モデル自体は割らない。`projects/<案件>/charter.md` へコピーして使う。 |
 | **`templates/agent_instructions.md`** | **実走環境の憲法**——`CLAUDE.md`（Claude Code）/ `AGENTS.md`（Codex）/ 使うツールのルールファイルとして保存。 |
-| **`templates/starter-disciplines.md`** | **スターター規律集**——*雛形ではなくメニュー*（`setup.sh` は意図的に展開しない）: 作者の実走で焼けた規律集。各本に「焼けた出自」・可搬性ラベル・貼り先が付く。**自分が踏んだ穴のものだけ**持ち帰る。 |
+| **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** | **スターター規律集**——**標本棚**にある*雛形ではなくメニュー*（`setup.sh` は意図的に展開しない）: 作者の実走で焼けた規律集。各本に「焼けた出自」・可搬性ラベル・貼り先が付く。**自分が踏んだ穴のものだけ**持ち帰る。 |
 | **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | 規律監査の両輪——監査したい規律のカタログ（規律ごとの検出パターン付き）と、候補を30行以内の所見に変える週次プロンプト雛形。 |
 | **`templates/inbound_sweep.md`** | **受信箱スイープ手順書（Tier 1）**——アシスタントの MCP コネクタで回す受信箱トリガー: レーン・閉じた enum 分類・追記専用台帳・quiet hours。 |
 | `.gitignore` | allowlist 方式——キットだけを追跡。あなたの実データは構造上 commit 不能。 |
@@ -223,7 +223,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`docs/discipline-audit.md`** | 規律の監査——証明できるのは「規律が効いている証拠」ではなく**「破れを検出する仕組みが動いている証拠」**。**痕跡型と禁止型**（禁止型の遵守は観測不能）・監査したい規律は痕跡形で書け・週次の3ステップ。 |
 | **`docs/provenance.md`** | 来歴表——どの思想が・どのファイルに・どのコミットで・何をきっかけに入ったか。きっかけ欄には「どこまで裏が取れているか」の出所タグが必ず付く。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
-| **`evidence/`** | **一周が実走している証拠**——著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`evidence/README.md`](evidence/README.md) に明記。 |
+| **[`cookbook/author/evidence/`](cookbook/author/evidence/README.md)** | **一周が実走している証拠**——**標本棚**にある、著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md) に明記。 |
 
 ---
 
@@ -249,7 +249,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 - **`verifiers.md` へ**——却下が**機械的**な穴（曜日ミス・宛名漏れ・未検証の数値）なら、検証器を1本足せばそのクラスのエラーは機械層で死ぬ。同じ指摘を二度しない。
 - **`judgment_model.md` へ**——却下が**判断**（「このトーンは違う」「価格は工数から積め」）なら、薄い価値判断モデルの原則に蒸留する。エージェントは次のセッションでそれを読み一次判断する——だからその案はそもそもキューに届かない。
 
-訂正が最も重い理由: **裁定**（どの案を選ぶか）はやがてモデルが自分で当てられる。**訂正**（あなたが出力を曲げる）は**モデルとあなたの差分**であり、この信号は枯れない。ここが既製のエージェント製品——他人が凍結した基準——には決して持てない部分だ: **それは*あなたの*判断を学ばない。** 全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)。**この一周が実際に閉じた証拠——無人発火した蒸留の実ログと、このリポジトリの原則1本の裏にある台帳エントリ:** [`evidence/`](evidence/README.md)。
+訂正が最も重い理由: **裁定**（どの案を選ぶか）はやがてモデルが自分で当てられる。**訂正**（あなたが出力を曲げる）は**モデルとあなたの差分**であり、この信号は枯れない。ここが既製のエージェント製品——他人が凍結した基準——には決して持てない部分だ: **それは*あなたの*判断を学ばない。** 全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)。**この一周が実際に閉じた証拠——無人発火した蒸留の実ログと、このリポジトリの原則1本の裏にある台帳エントリ:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md)。
 
 ---
 
@@ -264,14 +264,14 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 **この工程には名前がある——「訂正の昇格」。** 訂正を捕捉し、人間のレビューを通し、正本に定着させる道具は**すでに既製品としてある**（星の付いた OSS にも、製品の標準機能にも）。だからこのキットが配るのはその配管ではなく、**審査の基準の作り方と、昇格した規律の統治**のほうだ——訂正は**事実**なので追記型の台帳に積み、規律は**規範**なので既存の規則を**上書き**する——保存の仕方からして違う。移動や反映に関門は要らないが、**昇格には要る**——その関門は人間だ。
 
-その流入路から最初に出荷されたのが **[`templates/starter-disciplines.md`](templates/starter-disciplines.md)**——**雛形ではなくメニュー**で、意図的に `setup.sh` は展開しない。各規律に**焼けた出自**・**可搬性ラベル**（*単体で効く* ／ *機構前提（requires を明記）* ／ *型だけ持ち帰れ（中身は自分の却下から焼くもの）*）・**貼り先**が付く。使い方の規律は2つ——**自分が踏んだ穴のものだけ持ち帰る**（踏んでいない規律は雑音で、借り物の原則は自分で焼いた原則と同じ ≤32本の枠を食う）、そして**載るのは「AIとの協働の物理」だけ**（職業の規律はあなたの却下からしか焼けない。置き場所はあなたの価値判断モデルのほうだ）。
+その流入路から最初に出荷されたのが **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)**——**標本棚**に載る**雛形ではなくメニュー**で、意図的に `setup.sh` は展開しない。各規律に**焼けた出自**・**可搬性ラベル**（*単体で効く* ／ *機構前提（requires を明記）* ／ *型だけ持ち帰れ（中身は自分の却下から焼くもの）*）・**貼り先**が付く。使い方の規律は2つ——**自分が踏んだ穴のものだけ持ち帰る**（踏んでいない規律は雑音で、借り物の原則は自分で焼いた原則と同じ ≤32本の枠を食う）、そして**載るのは「AIとの協働の物理」だけ**（職業の規律はあなたの却下からしか焼けない。置き場所はあなたの価値判断モデルのほうだ）。
 
 ---
 
-あなたのループで焼けた規律を持ち寄りたい場合、入口は**2つ**あり、判定するものが違う（詳細は [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)）。
+あなたのループで焼けた規律を持ち寄りたい場合、**置き場所は3つ・審査は2種類**あり、判定するものが違う（詳細は [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)）。
 
-- **キット本体**（`templates/starter-disciplines.md`・docs・書式）——**管理者が裁定する**。基準はそのファイル自身の `## 増やし方` と同じ4軸: 実際の却下・事故から焼けたこと／職業を落としても命題が残ること／「この1本を消したら、エージェントは間違えるか」／メタ3点（可搬性ラベル・貼り先・焼けた出自）。**このレーンに自動マージは無い。**
-- **あなた専用の棚**——[`community/<GitHubログイン名>/`](community/README.md)。選別の門が意図的に捨てるもの、つまり**あなたの環境固有の規律**と**あなたの職業の規律**の受け皿。自分のディレクトリだけを触り形式 lint を通った PR は、**誰も内容を読まないまま自動承認＋squash マージされる**——だからこそ [`community/README.md`](community/README.md) は責任の所在の話であり、後から削除しても **git の履歴には残る**という話でもある。
+- **選別済みの規律集とキット本体**（`cookbook/author/starter-disciplines.md`・docs・書式）——**管理者が裁定する**。基準はそのファイル自身の `## 増やし方` と同じ4軸: 実際の却下・事故から焼けたこと／職業を落としても命題が残ること／「この1本を消したら、エージェントは間違えるか」／メタ3点（可搬性ラベル・貼り先・焼けた出自）。**このレーンに自動マージは無い。**
+- **あなた専用の棚**——[`cookbook/community/<GitHubログイン名>/`](cookbook/community/README.md)。選別の門が意図的に捨てるもの、つまり**あなたの環境固有の規律**と**あなたの職業の規律**の受け皿。自分のディレクトリだけを触り形式 lint を通った PR は、**誰も内容を読まないまま自動承認＋squash マージされる**——だからこそ [`cookbook/community/README.md`](cookbook/community/README.md) は責任の所在の話であり、後から削除しても **git の履歴には残る**という話でもある。
 
 ## 7. 複数案件を回す — 憲章・システム地図・clone に住む
 
@@ -284,7 +284,10 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 ```text
 kagemusha/                     ← あなたの clone ＝ あなたの実走環境
-├── README.md  docs/  scripts/  templates/  evidence/  community/  ✓ 追跡（キット本体）
+├── README.md  docs/  scripts/  templates/  tests/  manifests/     ✓ 追跡（core＝機構）
+├── cookbook/                     ✓ 追跡（標本棚——setup.sh は決して展開しない）
+│   ├── author/                   作者が焼いた規律集＋実走の証拠抜粋
+│   └── community/                投稿者1人1ディレクトリ・形式 lint のみ
 ├── CLAUDE.md (または AGENTS.md)  エージェント指示——実走環境の憲法
 ├── system_map.md                 1画面の盤面
 ├── approval_queue.md             外向き操作が積まれるキュー
