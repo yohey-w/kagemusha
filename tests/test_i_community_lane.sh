@@ -206,9 +206,16 @@ assert_grep "I5: UTF-8 is decided by a byte round trip" \
 assert_grep "I5: every text rule is re-run on the NFKC normalisation" \
   "const norm = lines.map((t) => t.normalize('NFKC'));" "$I_MERGE"
 # the PR's own code is still never checked out — the property the whole
-# pull_request_target design rests on
+# pull_request_target design rests on. Asserted as "there is exactly one
+# checkout and it takes no ref", not as "this one spelling is absent": under
+# pull_request_target the default ref IS the base branch, so any `ref:` input
+# at all is the thing to notice.
 assert_no_grep "I5: the workflow never checks out the PR head" \
   "ref: \${{ github.event.pull_request.head" "$I_MERGE"
+i_checkouts="$(grep -c 'uses: actions/checkout' "$I_MERGE" || :)"
+assert_eq "I5: exactly one checkout step" 1 "$i_checkouts"
+i_refs="$(grep -c '^ *ref:' "$I_MERGE" || :)"
+assert_eq "I5: …and it passes no ref (the default is the base branch)" 0 "$i_refs"
 
 I_RULES="$TEST_TMP/i_rules.tsv"
 node - "$I_MERGE" > "$I_RULES" <<'NODE'
