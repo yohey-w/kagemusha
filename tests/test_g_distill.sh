@@ -267,10 +267,6 @@ case "${STUB_MODE:-good}" in
   invented)
            printf '<<<QUEUE-SECTION>>>\n## stub run — 1 candidate\n<<<END-QUEUE-SECTION>>>\n'
            printf '<<<EVENT-DISPOSITION>>>\nprocessed: %s E-ffffffffff\nno_reason:\nrejected:\n<<<END-EVENT-DISPOSITION>>>\n' "$ids" ;;
-  grabby) # tries to write the queue itself, the way a tool-holding run would
-           printf '## SNEAKED IN BY THE MODEL\n' >> "$STUB_QUEUE"
-           printf '<<<QUEUE-SECTION>>>\n## stub run — 1 candidate\n<<<END-QUEUE-SECTION>>>\n'
-           printf '<<<EVENT-DISPOSITION>>>\nprocessed: %s\nno_reason:\nrejected:\n<<<END-EVENT-DISPOSITION>>>\n' "$ids" ;;
   midrun) # a new correction lands while this run is still going
            if [[ -n "${STUB_MIDRUN_CMD:-}" ]]; then eval "$STUB_MIDRUN_CMD" >/dev/null 2>&1; fi
            printf '<<<QUEUE-SECTION>>>\n## stub run — 1 candidate\n<<<END-QUEUE-SECTION>>>\n'
@@ -416,11 +412,17 @@ G_CFG_MATERIAL="$G_HANDS_MAT"; G_CFG_STATE="$G_HANDS_STATE"
 write_g_cfg "$G_STUB" 1 0
 g_run > "$TEST_TMP/g_run4c.out" 2>&1
 G_STUB_MODE=good; G_CFG_MATERIAL=""; G_CFG_STATE=""
-assert_no_grep "G9c: the distiller is never handed --dangerously-skip-permissions" \
+# The config it was given DOES carry the permission-skipping flag under
+# AGENT_FLAGS — that is the point. What must never happen is that key reaching
+# this invocation. (There is no assertion here about a model that writes anyway:
+# a stub appending with a shell redirect proves nothing about CLI permissions,
+# and pinning "the model wrote the queue" as an expected artefact would read to
+# a future maintainer as an accepted outcome. The argv IS the boundary check.)
+assert_grep "G9c: the config under test really does define the dangerous flag" \
+  "AGENT_FLAGS=\"--dangerously-skip-permissions\"" "$G_CFG"
+assert_no_grep "G9c: …and it never reaches the distilling call" \
   "dangerously-skip-permissions" "$TEST_TMP/g_args4c.txt"
-assert_grep "G9c: a model that wrote the queue itself is visible as an intruder" \
-  "SNEAKED IN BY THE MODEL" "$G_QUEUE"
-assert_grep "G9c: …and the wrapper's own validated append is what carries a batch id" \
+assert_grep "G9c: what lands in the queue is the wrapper's validated append, with a batch id" \
   "batch B-" "$G_QUEUE"
 
 # ── case 5: a real (stubbed) success → FIRED, ratchet advances exactly once ──
@@ -612,6 +614,17 @@ assert_absent "G11: …the model is not fired" "$TEST_TMP/g_args7.txt"
 assert_grep "G11: …but the waiting material is NAMED, not forgotten" \
   "have been waiting" "$TEST_TMP/g_run7.out"
 assert_grep "G11: …and the cron log marks it stale" "STALE" "$G_CRONLOG"
+
+# …and that reminder is configurable, not decorative. Same 9-day fixture, a
+# 30-day bar: nothing has been waiting long enough to be worth mentioning.
+G_ARGS="$TEST_TMP/g_args7s.txt"
+write_g_cfg "$G_STUB" 99 0
+printf 'DISTILL_STALE_DAYS=30\n' >> "$G_CFG"
+g_run > "$TEST_TMP/g_run7s.out" 2>&1
+assert_grep "G11: DISTILL_STALE_DAYS raises the bar — still skipped" \
+  "SKIPPED" "$TEST_TMP/g_run7s.out"
+assert_no_grep "G11: …and below the bar the reminder stays quiet (the key is read)" \
+  "have been waiting" "$TEST_TMP/g_run7s.out"
 
 # turned on explicitly, it still works exactly as before
 G_ARGS="$TEST_TMP/g_args7b.txt"; G_DRYRUN=1
