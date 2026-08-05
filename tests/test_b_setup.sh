@@ -79,6 +79,22 @@ assert_same "B: config.env comes from config.env.example" \
 
 # AGENTS.md is NOT created — Codex users rename CLAUDE.md themselves
 assert_absent "B: AGENTS.md is not created" "$B_FX/AGENTS.md"
+
+# The correction vocabulary is a MENU, not a default. Scaffolding it to the path
+# the scanner reads would make a shipped list of phrases everyone's correction
+# vocabulary without anyone having chosen it — and the scanner would start
+# harvesting on words the user never uses. The exact-set manifest above already
+# pins this; it is named here too because the failure it prevents is a
+# behaviour, not a stray file, and a manifest line does not say why.
+assert_absent "B: the correction-pattern menu is NOT activated by setup.sh" \
+  "$B_FX/judgment/correction_patterns.txt"
+assert_absent "B: …not under any other name either" "$B_FX/correction_patterns.txt"
+assert_grep "B: instead setup.sh tells you to copy it and cut it down" \
+  "correction_patterns.example.txt" "$B_LOG1"
+# and the cron line it prints must carry --dir: cron's CWD is $HOME, so a line
+# without it silently harvests the wrong project's logs (or none at all).
+assert_grep "B: the printed scanner cron line names the log directory" \
+  "--dir $HOME/.claude/projects/" "$B_LOG1"
 assert_grep "B: first run reports creations" "create:" "$B_LOG1"
 
 # ── 2. idempotency: your filled-in files survive a re-run ──────────────────

@@ -83,6 +83,14 @@ if [[ ! -f "$REPO_ROOT/config.env" ]]; then
   echo "  → edit $REPO_ROOT/config.env : set PROJECT_ROOT=\"$TARGET\", AGENT_CMD, NTFY_TOPIC"
 fi
 
+# The session-log directory for THIS target, spelled out. The scanner can guess
+# it from the current directory, but cron's current directory is $HOME, so a
+# cron line without --dir harvests the wrong project (or nothing) in silence.
+# Same slug rule the scanner uses: every non-alphanumeric character becomes '-'.
+TARGET_ABS="$(cd "$TARGET" && pwd)"
+LOG_SLUG="$(printf '%s' "$TARGET_ABS" | sed 's/[^A-Za-z0-9]/-/g')"
+LOG_DIRS="$HOME/.claude/projects/$LOG_SLUG"
+
 cat <<DONE
 
 done. next:
@@ -107,7 +115,12 @@ done. next:
       nothing is scaffolded here on purpose, and the scanner refuses to run without it.
  11. cron  7 6 * * *  $SCRIPT_DIR/correction_scan.py --patterns $TARGET/judgment/correction_patterns.txt \\
                         --material $TARGET/judgment/correction_material.md \\
-                        --state $TARGET/judgment/distill_state.json --since 1d
+                        --state $TARGET/judgment/distill_state.json --since 1d \\
+                        --dir $LOG_DIRS
+      The --dir is not optional in a cron line: cron's working directory is \$HOME,
+      and without it the scanner guesses a log path from there — i.e. the wrong one.
+      (Check the guess above matches your CLI's transcript directory; if you work in
+      more than one project, repeat --dir, or set DISTILL_LOG_DIRS in config.env.)
  12. cron  23 6 * * *  $SCRIPT_DIR/distill.sh   (fires only past the threshold — docs/distillation-loop.md)
       then review $TARGET/judgment/promotion_queue.md by hand: promotion is the one step
       that stays manual, because a rule nobody reviewed would govern every run after it.
