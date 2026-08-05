@@ -16,9 +16,13 @@
 
 | 当時パス | 現行パス | コミット | 旧パスの現況 | 備考 |
 |---|---|---|---|---|
-| *(まだ移動は確定していない)* | | | | |
+| `templates/starter-disciplines.md` | `cookbook/author/starter-disciplines.md` | `e793fa8` | 互換 stub | 二層化——焼けた規律の一覧は「中身」なので core から標本棚へ。旧パスには移転案内と**規律1件の空書式**だけが残る。門（`## 増やし方`）の正本は移転先 |
+| `evidence/` | `cookbook/author/evidence/` | `e793fa8` | 互換 stub | 3ファイルとも（`README.md` / `ledger_excerpt.md` / `weekly_distill_log_excerpt.txt`）。**証拠の現物は移転先にしかない**——旧パスに残るのは案内だけで、実ログ本文は1行も入っていない |
+| `community/` | `cookbook/community/` | `f96de0d`（bot・規約）／`e793fa8`（旧 README の stub 化） | 互換 stub | 自動マージレーンの接頭辞ごと移動。**旧 root への PR はもう自動レーンではない**（管理者へ）。削除 issue だけは移行期のあいだ新旧どちらの形も受け、bot が両 root から消す |
 
-> **いま（`pre-cookbook-split` 直後）の状態**: `cookbook/` 以下は**加算されただけ**で、旧パスのファイルは1バイトも変わっていない。`cookbook/author/` にあるものは旧パスの**複製**であり、移動ではない。したがってこの表はまだ空である——**複製は移動ではないので、ここには書かない**。旧パスが stub 化・削除された段で、その1行がここに入る。
+> **`cookbook/` に「移動」ではなく「複製」で入ったものは、ここに書かない。** Phase 2（`8dd82d5`）の時点では旧パスのファイルが1バイトも変わっておらず、複製は移動ではないからだ。上の3行が立ったのは、**旧パスの実体が stub に置き換わった**段（`e793fa8`）である。
+>
+> **旧パスは削除していない。** 本・記事・issue・ブックマークが指しているので、URL は 200 のまま残す。stub には必ず「現行パスはどこか」と「**現物はここには無い**」の2つが書いてある。
 
 ## English
 
@@ -26,4 +30,4 @@
 
 Rules: one row per move (a directory move is one row, not one row per file); the **commit** column is mandatory (dates don't reproduce, commits do); rows are append-only, so a path that moved twice has two rows; this is an *index*, not the *why* — reasons live in [`provenance.md`](provenance.md); and every row states the old path's current status (`deleted` / `compat stub` / `both live`).
 
-**Right now the table is empty on purpose.** Everything under `cookbook/` so far is an **addition**: the files there are *copies*, the originals are untouched, and **a copy is not a move**. Rows appear here when an old path is stubbed or deleted.
+**The first three rows are the core/cookbook split.** Note what is *not* recorded: when `cookbook/author/` was first populated the originals were untouched, and **a copy is not a move**, so nothing was written here. The rows exist because the old paths were later replaced by **compat stubs** — they still resolve (200), they name the new path, and each one says the artifact itself is *not* there. Nothing was deleted: the companion book, articles, issues and bookmarks point at those URLs.
