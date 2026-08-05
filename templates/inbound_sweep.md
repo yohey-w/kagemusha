@@ -18,15 +18,18 @@
 
 ## 監視設定（ここだけ自分用に書き換える）
 
+> **チャンネルは空で出荷される。** `<...>` は全部あなたの環境の値だ。
+> 手順（恒久契約・巡回・分類 enum・台帳追記）は機構なので、そのまま従う。
+
 ```yaml
-quiet_hours: { start: "23:30", end: "06:30" }   # 検知は続け、通知だけ朝へ保留
-ledger: local/inbound/ledger.jsonl               # 追記専用台帳（作業 dir からの相対パス）
-morning_feed: briefs/inbound_morning.md          # 朝の盤面が読むフィード
+quiet_hours: { start: "<23:30>", end: "<06:30>" }  # 検知は続け、通知だけ朝へ保留
+ledger: local/inbound/ledger.jsonl                 # 追記専用台帳（作業 dir からの相対パス）
+morning_feed: briefs/inbound_morning.md            # 朝の盤面が読むフィード
 channels:
   gmail_hot:            # 10分〜短周期で見たい即レス相手（メールアドレス単位）
     - { from: "<alice@example.com>", until: "<2026-12-31>", label: "<取引先A・返信待ち>" }
   gmail_general:        # 一般受信箱スイープ: 直近ウィンドウの全件（hot 監視中の送信者は除外）
-    window: "2h"
+    window: "<2h>"
   slack:
     - { channel: "<#general など>", note: "<自分の bot 発言は入力でないので除外>" }
   notion:

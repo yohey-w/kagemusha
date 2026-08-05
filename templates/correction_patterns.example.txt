@@ -1,48 +1,36 @@
-# correction_patterns.example.txt — a MENU, not a default.
+# correction_patterns.example.txt — the FORMAT, and nothing else.
 #
-# Copy this somewhere in your own data (e.g. judgment/correction_patterns.txt,
-# outside the kit) and cut it down to the phrases YOU actually use when you
-# overrule an agent. scripts/correction_scan.py has no built-in list and will
-# refuse to run without --patterns, on purpose: the vocabulary of your
-# corrections is the one part of this that cannot be shipped. A list baked into
-# the script would quietly become everyone's, and then every user's material
-# file would be shaped by phrases they never say.
+# THIS FILE CONTAINS ZERO PATTERNS, and that is the whole point. It used to ship
+# a menu of phrases to cut down; a menu is still a default for anyone who does
+# not cut it down, and then their material file fills up with arguments they
+# never had. The vocabulary of your corrections is the one part of this kit that
+# cannot be shipped, so core ships the shape of the file and you write the lines.
 #
-# FORMAT: one Python regex per line, matched case-insensitively against your
-# side of the transcript. Blank lines and lines starting with '#' are ignored.
-# An empty file is an error (an empty list harvests nothing and looks exactly
-# like a quiet week).
+# scripts/setup.sh creates judgment/correction_patterns.txt with comments only.
+# scripts/correction_scan.py has no built-in list, requires --patterns, and
+# refuses to run on an empty one — the refusal is the forcing function, not a bug
+# (an empty list harvests nothing and looks exactly like a quiet week).
 #
-# TUNING, in one rule: start broad, narrow later. A pattern that is too broad
-# costs you one line to skim in a review. A pattern that is too narrow costs you
-# the signal entirely, silently, and you will never know what you missed. The
-# review step downstream throws out false hits by design — over-collection is
-# cheap here and under-collection is not.
+# ─── FORMAT ────────────────────────────────────────────────────────────────
+# One Python regex per line, matched case-insensitively against YOUR side of the
+# transcript. Blank lines and lines whose first character is '#' are ignored.
+# Alternation on one line is fine and is the usual shape: several spellings of
+# the same tell belong together, so one correction does not count as two.
 #
-# Aim at VOCABULARY, not meaning. "The user disagreed" is not a regex; "that's
-# not what I asked" is. If a discipline of yours is worth auditing, the words
-# you use when it gets broken are usually the same three or four every time.
-
-# ─── Japanese ──────────────────────────────────────────────────────────────
-そうじゃなく|そうではなく|じゃなくて|ではなくて
-ちがう|違うよ|違います|それは違
-逆(だ|です|だよ|でしょ)
-勝手に
-やめて|やめろ|やらなくて(いい|よい)
-聞いてない|言ってない|頼んでない
-早とちり|決めつけ|思い込
-確認して|ちゃんと(読|見|確認)
-戻して|やり直
-
-# ─── English ───────────────────────────────────────────────────────────────
-\bno,|\bnot what i\b|that'?s not\b|\bnot like that\b
-\bi didn'?t ask\b|\bi never (said|asked)\b
-\bstop\b|\bundo\b|\brevert\b
-\byou (assumed|guessed|made (that|it) up)\b
-\bwrong\b|\bincorrect\b|\bactually,
-
-# ─── Patterns worth adding once you have run this for a week ───────────────
-# Your own tells. Read a month of your logs and look for what you type when the
-# agent has gone the wrong way — it is usually shorter and blunter than you
-# expect, and it repeats. Those lines are the highest-yield patterns you will
-# ever add here, and nobody else can write them for you.
+# ─── HOW TO WRITE YOURS ────────────────────────────────────────────────────
+# Read a week — better, a month — of your own transcripts and look for what you
+# type when the agent has gone the wrong way. It is shorter and blunter than you
+# expect, and it repeats: three or four phrases usually cover most of it. Those
+# lines are the highest-yield patterns you will ever have here, and nobody else
+# can write them for you.
+#
+# Aim at VOCABULARY, not meaning. "The user disagreed" is not a regex; the exact
+# five words you actually type are. Include every language you work in — a
+# pattern set in one language silently harvests half your corrections.
+#
+# ─── TUNING, in one rule ───────────────────────────────────────────────────
+# Start broad, narrow later. A pattern that is too broad costs you one line to
+# skim in a review. A pattern that is too narrow costs you the signal entirely,
+# silently, and you will never know what you missed. The review step downstream
+# throws out false hits by design — over-collection is cheap here, and
+# under-collection is not.
