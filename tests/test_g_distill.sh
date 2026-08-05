@@ -667,13 +667,36 @@ assert_grep "G12: --mark-distilled cannot retire more than a named batch" \
   "requires --batch" "$G_KIT/scripts/correction_scan.py"
 
 # The prompt is meant to be rewritten by its owner ("edit it; it is yours"), so
-# the queue has to carry the shape too — otherwise the format survives only in
-# the file users are invited to change. Both must name the same fields.
+# the eight-field shape must NOT live inside it: two copies of one format is one
+# copy that goes stale, and the stale one would be the reviewer's. The shape has
+# exactly one home, templates/promotion_candidate.md, which distill.sh pastes
+# into the prompt and the queue template links to. Asserted three ways: the
+# source of truth carries the fields, the RENDERED prompt carries them (proving
+# the substitution actually happened — a placeholder nobody expands is a hole),
+# and neither of the two consumers restates them.
+G_CAND="$G_KIT/templates/promotion_candidate.md"
+assert_file "G13: templates/promotion_candidate.md ships" "$G_CAND"
 for g_field in type evidence scope exception confidence counter-evidence destination freshness; do
-  assert_grep "G13: the prompt names the field '$g_field'" \
-    "**$g_field:**" "$G_KIT/templates/distill-prompt.md"
-  assert_grep "G13: the queue template shows the field '$g_field'" \
-    "**$g_field:**" "$G_KIT/templates/promotion_queue.md"
+  assert_grep "G13: the candidate format defines the field '$g_field'" \
+    "**$g_field:**" "$G_CAND"
+  assert_grep "G13: the rendered prompt carries the field '$g_field'" \
+    "**$g_field:**" "$TEST_TMP/g_run2.out"
 done
+assert_grep "G13: the prompt takes the shape by substitution, not by copy" \
+  "{{CANDIDATE_FORMAT}}" "$G_KIT/templates/distill-prompt.md"
+assert_no_grep "G13: …so the prompt does not restate the fields itself" \
+  "**evidence:**" "$G_KIT/templates/distill-prompt.md"
+assert_no_grep "G13: …and neither does the queue template" \
+  "**evidence:**" "$G_KIT/templates/promotion_queue.md"
+assert_grep "G13: the queue template points at the one source of truth" \
+  "promotion_candidate.md" "$G_KIT/templates/promotion_queue.md"
+# a missing format file is a loud failure, not a prompt with a hole in it
+G_ARGS="$TEST_TMP/g_args13.txt"
+write_g_cfg "$G_STUB" 2 0
+printf 'DISTILL_CANDIDATE_FILE="%s"\n' "$TEST_TMP/g_no_such_format.md" >> "$G_CFG"
+g_run > "$TEST_TMP/g_run13.out" 2>&1; g_rc13=$?
+assert_eq "G13: a missing candidate format exits 1" "1" "$g_rc13"
+assert_grep "G13: …and says so" "candidate format not found" "$TEST_TMP/g_run13.out"
+assert_absent "G13: …without invoking the model" "$TEST_TMP/g_args13.txt"
 assert_no_grep "G12: no correction vocabulary is baked into the scanner" \
   'そうじゃなく' "$G_SCAN"

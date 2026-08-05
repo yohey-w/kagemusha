@@ -29,6 +29,7 @@ b_expected="$(LC_ALL=C sort <<'MANIFEST'
 CLAUDE.md
 approval_queue.md
 config.env
+judgment/correction_patterns.txt
 judgment/decisions_journal.md
 judgment/judgment_model.md
 judgment/promotion_queue.md
@@ -80,17 +81,41 @@ assert_same "B: config.env comes from config.env.example" \
 # AGENTS.md is NOT created — Codex users rename CLAUDE.md themselves
 assert_absent "B: AGENTS.md is not created" "$B_FX/AGENTS.md"
 
-# The correction vocabulary is a MENU, not a default. Scaffolding it to the path
-# the scanner reads would make a shipped list of phrases everyone's correction
-# vocabulary without anyone having chosen it — and the scanner would start
-# harvesting on words the user never uses. The exact-set manifest above already
-# pins this; it is named here too because the failure it prevents is a
-# behaviour, not a stray file, and a manifest line does not say why.
-assert_absent "B: the correction-pattern menu is NOT activated by setup.sh" \
+# ── every scaffolded file is EMPTY FORM, not somebody's content ────────────
+# This is the property the two-layer split exists to guarantee, checked here on
+# the actual output of the actual run rather than on the templates (H3 does the
+# templates). A filled-in judgment arriving under the name of a scaffold is the
+# failure; it would be adopted by default, by everyone, without anyone choosing.
+assert_eq "B: the scaffolded judgment model has zero principles" \
+  "0" "$(grep -cE '^[0-9]+\. \*\*' "$B_FX/judgment/judgment_model.md" || true)"
+assert_eq "B: the scaffolded journal has zero dated events" \
+  "0" "$(grep -cE '^### D-[0-9]{4}-' "$B_FX/judgment/decisions_journal.md" || true)"
+assert_eq "B: the scaffolded approval queue has zero pending items" \
+  "0" "$(grep -cE '^## Q-[0-9]{4}-' "$B_FX/approval_queue.md" || true)"
+assert_eq "B: the scaffolded decisions SSOT has zero decisions" \
+  "0" "$(grep -cE '^### D-[0-9]{4}-' "$B_FX/ssot/decisions.md" || true)"
+assert_eq "B: the scaffolded verifiers has zero machine-layer rows" \
+  "0" "$(grep -cE '^\| \*\*' "$B_FX/verifiers.md" || true)"
+assert_eq "B: the scaffolded system map has zero project cards" \
+  "0" "$(grep -cE '^### ' "$B_FX/system_map.md" || true)"
+
+# The correction vocabulary is created, and created EMPTY. Shipping a list of
+# phrases would make it everyone's correction vocabulary without anyone having
+# chosen it, and the scanner would harvest on words the user never types. So the
+# file exists (there is somewhere to write) with comments only, and the scanner
+# refuses to run until the user fills it — the refusal is the forcing function.
+assert_file "B: a correction-pattern file is created for you to fill in" \
   "$B_FX/judgment/correction_patterns.txt"
-assert_absent "B: …not under any other name either" "$B_FX/correction_patterns.txt"
-assert_grep "B: instead setup.sh tells you to copy it and cut it down" \
-  "correction_patterns.example.txt" "$B_LOG1"
+assert_eq "B: …containing ZERO patterns (comments only)" \
+  "0" "$(grep -vcE '^[[:space:]]*(#|$)' "$B_FX/judgment/correction_patterns.txt" || true)"
+assert_grep "B: …and saying why it is empty" \
+  "NO PATTERNS" "$B_FX/judgment/correction_patterns.txt"
+assert_absent "B: …and nothing is dropped at the repo root instead" \
+  "$B_FX/correction_patterns.txt"
+assert_grep "B: the run says so out loud" "write your own before the scanner runs" "$B_LOG1"
+# the run must state, in its own words, that nothing from the sample shelf ran
+assert_grep "B: the run declares that nothing from the sample shelf was used" \
+  "was copied or activated" "$B_LOG1"
 # and the cron line it prints must carry --dir: cron's CWD is $HOME, so a line
 # without it silently harvests the wrong project's logs (or none at all).
 assert_grep "B: the printed scanner cron line names the log directory" \
@@ -101,6 +126,7 @@ assert_grep "B: first run reports creations" "create:" "$B_LOG1"
 printf '\n<!-- SENTINEL: edited by the operator -->\n' >> "$B_FX/CLAUDE.md"
 printf '\n- [ ] SENTINEL task\n' >> "$B_FX/ssot/tasks.md"
 printf '\nSENTINEL_KEY=value\n' >> "$B_FX/config.env"
+printf '\nSENTINEL_PATTERN\n' >> "$B_FX/judgment/correction_patterns.txt"
 
 b_hashes_before="$(tree_hashes "$B_FX")"
 b_mtimes_before="$(tree_mtimes "$B_FX")"
@@ -122,6 +148,8 @@ assert_eq "B: idempotent — no file was rewritten (mtime)" \
 assert_grep "B: operator edit to CLAUDE.md survives" "SENTINEL: edited by the operator" "$B_FX/CLAUDE.md"
 assert_grep "B: operator edit to ssot/tasks.md survives" "SENTINEL task" "$B_FX/ssot/tasks.md"
 assert_grep "B: operator edit to config.env survives" "SENTINEL_KEY=value" "$B_FX/config.env"
+assert_grep "B: the correction phrases you wrote survive a re-run" \
+  "SENTINEL_PATTERN" "$B_FX/judgment/correction_patterns.txt"
 
 # a pre-existing AGENTS.md must block CLAUDE.md creation (Codex users)
 B_FX2="$TEST_TMP/b_agents"

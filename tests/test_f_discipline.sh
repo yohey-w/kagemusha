@@ -19,13 +19,20 @@
 group "F. discipline scanner"
 
 F_SCAN="$REPO_ROOT/scripts/discipline_scan.py"
-F_CAT="$REPO_ROOT/templates/discipline_catalog.example.yaml"
+# The catalog the scan is EXERCISED with is a fixture, not the shipped example:
+# core ships the catalog FORMAT with zero entries (a shipped list would audit
+# somebody else's disciplines), so the entries with real regexes live next to
+# the synthetic logs they match. The shipped example is asserted separately,
+# below, to be empty and to fail loudly rather than scan nothing.
+F_CAT="$REPO_ROOT/tests/fixtures/discipline_catalog.yaml"
+F_SHIPPED="$REPO_ROOT/templates/discipline_catalog.example.yaml"
 F_LOGS="$TEST_TMP/f_logs"
 F_EMPTY="$TEST_TMP/f_empty"
 F_OUT="$TEST_TMP/f_report.md"
 
 assert_file "F: scripts/discipline_scan.py ships" "$F_SCAN"
-assert_file "F: templates/discipline_catalog.example.yaml ships" "$F_CAT"
+assert_file "F: tests/fixtures/discipline_catalog.yaml (the exercise fixture) ships" "$F_CAT"
+assert_file "F: templates/discipline_catalog.example.yaml ships" "$F_SHIPPED"
 assert_file "F: docs/discipline-audit.md ships" "$REPO_ROOT/docs/discipline-audit.md"
 assert_file "F: templates/discipline-audit-prompt.md ships" \
   "$REPO_ROOT/templates/discipline-audit-prompt.md"
@@ -49,7 +56,7 @@ f_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     "$f_now" '<command-name>noise</command-name>'
 } > "$F_LOGS/deadbeef-session.jsonl"
 
-assert_ok "F: scan runs against the shipped catalog" \
+assert_ok "F: scan runs against the fixture catalog" \
   python3 "$F_SCAN" --catalog "$F_CAT" --dir "$F_LOGS" --since 7d --out "$F_OUT"
 
 assert_grep "F: report says candidates, not findings" "candidates, not findings" "$F_OUT"
@@ -81,6 +88,19 @@ assert_exit "F: nonexistent log dir is an error" 2 \
   python3 "$F_SCAN" --catalog "$F_CAT" --dir "$TEST_TMP/f_no_such_dir"
 assert_exit "F: zero files scanned is an error, not an empty report" 2 \
   python3 "$F_SCAN" --catalog "$F_CAT" --dir "$F_EMPTY"
+
+# ── the SHIPPED catalog carries the format and no disciplines ──────────────
+# A catalog is a list of the disciplines its owner adopted. Shipping one would
+# audit somebody else's, report dead letters for rules nobody took, and read as
+# a starting set. So the example ships with `disciplines: []` and the scanner
+# refuses it loudly — the refusal is the forcing function, and a silent empty
+# report would be the failure.
+f_shipped_entries="$(grep -cE '^[[:space:]]*-[[:space:]]+id:' "$F_SHIPPED" || true)"
+assert_eq "F: the shipped catalog has zero active entries" "0" "$f_shipped_entries"
+assert_grep "F: …and still carries the field documentation" "type: prohibition" "$F_SHIPPED"
+assert_grep "F: …and shows one entry as a comment, not as data" "#  - id: X1" "$F_SHIPPED"
+assert_exit "F: an empty catalog is a loud error, not a quiet empty report" 2 \
+  python3 "$F_SCAN" --catalog "$F_SHIPPED" --dir "$F_LOGS"
 
 # ── catalog validation ─────────────────────────────────────────────────────
 f_cat() { printf '%s\n' "$@" > "$TEST_TMP/f_cat.yaml"; }
