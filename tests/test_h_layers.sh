@@ -23,6 +23,15 @@
 #       cookbook/ (a comment pointing readers at cookbook/README.md is fine)
 #   H6  the cookbook/ shelf and the boundary declaration are structurally
 #       present and agree with each other
+#
+# H6 IS STILL A FRAME, and this note is deliberately not deleted. It asserts
+# the subset that can be stated without the design ruling's 15-item acceptance
+# list, whose text has not been located in this repository, in any branch's
+# history, or in the session transcripts on this machine (searched: git log
+# --all, a full-tree grep including untracked files, and every .jsonl under
+# ~/.claude/projects/-home-tono-kagemusha/ — only the journal's reference to it
+# survives, D-2026-08-05-09). Widening H6 needs that list. Until somebody puts
+# it in the repository, this is a known gap, not a pass.
 # ═══════════════════════════════════════════════════════════════════════════
 # shellcheck shell=bash
 # shellcheck disable=SC2154  # globals come from scripts/test.sh
@@ -158,6 +167,29 @@ assert_no_grep "H2: the run's own output does not name the sentinel" "$H_SENT" "
 # above means "did not travel", not "was never there".
 assert_grep "H2: control — the sentinel really is on the shelf" \
   "$H_SENT" "$H_SHELF_DIR/README.md"
+
+# ─── H2b. the shelf can be DELETED and core still works ────────────────────
+# docs/layers.md states the operational test in those words: "cookbook/ を丸ごと
+# 消しても core の受入ゲートが緑のまま" / "deleting cookbook/ entirely leaves
+# core's acceptance gate green". H2 proves nothing TRAVELS from the shelf; this
+# proves core RUNS WITHOUT it, which is the other half and the one a tracked
+# document already promises. (The suite cannot re-run itself here, so what is
+# measured is the scaffolder — the only core script that could plausibly reach
+# for the shelf, and the one H5 guards by text.)
+H2B_FX="$TEST_TMP/h2b_kit"
+kit_copy "$H2B_FX"
+h2b_shelf="$H2B_FX/$(printf 'cook%s' 'book')"
+case "$h2b_shelf" in
+  "$TEST_TMP"/*) rm -rf "$h2b_shelf" ;;          # only ever inside our own mktemp dir
+  *) fail "H2b: refused to delete outside the sandbox" "$h2b_shelf" ;;
+esac
+assert_absent "H2b: the shelf is gone from the fixture" "$h2b_shelf"
+"$H2B_FX/scripts/setup.sh" > "$TEST_TMP/h2b_run.log" 2>&1
+assert_eq "H2b: setup.sh exits 0 with the shelf deleted" "0" "$?"
+h2b_tracked="$(git -C "$REPO_ROOT" ls-files | LC_ALL=C sort)"
+h2b_now="$( (cd "$H2B_FX" && find . -type f | sed 's|^\./||') | LC_ALL=C sort)"
+assert_eq "H2b: …and creates exactly the same set of files as with it present" \
+  "$h2_created" "$(comm -13 <(printf '%s\n' "$h2b_tracked") <(printf '%s\n' "$h2b_now"))"
 
 # ─── H3. INACTIVITY — core's templates are FORM, with nothing filled in ────
 # Core ships shape and never content (docs/layers.md, norm 1). "Content" here
