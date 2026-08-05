@@ -1,0 +1,144 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# persona-memory-schema.yaml — 人物像メモリの「型」だけ / the schema, never the values
+#
+# publication_class: P1  (schema published, all real values withheld as P3)
+# scope: 承認者1名 + 顧客数社 + AIエージェント複数、という規模の運用。
+#        従業員のいる組織・人事情報を扱う運用には、そのまま持ち込めない。
+# version: 1
+# adopted_at: 2026-08-06
+# status: active
+#
+# WHY THIS FILE EXISTS
+#   人物像のメモリは、判断の質を上げる代わりに **公開できないものの塊** になる。
+#   実値は全件非公開（P3）だが、「どういう欄を持たせ、どの欄で失効させ、
+#   どの欄を公開不可と宣言するか」という設計は公開できる。
+#   持ち帰るのは欄の設計であって、中身ではない。
+#
+#   ⚠️ 下の examples は **すべて架空** だ。実在の人物・取引先の値は1件も入っていない。
+#      架空であることが検算できるよう、値はわざと一般名詞にしてある。
+# ═══════════════════════════════════════════════════════════════════════════
+
+schema_version: 1
+
+# ─── 1レコードの必須フィールド ───────────────────────────────────────────
+fields:
+
+  - name: field
+    required: true
+    type: string
+    purpose: >-
+      何についての記述かを表す短いキー。**文章ではなく欄名**にする。
+      文章にすると、後で「この一文はまだ有効か」を判定できなくなる。
+
+  - name: purpose
+    required: true
+    type: string
+    purpose: >-
+      この欄を保持する理由を1行で。**理由が書けない欄は作らない**——
+      「なんとなく知っている」は、判断に効かないまま公開リスクだけを積む。
+
+  - name: source
+    required: true
+    type: enum
+    values: [stated, observed, inferred, third_party]
+    purpose: >-
+      本人が言ったのか、観測したのか、推論したのか、他人経由か。
+      **inferred と third_party は、判断の根拠として単独では使わない。**
+      ここを分けないと、AI が自分の推論を後から事実として読み直す。
+
+  - name: volatility
+    required: true
+    type: enum
+    values: [stable, slow, fast, situational]
+    purpose: >-
+      変わる速さ。expires_at の既定値を決めるのはこの欄で、
+      **situational は原則としてこのストアに置かない**（→ separation-policy.md）。
+
+  - name: expires_at
+    required: true
+    type: date | "none"
+    purpose: >-
+      失効日。**"none" を選ぶには理由欄が要る**。
+      期限の無い人物像は、更新されないまま参照され続けて古い判断を再生産する。
+
+  - name: decision_effect
+    required: true
+    type: string
+    purpose: >-
+      **この欄が実際にどの判断を変えるか。** 変える判断を書けないなら、その欄は消す。
+      人物像メモリが太る唯一の原因は、ここを空欄で通すことだ。
+
+  - name: disclosure_class
+    required: true
+    type: enum
+    values: [P0, P1, P2, P3]
+    purpose: >-
+      公開区分（→ ../disclosure-policy.md）。
+      **既定は P3。** 人物に関する記述は、本人可読性の検査を必ず通るまで公開側に置かない。
+
+  - name: last_verified_at
+    required: true
+    type: date
+    purpose: >-
+      最後に**現物で**確かめた日。書いた日ではない。
+      expires_at より重要な欄で、これが古いレコードは「知っている」ではなく「知っていたつもり」だ。
+
+# ─── 架空の記入例（実値ではない） ───────────────────────────────────────
+# 実在の人物・取引先の値は1件も含まれない。欄の埋め方だけを見るためのもの。
+examples:
+
+  - field: preferred_channel
+    purpose: 連絡手段を毎回聞き直さないため
+    source: stated
+    volatility: slow
+    expires_at: "2027-01-31"
+    decision_effect: 連絡の下書きをどのチャネル向けの体裁で作るかが変わる
+    disclosure_class: P3
+    last_verified_at: "2026-06-30"
+
+  - field: decision_latency
+    purpose: 期限設計のとき、相手の返答待ちに何日積むかを決めるため
+    source: observed
+    volatility: slow
+    expires_at: "2026-12-31"
+    decision_effect: 提案書の回答期限の置き方が変わる
+    disclosure_class: P3
+    last_verified_at: "2026-07-15"
+
+  - field: technical_vocabulary_level
+    purpose: 文書をどの語彙で書くかを決めるため
+    source: inferred          # ← inferred なので単独では根拠にしない
+    volatility: slow
+    expires_at: "2026-11-30"
+    decision_effect: 用語に注釈を付けるかどうかが変わる（内容は変えない）
+    disclosure_class: P3
+    last_verified_at: "2026-07-01"
+
+  - field: timezone
+    purpose: 送信時刻の設計
+    source: stated
+    volatility: stable
+    expires_at: "none"        # ← "none" を選んだので理由が要る
+    expires_reason: 居住地の変更が起きたら、その事象自体が別の記録として入るため
+    decision_effect: 送信予約の時刻が変わる
+    disclosure_class: P1      # ← 地域名を出さず「時差の扱いがある」とだけなら派生公開しうる
+    last_verified_at: "2026-05-20"
+
+# ─── 記入しないもの（設計上の禁止） ─────────────────────────────────────
+forbidden_fields:
+  - reason: 判断を変えない属性は保持しない（decision_effect が書けないもの全般）
+  - reason: 健康・信条・家族構成など、判断に効いても保持の正当化が難しいもの
+  - reason: 第三者から伝聞した評価（source が third_party である評価文）。事実は可・評価は不可
+  - reason: 一時的な状態（→ separation-policy.md の「一時状態ストア」へ。ここには置かない）
+
+# ─── 運用規則 ───────────────────────────────────────────────────────────
+operating_rules:
+  - "既定の disclosure_class は P3。公開側へ動かすのは1件ずつの明示的な判断でのみ。"
+  - "last_verified_at が expires_at を越えたレコードは、消さずに「失効」印を付けて参照から外す
+     （消すと「なぜその判断をしたか」の復元ができなくなる）。"
+  - "source が inferred のレコードは、本人の実発話が出た時点で stated へ昇格させてよいが、
+     回数の積み上げでは昇格させない——AI が自分の推測を自分で承認する経路を塞ぐため。"
+  - "このストアを読んで生成した文面は、人物像を根拠として明示しない。
+     理由は秘匿ではなく出所の規律だ——このストアの多くは source: inferred であり、
+     推論を文面の根拠として掲げた瞬間、AI 自身の推測が事実として相手に差し出される。
+     人物像は文面の書き方を変えてよいが、文面の根拠にはしない。"

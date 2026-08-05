@@ -33,8 +33,8 @@
 4. **Price from actual hours, not vibes.** 見積は想定工数×単価の内訳で出す。勘で丸めた総額は根拠を聞かれると崩れる。 [D:D-2026-07-20-02] △（しきい値は承認者に要確認: 小額案件で内訳が過剰になる線引きが未確定）
 
 ### 伝達
-5. **Plain language over jargon in anything a client will read.** 対外文書は初見で意味が取れる完文で書く。内部略称・コードネームを対外面に出さない。 [C:2026-07-15] ✔
-6. **Lead with the recommendation, then the reason, then the alternative.** 判断を含む報告は「推奨 + 根拠（原則 ID 引用）+ 捨てた代替案」の順。原則を引用できない判断が続くならモデルの穴。 [C:2026-07-11] ✔
+5. **Plain language over jargon in anything a client will read.** 対外文書は初見で意味が取れる完文で書く。内部略称・コードネームを対外面に出さない。 [C:2026-07] ✔
+6. **Lead with the recommendation, then the reason, then the alternative.** 判断を含む報告は「推奨 + 根拠（原則 ID 引用）+ 捨てた代替案」の順。原則を引用できない判断が続くならモデルの穴。 [C:2026-07] ✔
 
 ---
 

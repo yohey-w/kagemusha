@@ -1,0 +1,588 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# manifest.yaml — この公開パッケージの台帳 / the ledger of what was published
+#
+# **この判断公開パッケージ**の公開物を1件1行で数える。**非公開のものも、区分と
+# 広い理由分類だけは行として載せる**——載せないと母数が嘘になるからだ。
+#
+# ⚠️ 射程は「選別して公開すると決めた記録」だけだ。evidence/ の解説ファイル
+#    （README.md・failure-cases/README.md）と、判断公開パッケージより前からある
+#    2つの抜粋（ledger_excerpt.md・weekly_distill_log_excerpt.txt）は、
+#    **この台帳の行にはならない**。前者は台帳の説明であって台帳の対象ではなく、
+#    後者は別の主張（機構が無人で回った証拠）を担う抜粋で、母数も別だからだ。
+#
+# 区分の定義・判定の3検査・変換の型は disclosure-policy.md が正本。
+#   P0 原文公開 / P1 派生公開 / P2 存在と集計のみ / P3 非公開（構造も示さない）
+#
+# 検算のしかた（4行とも実行して一致することを確かめられる）:
+#   ls principles/public  | wc -l                              -> 21   (P0)
+#   ls principles/derived | wc -l                              ->  7   (P1)
+#   sed -n '/^principles_withheld:/,/^$/p' manifest.yaml | grep -c '^  - id:'  ->  3   (P3)
+#   21 + 7 + 3 = 31 = 価値判断モデルの原則の全数
+#
+#   ⚠️ `grep -c "P3" manifest.yaml` では数えられない——この文字列は区分の定義行・
+#      denominators・原則以外の P3 行にも出るので 3 にならない。数えるのは
+#      `principles_withheld` の要素数であって、文字列の出現回数ではない。
+#      （この注記自体が、最初に書いた検算手順が間違っていたことの記録である）
+# ═══════════════════════════════════════════════════════════════════════════
+
+manifest_version: 1
+published_at: "2026-08-06"
+source_instance: "作者の実走インスタンス（n=1）"
+policy: disclosure-policy.md
+
+# ─── 母数 / denominators ────────────────────────────────────────────────
+denominators:
+  judgment_principles:
+    total: 31
+    P0: 21
+    P1: 7
+    P2: 0
+    P3: 3
+  unnumbered_items:
+    total: 2
+    note: >-
+      1件は state-guardrails/ として P1 で派生公開。もう1件（決定規則）は
+      disclosure-policy.md §3 に吸収したため、独立ファイルとしては数えない。
+  misassertion_cases:
+    total: 9
+    P0: 3
+    P2: 6
+    detail: failure-cases/aggregate-manifest.yaml
+  unnumbered_withheld:
+    total: 2
+    note: >-
+      安定 ID を持たない非公開の構成物 2 件（state_guardrails の state-profile-triggers と
+      memory_architecture の persona-memory-values）。原則 31 本にも unnumbered_items の 2 件にも
+      含まれない別の集合で、この台帳の行数を合わせるために数えている。
+      うち persona-memory-values は「人物像メモリの実値は全件非公開」と同じものを指すので、
+      足し上げるときに二重に数えないこと。→ disclosure-policy.md §4 の表の最下行
+
+# ⚠️ 安定 ID は話題順に振られている。したがって欠番の位置から、非公開 3 本がモデルの
+#    どのあたりの領域にあるかは**ある程度推測できる**——番号を残すことは完全な遮蔽ではない。
+#    それでも振り直さないのは、母数の正直さを優先したからだ。振り直せば位置は隠れるが、
+#    「31 のうち 3 本を伏せた」という検算可能性そのものが消える。検算可能性のほうを取った。
+
+# ─── 判断原則 / judgment principles ─────────────────────────────────────
+principles:
+  - id: "principle-07"
+    stable_id: 7
+    title: "(7) 提案・連絡は商品の思想と自己整合"
+    path: principles/public/principle-07.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "対外文書全般。商品に思想的な主張がある場合に効く。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-09"
+    stable_id: 9
+    title: "(9) verbatim 主義"
+    path: principles/public/principle-09.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "引用・要約・報告のすべて。特に AI が人間の発言を運ぶ場面。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-10"
+    stable_id: 10
+    title: "(10) 謝るときは最初に短く"
+    path: principles/public/principle-10.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: [T1]        # 出典 quote を行ごと削除（本文は原文のまま）
+    transformation_note: >-
+      ⚠️ P0 に変換が載る唯一の行。原則の本文は語彙置換のみだが、出典の実発話 1 行だけを
+      本人可読性の検査（disclosure-policy.md 検査1）により削除した。本文が原文である以上
+      P0 のまま P0=21 に数える。宣言つきの例外として、この行と当該ファイル本体の両方に書く
+      （disclosure-policy.md §6 の作法——免除は穴であり、宣言されていない穴が検査の死に方だ）。
+    omission_reason: null
+    scope: "実害の小さい自分側の誤りを相手に伝える場面。実害が大きい場合は別（謝罪より復旧）。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-11"
+    stable_id: 11
+    title: "(11) スコープ規律"
+    path: principles/public/principle-11.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "受託の進行管理。※本原則は本モデル中もっとも実発話の裏付けが薄い（承認者に要確認のまま公開している）。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-12"
+    stable_id: 12
+    title: "(12) 戻せる限り先行してよい——承認ゲートは可逆/不可逆で切る"
+    path: principles/public/principle-12.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "AI エージェントの自律実行の範囲。人間の承認が制度上必須な領域（法務・支払）には適用しない。"
+    version: "2 — 改訂: 2026-08-03（週次蒸留の保留を承認者が裁可し、ID を保ったまま本文を差し替え）"
+    published_at: "2026-08-06"
+
+  - id: "principle-13"
+    stable_id: 13
+    title: "(13) 現物主義（Done is a claim, not a proof）"
+    path: principles/public/principle-13.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "完了報告の全般。自己申告・サブエージェントの報告・CI の緑を含む。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-14"
+    stable_id: 14
+    title: "(14) 並列が既定・メイン回線は受令専用"
+    path: principles/public/principle-14.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "サブエージェントを複数走らせられる環境。並列書き込みの衝突対策（隔離または逐次化）が前提。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-16"
+    stable_id: 16
+    title: "(16) 判断の痕跡を残す"
+    path: principles/public/principle-16.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "判断が言語で行われる仕事。口頭のみ・非言語の判断には適用できない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-17"
+    stable_id: 17
+    title: "(17) 承認者をボトルネックにしない"
+    path: principles/public/principle-17.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "承認者が1名・AIエージェントが常時複数走る運用。合議や稟議で意思決定する組織では未検証。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-18"
+    stable_id: 18
+    title: "(18) 設計・戦略は当代最強の頭へ、問いの設定ごと委ねる（メタ委任）"
+    path: principles/public/principle-18.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "能力差のあるモデルを複数持てる環境。単一モデル運用では効かない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-19"
+    stable_id: 19
+    title: "(19) 最強の頭の答えは待ちきる・乱発しない"
+    path: principles/public/principle-19.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "高コスト低頻度の上位モデルを、日常の配管とは別枠で併用する運用。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-20"
+    stable_id: 20
+    title: "(20) 承認者に残る領域"
+    path: principles/public/principle-20.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "AI へ委譲する範囲を決めるときの境界。委譲の可否であって、能力の優劣ではない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-21"
+    stable_id: 21
+    title: "(21) 平易な日本語・ジャーゴン退治"
+    path: principles/public/principle-21.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "承認者と顧客が読むすべての文書。技術者同士の内部文書には適用しない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-22"
+    stable_id: 22
+    title: "(22) タイトル・命名・論理整合が第一関門"
+    path: principles/public/principle-22.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "成果物の受け取り。中身の質を見る前に通す門。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-24"
+    stable_id: 24
+    title: "(24) 汎用性ファースト・class fix（もぐら叩き禁止）"
+    path: principles/public/principle-24.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "道具・基盤の側の修正。個別の納品物には適用しない（下記の層の別を参照）。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-25"
+    stable_id: 25
+    title: "(25) クロスモデル検算——収束≠正しさ"
+    path: principles/public/principle-25.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "不可逆・高額・対外評判にかかわる判断。日常の実装判断には過剰。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-26"
+    stable_id: 26
+    title: "(26) 根本原因まで掘る"
+    path: principles/public/principle-26.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "障害・不具合の報告。運用上のワークアラウンドを許す場面では、掘ったうえで別に判断する。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-27"
+    stable_id: 27
+    title: "(27) 早期検証ゲート（1件目でテスト）"
+    path: principles/public/principle-27.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "同型の処理をバッチで流す仕事。1件目と N 件目の性質が違う処理には効かない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-28"
+    stable_id: 28
+    title: "(28) 正本は最小・導出可能物は持たない"
+    path: principles/public/principle-28.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "成果物の構成設計。監査上の理由で重複が必要な領域（証憑）には適用しない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-30"
+    stable_id: 30
+    title: "(30) リスク案件の選別"
+    path: principles/public/principle-30.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "受託の引き受け判断。反応先は特定の相手ではなく案件の一般カテゴリ。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-31"
+    stable_id: 31
+    title: "(31) 希少なのは時間と機会、道具のバジェットは時間を守るために使う"
+    path: principles/public/principle-31.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "道具の従量課金が、担当者の時間単価より十分に安い場合。反転しうる（下記）。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-01"
+    stable_id: 1
+    title: "(1) 値付けは実工数を積んでから"
+    path: principles/derived/principle-01.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T1, T2, T4]
+    omission_reason: null
+    scope: "受託の見積。定価商品には適用しない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-03"
+    stable_id: 3
+    title: "(3) 安値は投資として意図的に出す"
+    path: principles/derived/principle-03.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T5]
+    omission_reason: null
+    scope: "初回取引・事例を作る目的がある案件。継続取引には適用しない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-04"
+    stable_id: 4
+    title: "(4) 相場は正直に開示"
+    path: principles/derived/principle-04.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T2]
+    omission_reason: null
+    scope: "見積の提示。相手が相場を知らない可能性がある取引で効く。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-05"
+    stable_id: 5
+    title: "(5) 決断は分割すれば軽くなる"
+    path: principles/derived/principle-05.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T1, T2, T3]
+    omission_reason: null
+    scope: "相手に大きな意思決定を求める場面。分割のたびに事務コストが増えるため、小額取引では逆効果。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-08"
+    stable_id: 8
+    title: "(8) 相手の生活実態に同期要求を最小化"
+    path: principles/derived/principle-08.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T1]
+    omission_reason: null
+    scope: "対外のやり取り全般。相手の稼働が読めない、または不規則な場合に強く効く。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-15"
+    stable_id: 15
+    title: "(15) 資産化衝動"
+    path: principles/derived/principle-15.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T1, T5]
+    omission_reason: null
+    scope: "自分の道具・自分の機構。他者との取引で生まれた成果物には、権利関係の判断が別に要る。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "principle-29"
+    stable_id: 29
+    title: "(29) 人手工程は全て疑う"
+    path: principles/derived/principle-29.md
+    claim_supported: >-
+      判断原則が実発話から蒸留され、出典・射程・版つきの運用規則として保持されていること。
+    publication_class: P1
+    transformation: [T1, T4]
+    omission_reason: null
+    scope: "業務プロセスの設計。人手であること自体に価値がある工程（判断・関係構築）には適用しない。"
+    version: "1"
+    published_at: "2026-08-06"
+
+
+# ─── 判断原則のうち非公開分 / withheld principles ───────────────────────
+# 題名を書かない。所属する節も書かない。書けば、伏せた意味が消える。
+# 番号（安定 ID）だけは残す——飛びを隠すために振り直すと、母数が嘘になるからだ。
+principles_withheld:
+  - id: "principle-02"
+    stable_id: 2
+    publication_class: P3
+    omission_reason: third_party_context
+    published_at: null
+  - id: "principle-06"
+    stable_id: 6
+    publication_class: P3
+    omission_reason: third_party_context
+    published_at: null
+  - id: "principle-23"
+    stable_id: 23
+    publication_class: P3
+    omission_reason: third_party_context
+    published_at: null
+
+omission_reason_definitions:
+  third_party_context: >-
+    原則を支える出典が、取引の相手方についての記述（属性・商習慣・支払能力・信頼関係の評価）で
+    構成されており、匿名化しても当事者本人には特定できる。伏せ字化しても業種と取引形態の組で
+    復元されるため、派生版も作らず非公開とした。→ disclosure-policy.md 検査1
+
+# ─── 状態ガードレール / state guardrails ────────────────────────────────
+state_guardrails:
+  - id: "state-guardrails"
+    path: state-guardrails/temperature-profile-public.md
+    claim_supported: >-
+      承認者の状態に関する保持情報を、発火条件を1つも公開せずに
+      エージェント側の安全行動へ変換できること。
+    publication_class: P1
+    transformation: [T1, T5, emotional_to_operational]
+    omission_reason: null
+    scope: "承認者が1名で、AI が承認者へ判断を差し出す運用。組織の合議には未検証。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "state-profile-triggers"
+    publication_class: P3
+    omission_reason: negotiation_leverage
+    scope: null
+    version: null
+    published_at: null
+
+# ─── 記憶の構造 / memory architecture ───────────────────────────────────
+memory_architecture:
+  - id: "persona-memory-schema"
+    path: memory-architecture/persona-memory-schema.yaml
+    claim_supported: >-
+      人物像メモリが、失効・出所・公開区分を持つ構造として設計されていること。
+      記入例はすべて架空。
+    publication_class: P1
+    transformation: [values_replaced_with_fiction]
+    omission_reason: null
+    scope: "承認者1名 + 顧客数社 + AIエージェント複数の規模。人事情報を扱う運用には未検証。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "separation-policy"
+    path: memory-architecture/separation-policy.md
+    claim_supported: >-
+      判断原則 / 長期人物像 / 一時状態 / 顧客文脈を別ストアに分ける方針が、
+      寿命と公開可否の2軸から導かれていること。
+    publication_class: P1
+    transformation: [T1]
+    omission_reason: null
+    scope: "承認者1名・顧客数社・AI複数の運用。規制対象データを扱う運用には未検証。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "persona-memory-values"
+    publication_class: P3
+    omission_reason: subject_readability
+    scope: null
+    version: null
+    published_at: null
+
+# ─── 誤断定のケース / misassertion cases ────────────────────────────────
+failure_cases:
+  - id: "failure-case-001"
+    path: failure-cases/case-001.md
+    class_counter: 1
+    claim_supported: >-
+      台帳を持つ前の失敗は「失敗した事実」しか残らず、原因の分析も機構化もできないこと。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "外部プラットフォームの投稿状況を検索ツール経由で確認する場面。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "failure-case-002"
+    path: failure-cases/case-002.md
+    class_counter: 3
+    claim_supported: >-
+      規律が「併記」から「先に書く」へ順序を反転して機構化されたこと、および
+      事前にコミットした格上げトリガーが実際に発火したこと。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "ある道具が存在するかを調べて報告する場面。棚が複数ある領域で効く。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "failure-case-003"
+    path: failure-cases/case-003.md
+    class_counter: 7
+    claim_supported: >-
+      モデルの内部知識を出典として扱った断定が誤り、かつ誤った成果物まで生んだこと。
+      対策の効果判定条件が事前に固定されていること。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "自分が動いている実行環境の機能について答える場面。"
+    version: "1"
+    published_at: "2026-08-06"
+
+  - id: "failure-cases-withheld"
+    count: 6
+    publication_class: P2
+    omission_reason: third_party_context
+    detail: failure-cases/aggregate-manifest.yaml
+    published_at: "2026-08-06"   # 集計のみ公開
+
+# ─── 方針そのもの / the policy itself ───────────────────────────────────
+policy_documents:
+  - id: "disclosure-policy"
+    path: disclosure-policy.md
+    claim_supported: >-
+      公開区分と判定検査が、公開作業の前に固定されていること（後付けの正当化でないこと）。
+    publication_class: P0
+    transformation: []
+    omission_reason: null
+    scope: "この実インスタンスの公開判断。他所での妥当性は未検証。"
+    version: "1"
+    published_at: "2026-08-06"
+
+# ─── 全体の理由分類の辞書 / omission reasons used anywhere in this file ──
+omission_reasons:
+  third_party_context: 取引の相手方の文脈が本体で、匿名化しても当事者には特定できる
+  subject_readability: 本人が読んで自分と分かり、かつ読んで嫌な種類の記述
+  negotiation_leverage: 公開すると、読んだ相手が自分の見せ方を最適化でき、承認の独立性が壊れる
+
+# ─── この台帳が証明していないこと / scope ────────────────────────────────
+not_proven:
+  - 選別が正しいこと。判定は1名の判断であり、外部監査を受けていない
+  - 非公開分が公開分と同じ性質であること（読者は確かめられない）
+  - 匿名化に漏れが無いこと。機械ゲートが拾うのは既知のパターンだけ
+  - これが他の環境で妥当な線であること（n=1）

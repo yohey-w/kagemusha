@@ -1,13 +1,13 @@
 # ledger_excerpt.md — 判断台帳からの匿名化抜粋 / redacted excerpt from the live journal
 
 > **実台帳からの匿名化抜粋。** 書式の完全版（ひな型・4つの規律・記帳判定器8トリガー）は
-> [`../templates/decisions_journal.md`](../templates/decisions_journal.md)。
+> [`templates/decisions_journal.md`](../../../templates/decisions_journal.md)。
 > **実ファイル側では、この2件は書かれて以降 in-place で編集されていない**
 > ——台帳は追記専用で、**訂正は上書きではなく `revises:` を付けた新エントリで行う**（イベントソーシング）。
 > **ただしこの抜粋自体は逐語ではない**: 下記の方針で語彙を置換してある（実発話の quote だけは逐語）。
 >
 > **A redacted excerpt from the real journal.** The full format lives in
-> [`../templates/decisions_journal.md`](../templates/decisions_journal.md). In the real file
+> [`templates/decisions_journal.md`](../../../templates/decisions_journal.md). In the real file
 > neither entry has been edited in place since it was written — the journal is append-only and
 > corrections arrive as *new* entries carrying `revises:`. **This excerpt, however, is not
 > verbatim**: vocabulary was substituted per the policy below. The quoted speech is.
@@ -41,7 +41,7 @@
 **そして一周はこのリポジトリの外まで出ている。** 差し替わった原則
 「承認ゲートは可逆/不可逆で切る」は、キット本体の README §5 の表
 （*reversible = auto / irreversible = approval queue*）と
-[`../templates/judgment_model.md`](../templates/judgment_model.md) の原則1（P1）に載っている。
+[`templates/judgment_model.md`](../../../templates/judgment_model.md) の原則1（P1）に載っている。
 **下の 2026-07-28 の一言と同じ命題が、いまあなたが読んでいるキットの本文になっている。**
 
 > **In English.** Three dated events. 07-28: the approver overruled a standing rule in one

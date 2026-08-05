@@ -9,7 +9,9 @@
 > loop running. This directory closes that gap with **hand-redacted excerpts from the author's
 > live instance** — one unattended weekly-distillation run, and the two journal entries around a
 > correction that ended up rewriting a principle in the model the agent reads each session.
-> Two files, ~5 minutes to read. Scope and limits are stated below; nothing here is a benchmark.
+> Those two files take ~5 minutes. Below them sits the **disclosure package** — the judgment model
+> itself, published under a stated policy with its denominators. Scope and limits are stated
+> throughout; nothing here is a benchmark.
 
 ---
 
@@ -22,6 +24,45 @@
 
 **2つで一周が閉じる。** ログ側が「機構が回っている」、台帳側が「回った結果、判断が更新された」。
 片方だけでは cron が動いているだけ、あるいは手で書いた作文と区別がつかない。
+
+---
+
+## 判断公開パッケージ / the disclosure package
+
+上の2ファイルが示すのは「一周が回った」ことだ。ここから下は「**回った結果、何が溜まったのか**」——
+実インスタンスの**価値判断モデル・状態ガードレール・記憶の構造・誤断定の記録**を、
+区分を決めて選別公開したものだ。**選別の規則を先に固定し、出さなかった数を必ず書く**のがこのパッケージの形式である。
+
+| パス | 中身 |
+|---|---|
+| [`disclosure-policy.md`](disclosure-policy.md) | **公開区分 P0〜P3 の定義と、区分を決める3つの検査**（本人可読性・組合せ逆算・一方向エクスポート）。このパッケージの正本 |
+| [`manifest.yaml`](manifest.yaml) | **この判断公開パッケージの公開物の台帳**。非公開のものも区分と広い理由分類だけは行として載る（載せないと母数が嘘になる）。上の2抜粋と各 README は**台帳の対象外**——理由はファイル冒頭 |
+| [`principles/public/`](principles/public/) | **P0 = 原文公開の判断原則 21 本**。1本1ファイル・安定 ID で命名 |
+| [`principles/derived/`](principles/derived/) | **P1 = 派生公開の判断原則 7 本**。変換の**型**だけを明記し、削った中身は書かない |
+| [`state-guardrails/`](state-guardrails/) | 承認者の状態プロファイル（原文は非公開）から、**エージェント側の安全行動だけ**を取り出した派生版 |
+| [`memory-architecture/`](memory-architecture/) | 人物像メモリの**スキーマだけ**（実値は全件非公開・記入例は架空）と、記憶を4つのストアに割る方針 |
+| [`failure-cases/`](failure-cases/) | **AI 自身の誤断定 9 件のうち 3 件を全文公開**。残り 6 件は集計のみ |
+
+### 母数 / the denominators
+
+| 対象 | 母数 | 原文公開 (P0) | 派生公開 (P1) | 集計のみ (P2) | 非公開 (P3) |
+|---|---|---|---|---|---|
+| 価値判断モデルの原則 | **31** | **21** | **7** | 0 | **3** |
+| 誤断定（自己申告の累積） | **9** | **3** | 0 | **6** | 0 |
+| 人物像メモリの実値 | 全件 | 0 | 0（スキーマのみ P1） | 0 | 全件 |
+
+**出さなかった数を書くのがこのパッケージの主張だ。** 選別して出す以上、
+**選別工程そのものを証拠にしない限り、都合のよい部分集合と区別がつかない**。
+非公開分の中身が公開分と同じ性質だという保証は無い——そこは確かめられない部分であり、
+だからこそ数と理由分類だけは正直に出している。
+
+> **In English.** Below the two excerpts sits the **disclosure package**: the live instance's
+> judgment principles, state guardrails, memory schema, and its own record of misassertions,
+> published under a four-class policy fixed *before* the selection was made. **31 principles: 21
+> verbatim, 7 transformed, 3 withheld. 9 misassertions: 3 published in full, 6 counted only.**
+> Withheld items still appear as rows — with a class and a broad reason, never a title. Stating the
+> denominator is the whole point: a curated subset with no denominator is indistinguishable from a
+> flattering one. `disclosure-policy.md` is the normative file.
 
 ---
 
@@ -72,7 +113,10 @@
 ⑥ローカルのプロジェクトディレクトリ名（`[dir-1]` 等へ置換）⑦承認者・エージェントの内輪の呼称
 （キットの語彙＝**承認者 / サブエージェント**へ置換）。
 
-残したもの: **実発話の quote**（要約は台帳の規律違反）・日付・件数・判断の骨格・失敗の記録。
+残したもの: **実発話の quote**（要約は台帳の規律違反）・件数・判断の骨格・失敗の記録・
+**機構側の日付**（台帳エントリ ID・実ログの時刻・上の2抜粋が並べる3イベント）。
+⚠️ **quote の出典タグの日付は残していない**——判断公開パッケージの原則ファイルでは
+変換 `T6` で**月粒度**（`[C:MM]`）へ粗くしてある（→ [`disclosure-policy.md`](disclosure-policy.md) §6）。
 
 **残っている抜けの可能性は残っている抜けとして扱う。** 匿名化は人手であり、
 機械ゲート（`tests/forbidden_patterns.txt`）が拾うのはそのうち既知のパターンだけだ。
@@ -93,7 +137,7 @@
 
 ## ひな型との食い違いについて / a note on the templates
 
-[`templates/decisions_journal.md`](../templates/decisions_journal.md) にも「承認ゲートの軸を可逆/不可逆へ」という
+[`templates/decisions_journal.md`](../../../templates/decisions_journal.md) にも「承認ゲートの軸を可逆/不可逆へ」という
 サンプルエントリが `D-2026-07-28-01` として載っている。**あれは実記録ではなく、書式を見せるための例示だ**
 （quote も読みやすく書き直してある。実台帳の `D-2026-07-28-01` はまったく別の件で、この裁定の実 ID は
 [`ledger_excerpt.md`](ledger_excerpt.md) にあるとおり `D-2026-07-28-13` だ）。
@@ -114,3 +158,13 @@
 1. `bash scripts/test.sh` — キット自身の検収ゲート（skip 無し）。グループ C はこのディレクトリも走査する
 2. `ledger_excerpt.md` の 2026-07-28 の裁定と、`templates/judgment_model.md` の原則1・README §5 の表を突き合わせる。**同じ命題が同じ軸で書かれているはず**
 3. `weekly_distill_log_excerpt.txt` の lint 行（`L1本文=75行/上限160・原則数=31/上限32`）と、`templates/judgment_model.md` が宣言している上限（≤160行）を突き合わせる
+4. **母数の検算**（`evidence/` で実行）:
+   ```
+   ls principles/public  | wc -l                                              #  21
+   ls principles/derived | wc -l                                              #   7
+   sed -n '/^principles_withheld:/,/^$/p' manifest.yaml | grep -c '^  - id:'  #   3
+   ```
+   **合計 31** が、3 の lint 行の「原則数=31」と一致する。**一致しなければ、どちらかが嘘**。
+   （⚠️ `grep -c "P3" manifest.yaml` では数えられない。区分の定義行や原則以外の P3 行も拾うため——
+   **この検算手順は最初に書いたものが間違っており、実行して直したもの**だ）
+5. `failure-cases/aggregate-manifest.yaml` の `counts`（recorded 9 / published 3 / withheld 6）と、`failure-cases/` にある `case-00*.md` の実ファイル数（3）を突き合わせる

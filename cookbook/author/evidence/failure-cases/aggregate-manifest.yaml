@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# aggregate-manifest.yaml — 誤断定クラスの集計 / the misassertion counter
+#
+# このクラスは「AI（このリポジトリのエージェント自身）が、確認せずに断定して
+# 外した件」を発生順の通し番号で数えたもの。全件が判断台帳に自己申告で記帳
+# されている。中身を出さないものも、**数には必ず含める**。
+#
+# ⚠️ このカウンタが数えているのは「指摘されたか、自分で気づいた」誤断定だけだ。
+#    気づかなかった誤断定は数えられない。9 は下限であって全数ではない。
+# ═══════════════════════════════════════════════════════════════════════════
+
+as_of: "2026-08-06"
+class_name: "unverified_assertion"        # 確認していない断定（否定・帰属・因果・数量・評価）
+
+counts:
+  recorded: 9
+  published: 3        # publication_class P0 — 全文公開
+  withheld: 6         # publication_class P2 — 存在と集計のみ
+
+# ─── 公開分（本ディレクトリに全文がある） ───────────────────────────────
+published:
+  - counter: 1
+    file: case-001.md
+    publication_class: P0
+    assertion_type: nonexistence
+    outcome: 記録の欠落そのものが公開内容（断定時に何を見たかが残っていない）
+
+  - counter: 3
+    file: case-002.md
+    publication_class: P0
+    assertion_type: nonexistence
+    outcome: 機械層の検証器を設置。事前コミットした格上げトリガーは後に発火した
+
+  - counter: 7
+    file: case-003.md
+    publication_class: P0
+    assertion_type: nonexistence
+    outcome: 誤って作った重複成果物を削除。クラスとしての対策は未実装・判定未了
+
+# ─── 非公開分（存在と分類のみ・中身は出さない） ─────────────────────────
+# 理由分類は広い分類だけを書く。案件・相手・時期・領域は書かない。
+withheld:
+  - counter: 2
+    publication_class: P2
+    omission_reason: third_party_context
+  - counter: 4
+    publication_class: P2
+    omission_reason: third_party_context
+  - counter: 5
+    publication_class: P2
+    omission_reason: third_party_context
+  - counter: 6
+    publication_class: P2
+    omission_reason: third_party_context
+  - counter: 8
+    publication_class: P2
+    omission_reason: third_party_context
+  - counter: 9
+    publication_class: P2
+    omission_reason: third_party_context
+
+omission_reason_definitions:
+  third_party_context: >-
+    誤りの中身が取引の相手方の文脈（誰の担当か・何が納品されているか・何が設定されているか）で
+    あり、匿名化しても当事者本人には特定できる。本人可読性の検査により非公開。
+    → ../disclosure-policy.md 検査1
+
+# ─── クラスの推移（型の広がり） ─────────────────────────────────────────
+# 個別の件を特定しない粒度でのみ記す。
+class_evolution:
+  - range: "1-3"
+    assertion_type: nonexistence
+    note: 3 件目で機械層の検証器（否定命題の射程チェック）を設置
+  - range: "4-6"
+    assertion_type: withheld  # P2=存在と集計のみ。型の範囲別開示は非公開件への帰属を許すため撤回(再監査指摘)
+    note: 機械層の設置後に発生。型が不存在から帰属・因果へ広がった＝機械層は必要だが不十分
+  - range: "7-9"
+    assertion_type: withheld  # P2=存在と集計のみ。型の範囲別開示は非公開件への帰属を許すため撤回(再監査指摘)
+    note: >-
+      規律の射程を否定から肯定の断定全般（帰属・因果・数量・評価）へ拡張。この範囲で初めて
+      unverified_relay 型（断定の出所が自分の外＝サブエージェントの報告）が現れた。
+      どの件がどの型かは、非公開分については書かない（P2 = 存在と集計のみ）
+
+# ─── 事前にコミットした判定条件（後付けの数え直しを防ぐため公開する） ───
+pre_committed_checks:
+  - trigger: "同クラスの 4 件目が発生したら、機械層では不足と判定し、出力前の強制ゲートへ格上げする"
+    committed_at: "2026-07-28"
+    fired: true
+    fired_at: "2026-07-29"
+    status: 格上げの機構設計を血統の異なるベンダーのモデルへ発注済み・実装は未了
+  - trigger: "出力前の強制ゲートの効果は、実装後に発生した件でのみ判定する"
+    committed_at: "2026-08-03"
+    fired: false
+    status: 未実装につき判定対象なし（実装前に起きた 8・9 件目は対策の失敗として数えない）

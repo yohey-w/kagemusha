@@ -2,9 +2,9 @@
 
 *English summary at the bottom.*
 
-core が配るのは**空の形式**だ（[`../../../docs/layers.md`](../../../docs/layers.md)）。ここにあるのは**その同じ形式に、作者の実走インスタンスの中身が入ったもの**を、ループが実際に置いているパスに並べたものである。
+core が配るのは**空の形式**だ（[`../../../docs/layers.md`](../../../docs/layers.md)）。ここにあるのは**その同じ形式を、書式と例示（プレースホルダ入り）で書き起こしたもの**を、ループが実際に置いているパスに並べたものである。**作者の実データではない**——記入内容・人名・数値は例示であり、実記録は [`../evidence/`](../evidence/) に公開方針つきで出している。
 
-**仕様ではなく実例として読むこと。** 機構は core のもの、中身は作者のもの。あなたのループで正しいかどうかは、[`../../README.md`](../../README.md) の3点目——**適合保証はない**——のとおり、誰も保証していない。
+**仕様ではなく実例として読むこと。** 機構は core のもの、書き起こした中身は作者の例示。あなたのループで正しいかどうかは、[`../../README.md`](../../README.md) の3点目——**適合保証はない**——のとおり、誰も保証していない。
 
 ## いまの状態（読む前に）
 
@@ -49,3 +49,5 @@ Core ships **empty forms** (see [`../../../docs/layers.md`](../../../docs/layers
 The layout follows **where `setup.sh` scaffolds each file into a real instance**, not the template filenames — this is an *instance*, so it is arranged like one. `correction_patterns.example.txt` and `discipline_catalog.example.yaml` appear under their live names (`judgment/correction_patterns.txt`, `judgment/discipline_catalog.yaml`) because that is what the config and the audit doc read. `inbound_sweep.md` is placed at the working-directory root **provisionally** — `setup.sh` does not scaffold it and no kit document states an instance path for it; treat that one placement as unconfirmed.
 
 Not copied here: `distill-prompt.md` and `discipline-audit-prompt.md` (prompts handed to a model, not instance forms), and `starter-disciplines.md` (a menu, not a filled-in instance — it lives one level up).
+
+注: 判断モデル内の原則の例示のうち2件は、作者の公開済み原則(evidence/のP0区分)と同内容の実物から採っている。顧客・案件・交渉に関わる原則は含まれない。出典タグは月粒度(T6準拠)。
