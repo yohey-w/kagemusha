@@ -19,6 +19,21 @@ name: community-remove
 # exists in both. Drop the legacy root from ROOTS/LEGACY_ROOT once the old
 # directory is gone.
 #
+# HOW IT IS WOKEN UP. Two doors, because one of them does not exist in a fresh
+# fork. The label `community-removal` is a repository object; a clone or a fork
+# does not carry it, and an issue template's front-matter `labels:` cannot
+# apply a label the repository does not have — so a label-only trigger means
+# the take-down lane is silently dead in every fork (observed 2026-08-05 on
+# this repository itself). The second door is a marker in the issue template's
+# body, which travels with the file. Neither door decides anything: the
+# ownership check in the `verify` step below is the gate, and it is the same
+# for both.
+#
+# IDEMPOTENCE. The template carries `labels:` in its front matter, so one
+# filing raises TWO events (`opened` and `labeled`). See the `rm` step for the
+# two guards — a live-tip checkout and a duplicate check — and for the measured
+# failure they exist to stop.
+#
 # What this workflow does NOT do: rewrite history. A shelf that was public is
 # public in the git history of every clone and fork that already pulled it.
 # See cookbook/community/README.md — deleting is not un-publishing.
@@ -38,11 +53,19 @@ concurrency:
 
 jobs:
   remove:
-    # the label must be present AND be the reason we woke up — otherwise every
-    # later label a maintainer adds re-runs the take-down on a closed issue
+    # Two doors, and a label that is added LATER must still be one of them.
+    #  · opened  — the label is already on it (the template applied it), OR the
+    #              body carries the template's marker. The marker is what makes
+    #              this lane work in a fork, where the label does not exist.
+    #  · labeled — only when the label just added is ours. Without that second
+    #              clause every later label a maintainer adds would re-run the
+    #              take-down on an issue that is already closed.
     if: >-
-      contains(github.event.issue.labels.*.name, 'community-removal')
-      && (github.event.action == 'opened' || github.event.label.name == 'community-removal')
+      (github.event.action == 'opened'
+        && (contains(github.event.issue.labels.*.name, 'community-removal')
+          || contains(github.event.issue.body, 'kagemusha:community-removal')))
+      || (github.event.action == 'labeled'
+        && github.event.label.name == 'community-removal')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -87,8 +110,17 @@ jobs:
             // form. The optional `cookbook/` is consumed first because matchAll
             // scans left to right, so `cookbook/community/x` yields ONE match,
             // not a nested pair.
-            const claimed = [...body.matchAll(/(?:cookbook\/)?community\/[A-Za-z0-9._/-]*/g)]
-              .map((m) => m[0]);
+            //
+            // NOTE for whoever edits the issue template: this reads the body
+            // RAW, so an HTML comment is not a hiding place — a sample path
+            // inside `<!-- -->` is claimed exactly like a visible one. Any
+            // complete `community/<some login>/` in the template is therefore
+            // read as a request to remove THAT person's shelf, and refuses the
+            // filer's own correct request. The `<your-login>` placeholder is
+            // safe for a mechanical reason: the character class below stops at
+            // `<`, so the match is the bare root and `shelfSegment` returns ''.
+            const CLAIM_RE = /(?:cookbook\/)?community\/[A-Za-z0-9._/-]*/g;
+            const claimed = [...body.matchAll(CLAIM_RE)].map((m) => m[0]);
             if (claimed.length === 0) {
               await refuse(
                 `Please state the path to remove, in the form \`${COMMUNITY_ROOT}/<your GitHub login>/\`.`,
@@ -137,6 +169,39 @@ jobs:
             }
 
             const shelf = [...shelves][0];
+
+            // Make the label exist, and put it on this issue. Best effort, and
+            // deliberately AFTER the ownership check — a repository should not
+            // grow labels from issues that were refused.
+            //
+            // Why this is possible here and not in community-automerge.yml:
+            // creating a label is an `issues` scope operation, and THIS
+            // workflow holds `issues: write` (it has to, to comment and close).
+            // Its sibling holds only `contents` + `pull-requests`, which is why
+            // the label auto-create over there is documented as 403-prone.
+            //
+            // This does not re-trigger the workflow: an event raised by
+            // GITHUB_TOKEN does not start a new run. Even if it did, the
+            // duplicate guard in the next step would make it a no-op.
+            try {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name: 'community-removal' });
+              } catch (e) {
+                if (e.status !== 404) throw e;
+                await github.rest.issues.createLabel({
+                  owner, repo, name: 'community-removal', color: '5319e7',
+                  description: "Take-down of a community shelf, at its owner's request.",
+                });
+              }
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: issue.number, labels: ['community-removal'],
+              });
+            } catch (e) {
+              // the label is a convenience for the maintainer's view, never a
+              // precondition of the removal — losing it must not stop anything
+              core.warning(`could not ensure the community-removal label (${e.status || e.message})`);
+            }
+
             core.setOutput('shelf', shelf);
             core.setOutput('ok', 'true');
             core.notice(`verified: ${login} may remove the shelf "${shelf}" from `
@@ -144,6 +209,14 @@ jobs:
 
       - if: steps.verify.outputs.ok == 'true'
         uses: actions/checkout@v7
+        with:
+          # NOT the default. For an `issues` event `github.sha` is the default
+          # branch as it stood WHEN THE EVENT FIRED, and this workflow answers
+          # two events for one filing. The second run would check out a tree in
+          # which the first run's removal has not happened yet, see the shelf
+          # again, and delete it a second time from a stale base. Take the live
+          # tip instead; the duplicate guard below covers the rest.
+          ref: ${{ github.event.repository.default_branch }}
 
       - id: rm
         if: steps.verify.outputs.ok == 'true'
@@ -160,6 +233,36 @@ jobs:
           case "$SHELF" in
             "" | *[!A-Za-z0-9-]*) echo "refusing: not a plain login: $SHELF" >&2; exit 1 ;;
           esac
+
+          # ── the duplicate guard ───────────────────────────────────────────
+          # One filing raises `opened` AND `labeled`, so this step runs twice.
+          # The concurrency group serialises the two runs, and serialising is
+          # NOT enough: measured on this repository 2026-08-05, run 2 started
+          # at 15:11:56 — three seconds AFTER run 1 finished — and still opened
+          # a second deletion PR (#5 and #6, both from the branch named below),
+          # because it had checked out the event's stale SHA. The checkout above
+          # fixes the staleness; this fixes the rest, including the case where
+          # a maintainer re-labels an issue that was already carried out.
+          #
+          # `--state all` is load-bearing: the first run merges with
+          # `--delete-branch`, so by the time run 2 looks, the head branch is
+          # gone. Verified against this repository's own history — the query
+          # still returns the merged PRs #5 and #6.
+          #
+          # Computed BEFORE the "nothing found" exit below: a duplicate run
+          # finds nothing to delete, and must not be mistaken for a request
+          # against a shelf that never existed.
+          branch="community-removal/$SHELF-$ISSUE"
+          if ! prior="$(gh pr list --state all --head "$branch" --json number --jq '.[].number')"; then
+            echo "could not list PRs for $branch — refusing to act without knowing" >&2
+            exit 1
+          fi
+          if [ -n "$prior" ]; then
+            echo "duplicate: #$ISSUE already produced PR(s) $(echo "$prior" | tr '\n' ' ')" >&2
+            echo "state=duplicate" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # Shelf ownership is decided case-insensitively (GitHub logins are unique
           # case-insensitively), so the directory on disk may differ in case from
           # what the issue says. Resolve the real name under each hard-coded root
@@ -180,7 +283,6 @@ jobs:
             exit 0
           fi
 
-          branch="community-removal/$SHELF-$ISSUE"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
@@ -197,7 +299,11 @@ jobs:
           echo "state=removed" >> "$GITHUB_OUTPUT"
           echo "targets=$list" >> "$GITHUB_OUTPUT"
 
-      - if: steps.verify.outputs.ok == 'true'
+      # `!= 'duplicate'` is not defensive tidiness. Without it the echo run
+      # would find nothing, report "nothing was removed", and close the issue
+      # as `not_planned` — overwriting the `completed` the real run had just
+      # set, and telling the requester their shelf is still there.
+      - if: steps.verify.outputs.ok == 'true' && steps.rm.outputs.state != 'duplicate'
         uses: actions/github-script@v7
         env:
           STATE: ${{ steps.rm.outputs.state }}

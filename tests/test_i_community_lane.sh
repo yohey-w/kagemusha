@@ -161,6 +161,115 @@ while IFS=$'\t' read -r i_name i_res; do
 done < "$I_SEG"
 assert_ge "I3: the shelf-name table ran" "$i_m" 10
 
+# ─── I6. how the take-down lane is woken, and once ─────────────────────────
+# Three defects found by driving a real removal issue through the shipped
+# workflow (2026-08-05, issue #4 / PRs #5 and #6 on this repository). All three
+# are trigger-and-idempotence properties, none of which the path tables above
+# can see.
+
+# (a) the lane must not depend on a repository object a fork does not have.
+# A label is not carried by a clone or a fork, and an issue template cannot
+# apply a label that does not exist — so a label-only trigger is a dead lane in
+# every fork. The second door is a marker that travels inside the template file.
+assert_grep "I6: the trigger admits the template's body marker" \
+  "contains(github.event.issue.body, 'kagemusha:community-removal')" "$I_REMOVE"
+assert_grep "I6: the issue template carries that marker" \
+  "kagemusha:community-removal" "$REPO_ROOT/.github/ISSUE_TEMPLATE/community-removal.md"
+# …and the label door still works when a maintainer adds the label LATER
+assert_grep "I6: a later label still starts the lane" \
+  "github.event.label.name == 'community-removal'" "$I_REMOVE"
+assert_grep "I6: the template still asks for the label up front" \
+  "labels: community-removal" "$REPO_ROOT/.github/ISSUE_TEMPLATE/community-removal.md"
+# the label is made to exist rather than assumed to (issues: write is held here)
+assert_grep "I6: the workflow creates the label when it is missing" \
+  "await github.rest.issues.createLabel({" "$I_REMOVE"
+assert_grep "I6: …and it holds the scope that allows it" "issues: write" "$I_REMOVE"
+
+# (b) one filing raises `opened` AND `labeled`. Serialising them is not enough:
+# for an `issues` event `github.sha` is the default branch AS OF THE EVENT, so
+# the second run checked out a tree still containing the shelf and opened a
+# second deletion PR from the same branch name.
+assert_grep "I6: the checkout takes the live tip, not the event's SHA" \
+  'ref: ${{ github.event.repository.default_branch }}' "$I_REMOVE"
+assert_grep "I6: a prior PR from this issue's branch makes the run a no-op" \
+  'gh pr list --state all --head "$branch"' "$I_REMOVE"
+assert_grep "I6: …and the query fails CLOSED if it cannot be answered" \
+  'refusing to act without knowing' "$I_REMOVE"
+# the guard has to sit BEFORE the "nothing found" exit, or the echo run leaves
+# through that door instead and the guard never runs
+i_branch_line="$(grep -n 'branch="community-removal' "$I_REMOVE" | head -n 1 | cut -d: -f1)"
+i_absent_line="$(grep -n 'state=absent' "$I_REMOVE" | head -n 1 | cut -d: -f1)"
+i_guard_line="$(grep -n 'state=duplicate' "$I_REMOVE" | head -n 1 | cut -d: -f1)"
+i_before() {  # i_before NAME EARLIER LATER — both must exist and be ordered
+  if [[ -n "$2" && -n "$3" && "$2" -lt "$3" ]]; then
+    assert_eq "$1" "ok" "ok"
+  else
+    assert_eq "$1" "ok" "line ${2:-?} is not before line ${3:-?}"
+  fi
+}
+i_before "I6: the branch name is computed before the absent exit" \
+  "$i_branch_line" "$i_absent_line"
+i_before "I6: the duplicate guard runs before the absent exit" \
+  "$i_guard_line" "$i_absent_line"
+# and the echo run must not speak: reporting "nothing was removed" would close
+# the issue as not_planned over the completed the real run had just set
+assert_grep "I6: the duplicate run posts no comment and closes nothing" \
+  "steps.rm.outputs.state != 'duplicate'" "$I_REMOVE"
+
+# (c) the shipped template, driven through the shipped claim parser. The
+# template used to print `cookbook/community/octocat/` as a worked example;
+# the workflow reads the body RAW (an HTML comment is not a hiding place), so
+# that example is claimed as a shelf, fails the ownership check, and closes a
+# CORRECT request as not_planned. The rule is therefore mechanical: the
+# template must yield ZERO login-shaped shelf claims.
+I_TMPL="$TEST_TMP/i_tmpl.tsv"
+node - "$I_REMOVE" "$REPO_ROOT/.github/ISSUE_TEMPLATE/community-removal.md" > "$I_TMPL" <<'NODE'
+const fs = require('fs');
+const src = fs.readFileSync(process.argv[2], 'utf8');
+const body = fs.readFileSync(process.argv[3], 'utf8');
+
+const claimM = src.match(/const CLAIM_RE = (\/.*\/g);/);
+const loginM = src.match(/const LOGIN_RE = (\/.*\/);/);
+const fnM = src.match(/function shelfSegment\(p\) \{[\s\S]*?\n {12}\}/);
+const newM = src.match(/const COMMUNITY_ROOT = '([^']+)';/);
+const oldM = src.match(/const LEGACY_ROOT = '([^']+)';/);
+if (!claimM || !loginM || !fnM || !newM || !oldM) { console.log('extract\tfail'); process.exit(0); }
+console.log('extract\tok');
+const CLAIM_RE = new Function(`return ${claimM[1]};`)();
+const LOGIN_RE = new Function(`return ${loginM[1]};`)();
+const shelfSegment = new Function(
+  'COMMUNITY_ROOT', 'LEGACY_ROOT',
+  `${fnM[0]}\nreturn shelfSegment;`)(newM[1], oldM[1]);
+
+const segments = [...body.matchAll(CLAIM_RE)].map((m) => shelfSegment(m[0]));
+const shelves = segments.filter((s) => LOGIN_RE.test(s));
+
+console.log(`the template claims at least one path\t${segments.length > 0 ? 'ok' : 'fail'}`);
+console.log(`no claimed path is a login-shaped shelf\t${shelves.length === 0 ? 'ok' : `fail (${shelves.join(',')})`}`);
+// the marker must survive the same parser: a marker that looked like a path
+// would be the very bug this test exists for
+console.log(`the wake-up marker is not itself a claim\t${
+  [...'kagemusha:community-removal'.matchAll(CLAIM_RE)].length === 0 ? 'ok' : 'fail'}`);
+// the placeholder is still THERE — "zero claims" must not be reached by
+// deleting the instructions that tell the filer what to write
+console.log(`the placeholder line is still present\t${
+  body.includes('cookbook/community/<your-login>/') ? 'ok' : 'fail'}`);
+// a filer who does replace it produces exactly one shelf, their own
+const filled = body.replace(/<your-login>/g, 'octocat');
+const filledShelves = [...filled.matchAll(CLAIM_RE)]
+  .map((m) => shelfSegment(m[0])).filter((s) => LOGIN_RE.test(s));
+console.log(`a filled-in template yields exactly one shelf\t${
+  new Set(filledShelves).size === 1 && filledShelves[0] === 'octocat' ? 'ok' : 'fail'}`);
+NODE
+
+i_t=0
+while IFS=$'\t' read -r i_name i_res; do
+  [[ -n "$i_name" ]] || continue
+  i_t=$((i_t + 1))
+  assert_eq "I6: $i_name" "ok" "$i_res"
+done < "$I_TMPL"
+assert_ge "I6: the template table ran" "$i_t" 6
+
 # ─── I4. the docs point at the same place the workflow does ────────────────
 assert_grep "I4: the shelf README states it IS the submission path" \
   "ここが投稿先です" "$REPO_ROOT/cookbook/community/README.md"

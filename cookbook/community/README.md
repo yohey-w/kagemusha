@@ -88,6 +88,8 @@ Open an issue with the **"Remove my community shelf"** template, naming `cookboo
 
 During the migration window the removal workflow also accepts the pre-split form `community/<your login>/` and removes the shelf from **both** roots, so a shelf posted before the move can still be taken down by its owner.
 
+**If you are running this kit in your own fork**, the take-down lane needs one thing set up by hand: the repository label `community-removal`. A label is a repository object and a fork does not inherit one, and an issue template cannot apply a label the repository does not have. The workflow therefore has a second door — a marker line in the issue template's body — so filing from the template works even before the label exists, and the workflow creates the label the first time it verifies a request. Creating it up front (`gh label create community-removal --color 5319e7`) only means a maintainer can also start the lane by hand, by labelling an issue that was written without the template.
+
 ## If you published a secret
 
 In this order.
@@ -184,6 +186,8 @@ cookbook/community/<あなたの GitHub ログイン名>/disciplines.md
 **「Remove my community shelf」** テンプレートで issue を立て、`cookbook/community/<あなたのログイン名>/` を明記してください。ワークフローが起票者のログイン名とディレクトリの一致を照合し、一致した場合のみ削除 PR を自動作成してマージします。他人のディレクトリに対する依頼は定型コメントで閉じます——棚を下ろせるのは本人だけです。
 
 移行期のあいだは、移転前の形 `community/<ログイン名>/` でも受け付け、**新旧どちらの棚も**削除します。移転前に置いた棚も、本人の手で下ろせます。
+
+**このキットを自分の fork で動かす場合**、削除レーンには手で用意するものが1つあります——リポジトリラベル `community-removal` です。ラベルはリポジトリ側のオブジェクトなので fork には付いてきません。そして**無いラベルは issue テンプレートからも付けられません**。そのためワークフローには入口が2つあり、テンプレート本文に置いたマーカー行のほうは、ラベルが無い状態でも起動します（ラベル自体は、最初の依頼を照合したときにワークフローが作ります）。あらかじめ `gh label create community-removal --color 5319e7` で作っておく意味は、**テンプレートを使わずに書かれた issue に管理者が手でラベルを付けて**レーンを起こせるようにすることです。
 
 ## 秘密を上げてしまったら
 

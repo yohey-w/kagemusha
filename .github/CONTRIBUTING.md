@@ -48,7 +48,7 @@ A pull request is auto-approved and squash-merged when **all** of the following 
 
 If a path is outside the lane, the PR is **labelled `管理者裁定レーン`** and left for a maintainer — untouched otherwise. If the lint hits, the workflow comments with **the rule name and the line number only**, never quoting the matched text: that comment is public and permanent, and quoting the match would spread exactly what the rule exists to stop.
 
-The full rule table, the format for an entry, and the removal procedure live in [`cookbook/community/README.md`](../cookbook/community/README.md).
+The full rule table, the format for an entry, and the removal procedure live in [`cookbook/community/README.md`](../cookbook/community/README.md). Running the kit in a fork: the take-down lane wants the repository label `community-removal` — a fork does not inherit labels, and the issue template's marker line is what keeps the lane working until it exists.
 
 ---
 ---
@@ -101,4 +101,4 @@ The full rule table, the format for an entry, and the removal procedure live in 
 
 レーン外のパスが1つでもあれば、その PR は **`管理者裁定レーン` ラベルが付くだけ**で、他には何もせず管理者に回ります。lint に当たった場合、ワークフローは**ルール名と行番号だけ**をコメントします——**該当箇所は引用しません**。そのコメントも公開・恒久であり、引用したら、そのルールが止めようとしているものをそのまま広げることになるからです。
 
-ルール表の全文・エントリの書式・削除手順は [`cookbook/community/README.md`](../cookbook/community/README.md) にあります。
+ルール表の全文・エントリの書式・削除手順は [`cookbook/community/README.md`](../cookbook/community/README.md) にあります。fork でこのキットを動かす場合、削除レーンにはリポジトリラベル `community-removal` が要ります——ラベルは fork に付いてこないので、それが作られるまでレーンを生かしているのは issue テンプレートのマーカー行です。

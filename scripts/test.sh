@@ -29,7 +29,7 @@ TESTS_DIR="$REPO_ROOT/tests"
 
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
             i_community_lane)
-MIN_ASSERTIONS=500   # floor for a full run (currently 509); raise it as you add tests
+MIN_ASSERTIONS=520   # floor for a full run (currently 528); raise it as you add tests
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }

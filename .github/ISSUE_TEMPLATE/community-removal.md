@@ -15,7 +15,16 @@ assignees: ""
 
   自動処理されます。起票者のログイン名と下のディレクトリが一致した場合だけ、
   削除 PR が自動で作られマージされます。一致しない場合は定型コメントで閉じます。
+
+  DO NOT DELETE the marker line below. On a fork or a fresh clone the
+  `community-removal` label does not exist yet, and a label that does not exist
+  cannot be applied — the marker is what wakes the workflow there.
+  下のマーカー行は消さないでください。fork や新規 clone には
+  `community-removal` ラベルがまだ無く、無いラベルは付けられません。
+  そこでワークフローを起こすのはこのマーカーです。
 -->
+
+<!-- kagemusha:community-removal -->
 
 ## Path to remove / 削除するパス
 
@@ -23,8 +32,17 @@ assignees: ""
 cookbook/community/<your-login>/
 ```
 
-Replace the line above with your own shelf, e.g. `cookbook/community/octocat/`.
-上の行を自分の棚に書き換えてください（例: `cookbook/community/octocat/`）。
+**Replace `<your-login>` above with your own GitHub login**, and leave the rest
+of the line as it is. There is deliberately no worked example here: the
+workflow reads **every** path in this issue body — including ones inside HTML
+comments — so a sample path that is not yours reads as a request to take down
+**someone else's** shelf, and your own correct request is refused and closed.
+
+**上の `<your-login>` を自分の GitHub ログイン名に置き換えてください**（行の残りはそのまま）。
+**見本のログイン名をここに書いていないのは意図的です**——ワークフローは本文中の
+**全ての**パスを読みます（HTML コメントの中も含みます）。自分のものでない見本の
+パスが残っていると「**他人の棚**の削除依頼」として拒否され、あなた自身の正しい
+依頼まで閉じられます。
 
 If your shelf was posted before the move and still lives at the old root, the
 pre-split form `community/<your-login>/` is accepted too — the workflow removes
