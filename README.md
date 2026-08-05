@@ -159,7 +159,9 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 
 ```bash
 # 5'. Cut templates/correction_patterns.example.txt down to phrases YOU use, then:
-#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d
+#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d --dir …
+#                 (--dir is NOT optional under cron: without it the log path is guessed
+#                  from the working directory, which cron sets to $HOME. setup.sh prints yours.)
 #    23 6 * * *  scripts/distill.sh     # fires only past the threshold; silent otherwise
 ```
 
@@ -207,8 +209,8 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | **`scripts/filter_judgments.py`** | Bucket those turns into RULE/REJECT/CORRECT/… (vocab configurable, EN+JP defaults). |
 | **`scripts/discipline_scan.py`** | **Is a discipline you adopted doing anything?** Walks your own session logs and quotes the passages where each one fired or broke. It matches and quotes; **it does not judge**. See [`docs/discipline-audit.md`](docs/discipline-audit.md). |
 | **`scripts/weekly_distill.sh.example`** | The weekly feedback trigger — mine → journal → distill into the model (proposes; you confirm). |
-| **`scripts/correction_scan.py`** | The daily harvest, no LLM: yesterday's corrections, grouped into **events**, appended to a local material file. Your correction vocabulary is not shipped — you supply `--patterns` (menu: `templates/correction_patterns.example.txt`). |
-| **`scripts/distill.sh`** | The **material** trigger — fires only when enough corrections have piled up (or a 7-day fallback with ≥1 pending), writes candidates to a promotion queue and nothing else, and keeps FIRED / SKIPPED / **FAILED** apart. [`docs/distillation-loop.md`](docs/distillation-loop.md). |
+| **`scripts/correction_scan.py`** | The daily harvest, no LLM: yesterday's corrections, grouped into **events**, appended to a local material file plus a provenance index (full session id, line number, sha256) so `--show-event` can reopen any quote in its original context. Your correction vocabulary is not shipped — you supply `--patterns` (menu: `templates/correction_patterns.example.txt`). |
+| **`scripts/distill.sh`** | The **material** trigger — fires only when enough corrections have piled up (the time-based fallback is OFF by default — a slow week gets named in the skip line, not distilled), freezes a **batch manifest** before it calls anything, invokes the model **without file permissions** (the report comes back on stdout), validates that report against the manifest, appends it to the promotion queue itself, and keeps FIRED / SKIPPED / **FAILED** apart. [`docs/distillation-loop.md`](docs/distillation-loop.md). |
 | **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | The distillation prompt (one rule line plus eight fields per candidate; conflicts with your existing principles are *held*, not resolved) and the queue you empty by hand — the promotion step that stays a person. |
 | **`scripts/inbound_watch.sh.example`** | The inbox trigger, Tier 2 — inward-only inbound watch for unattended scheduler runs (Slack / Gmail-IMAP / RSS lanes; immutable ledger; quiet-hours roll-up). |
 | `scripts/test.sh` | The kit's own acceptance gate — run `./scripts/test.sh` (needs `shellcheck`); CI runs this exact command. It really executes `setup.sh` in a throwaway clone, proves the allowlist `.gitignore` makes instance data uncommittable, and drives `morning_brief.sh` with a fake CLI. No skips: a missing tool is a failure. |

@@ -159,7 +159,9 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 ```bash
 # 5'. templates/correction_patterns.example.txt を「自分の言い回し」だけに削ってから:
-#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d
+#     7  6 * * *  scripts/correction_scan.py --patterns … --material … --state … --since 1d --dir …
+#                 （cron では --dir を省略できない。省略するとログの場所をカレントディレクトリから
+#                  推測するが、cron のそれは $HOME だ。自分用の --dir は setup.sh が出力する）
 #    23 6 * * *  scripts/distill.sh     # 閾値未満は黙ってスキップ（無料）
 ```
 
@@ -207,8 +209,8 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 | **`scripts/filter_judgments.py`** | それを RULE/REJECT/CORRECT/… にバケット分類（語彙は設定可・日英デフォルト）。 |
 | **`scripts/discipline_scan.py`** | **取り入れた規律は、自分の環境で動いているか。** 自分のセッションログを走査し、規律ごとに発火・破れの原文断片を引用する。引用して止まる——**判定はしない**。→ [`docs/discipline-audit.md`](docs/discipline-audit.md) |
 | **`scripts/weekly_distill.sh.example`** | 週次フィードバックトリガー——採掘 → 台帳 → モデルへ蒸留（提案止まり・承認者が確定）。 |
-| **`scripts/correction_scan.py`** | 毎日の採取（LLM不使用）。前日の訂正を**イベント**に束ねてローカルの素材ファイルへ追記する。訂正の語彙は同梱しない——`--patterns` で自分のものを渡す（メニュー: `templates/correction_patterns.example.txt`）。 |
-| **`scripts/distill.sh`** | **材料**トリガー——貯まった時だけ焚く（7日フォールバックは1件以上ある時のみ）。書いてよいのは審査キューだけ。FIRED / SKIPPED / **FAILED** を潰さない。→ [`docs/distillation-loop.md`](docs/distillation-loop.md) |
+| **`scripts/correction_scan.py`** | 毎日の採取（LLM不使用）。前日の訂正を**イベント**に束ねてローカルの素材ファイルへ追記し、同時に出典の索引（完全なセッションID・行番号・SHA-256）を書く——`--show-event` で引用を前後文脈ごと開き直せる。訂正の語彙は同梱しない——`--patterns` で自分のものを渡す（メニュー: `templates/correction_patterns.example.txt`）。 |
+| **`scripts/distill.sh`** | **材料**トリガー——貯まった時だけ焚く（時間フォールバックは既定OFF——薄い週は焚かずスキップ行で名指し）。呼ぶ前に**バッチ台帳**を固め、モデルは**ファイル権限なし**で叩いて報告を標準出力で受け、台帳と突合してから審査キューへ**ラッパー自身が**追記する。FIRED / SKIPPED / **FAILED** を潰さない。→ [`docs/distillation-loop.md`](docs/distillation-loop.md) |
 | **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | 蒸留プロンプト（規律案1行＋8欄の審査書式・既存原則との競合は**解決せず保留枠へ**）と、人が手で空にする審査キュー——昇格だけは人間に残る工程。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
