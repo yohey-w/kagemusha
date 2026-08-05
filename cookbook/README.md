@@ -4,7 +4,7 @@
 
 This repository is **two layers in one repo**, and they are deliberately asymmetric.
 
-| | **core** (the repository root: `scripts/` `templates/` `tests/` `docs/` `lib/`) | **`cookbook/`** (this directory) |
+| | **core** (the repository root: `scripts/` `templates/` `tests/` `docs/` `manifests/`) | **`cookbook/`** (this directory) |
 |---|---|---|
 | What it is | the **mechanism** — scaffolding, scripts, empty forms, the acceptance gate | **samples** — filled-in instances, burned disciplines, other people's shelves |
 | What it decides for you | **nothing about which judgments to hold.** Core ships the shape, never the content | it shows *someone's* content, so you can see what a filled form looks like |
@@ -56,7 +56,7 @@ One directory per person, merged by a workflow. **No human reads the content**, 
 
 このリポジトリは**1リポジトリの中の二層**で、その二層は**意図的に非対称**です。
 
-| | **core**（リポジトリ直下: `scripts/` `templates/` `tests/` `docs/` `lib/`） | **`cookbook/`**（この階層） |
+| | **core**（リポジトリ直下: `scripts/` `templates/` `tests/` `docs/` `manifests/`） | **`cookbook/`**（この階層） |
 |---|---|---|
 | 何か | **機構**——足場・スクリプト・空の書式・受入ゲート | **標本**——記入済みの実例・焼けた規律・他の人の棚 |
 | 利用者の何を決めるか | **どの判断を持つかは決めない。** core が配るのは形であって中身ではない |「誰かの中身」を見せる。記入済みの書式がどう見えるかを見るためのもの |

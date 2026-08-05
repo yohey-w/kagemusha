@@ -26,6 +26,39 @@ git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/setu
 
 あとはそのフォルダを AI アシスタント（Claude Code / Codex / 何でも）で開くだけ——詳細は[クイックスタート](#3-クイックスタート30分コピペで動く)。
 
+### このコマンドが展開するもの・意図的に展開しないもの
+
+このリポジトリは**二層**で、その境目が「いま自分は何をインストールしたのか」の答えになっている。
+
+| | **core**——`scripts/` `templates/` `docs/` `tests/` `manifests/`（リポジトリ直下） | **[`cookbook/`](cookbook/README.md)**——標本棚 |
+|---|---|---|
+| 何か | **機構**: 足場・スクリプト・**空の書式**・受入ゲート | **中身**: 作者が実走で焼いた規律・実走の証拠抜粋・他の人の棚 |
+| `setup.sh` | **触るのはここだけ。** コピーする全ファイルは [`manifests/scaffold.tsv`](manifests/scaffold.tsv) に列挙されている | **読まない・コピーしない・実行しない**——1ファイルも |
+| 手に入るもの | 何も記入されていない書式（原則0本・有効パターン0本・日付入りエントリ0件） | **既定では何も入らない。** 読んで・選んで・**手で移した**ぶんだけ |
+
+**core は、あなたがどの判断を採用すべきかについて意見を持たない。** 借り物の原則は自分で焼いた原則と同じ枠を食うので、標本を既定で展開しないのは不親切ではなく設計だ——**コピーするという行為そのものが、あなたが選んだ地点**になる。境界の全文は [`docs/layers.md`](docs/layers.md)、棚の判子が意味すること／しないことは [`cookbook/README.md`](cookbook/README.md)。
+
+⚠️ この分割は**プライバシー境界ではない**。`cookbook/` と core は同一のリポジトリ・同一の恒久的な履歴だ。
+
+<details>
+<summary><b>core だけを checkout する</b>——他人の中身を作業ツリーに置きたくない場合</summary>
+
+core は棚を読まないので、**そもそも checkout しない**という選択ができる（clone → `ls` → `setup.sh` exit 0 まで実測済み）:
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/yohey-w/kagemusha.git
+cd kagemusha
+git sparse-checkout set --no-cone '/*' '!/cookbook'
+git checkout
+./scripts/setup.sh          # 棚がある時とまったく同じに走る
+```
+
+`--filter=blob:none` は転送量を減らすだけ（対応していない転送方式では無害に無視される）。棚を外しているのは2つのパターンのほうだ。戻すのは `git sparse-checkout disable` でいつでもできる。
+
+**これが買っていないもの——頼る前に読むこと。** これは**作業ツリーの大きさの都合であって、それ以上の何かではない。** 棚はリモートにも、この clone のオブジェクトDBにも、履歴にも残っている（`git log`・`git show`・後からの `git checkout` は届く）。プライバシーも隔離も、中身の保証も**買っていない**——[`docs/layers.md`](docs/layers.md) と [`cookbook/README.md`](cookbook/README.md) と同じ但し書きだ。**これを privacy mode と呼ぶな。** キット自身の受入ゲートは、その下にある性質のほうを直接測っている——群Hは `cookbook/` を丸ごと削除して、`setup.sh` が exit 0 のまま**まったく同じ集合のファイルを作る**ことを毎回実測する。
+
+</details>
+
 > 📖 背景記事（Zenn）: **[ループエンジニアリングはもうエンジニアだけのものじゃない、業務で回して見つけた4つ目の設計対象は「権限」だった](https://zenn.dev/shio_shoppaize/articles/loop-mandate-design)**
 
 ---

@@ -6,7 +6,7 @@
 
 ```text
 kagemusha/
-├── scripts/  templates/  tests/  docs/  lib/  README.md  …   ← core（機構）
+├── scripts/  templates/  tests/  docs/  README.md  …        ← core（機構）
 ├── manifests/                                                 ← core（境界の宣言）
 └── cookbook/                                                  ← 標本棚
     ├── author/       … 管理者裁定・実走標本
@@ -40,7 +40,8 @@ kagemusha/
 | 仕組み | 何を固定するか |
 |---|---|
 | `manifests/scaffold.tsv` | **足場が触ってよいソースの全集合**。source 列は `templates/` 起点のみ・`..` 不可・**`cookbook/` の出現で即エラー**。「setup.sh が何をコピーするか」を script の中ではなく**データとして外に出した**ので、境界違反が diff に見える |
-| `scripts/test.sh` 群H | 宣言を毎回実測する。H1（manifest に `cookbook/` 参照0件）・H5（`scripts/` と `config.env.example` から `cookbook/` への**実行時依存**0件。案内コメントのみ許可）ほか。H2〜H4（sentinel・不活性検査）は後続の段で有効化 |
+| `scripts/test.sh` 群H | 宣言を毎回実測する。H1（manifest に `cookbook/` 参照0件）・**H2（棚の全ファイルに sentinel を植えて `setup.sh` を実走し、生成物に1件も届かないことを確認）**・**H2b（棚を丸ごと削除しても `setup.sh` が exit 0 で同じ集合を作る）**・H3（core のテンプレは有効な原則0本・有効regex0本・日付入りエントリ0件）・H4（コピー一覧が manifest 駆動であることを、manifest を書き換えて出力が追随することで証明）・H5（`scripts/` と `config.env.example` から `cookbook/` への**実行時依存**0件。案内コメントのみ許可）。**H2〜H4は有効化済み**——ここが「後続の段で有効化」と書いてあった時期がある |
+| `scripts/test.sh` 群I | community レーンの防壁を**出荷 YAML から抜き出して** node で評価する（規則を書き写すと「テストは緑・bot は間違い」になるため）。パス所有の照合・トラバーサル拒否・symlink/submodule/非UTF-8の拒否 |
 | `.gitignore`（allowlist） | `cookbook/` と `manifests/` は**追跡対象**（キット本体側）。実走インスタンスデータは従来どおり構造的にコミット不能 |
 
 ---
