@@ -26,6 +26,8 @@ git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/setu
 
 Then open the folder with your AI assistant (Claude Code / Codex / any) — details in [Quickstart](#3-quickstart-30-minutes-copy-paste).
 
+**Want to see it work before you wire anything up?** `./scripts/demo-distillation.sh` runs one full turn of the loop — correction → harvest → distil → review → promote → audit — in about ten minutes, with **no API billing, no logs of yours, and nothing written outside a temp sandbox it deletes on the way out** ([what you'll see](#3-quickstart-30-minutes-copy-paste)).
+
 ### What that command expands, and what it deliberately does not
 
 This repository is **two layers**, and the line between them is the answer to "what did I just install?"
@@ -178,6 +180,14 @@ The diagram has two triggers. The **time trigger** (T1) ships as `morning_brief.
 ---
 
 ## 3. Quickstart (30 minutes, copy-paste)
+
+**Try it first — `./scripts/demo-distillation.sh` (10 minutes · no billing · nothing dirtied).**
+
+```bash
+./scripts/demo-distillation.sh          # DEMO_FAST=1 for no pauses · DEMO_KEEP=1 to keep the files
+```
+
+One full turn of the loop in front of you: a correction you made → harvested into **events** → the threshold staying **silent** → firing once there is material → a promotion candidate with its eight review fields → **you** promoting it → the diff against your instructions file, **not applied** → the audit finding the promoted rule firing in a later session. Everything lives in a `mktemp` sandbox that is deleted on the way out: **no model is called, none of your logs are read, and not one byte is written outside it** — pinned by test group J, which asserts the checkout is byte-identical before and after. The session logs are obviously-synthetic and the distilling model is a stub wired in at `AGENT_CMD`; every other moving part is the shipped script you will be cronning below.
 
 **Prerequisites** (for this scripted path only — the loop itself needs just the three things above)**:** `bash`; one AI CLI that runs a prompt non-interactively (default is the [Claude CLI](https://code.claude.com/), swappable to Codex/Gemini/etc.); optionally [ntfy.sh](https://ntfy.sh/) for phone notifications; Python 3 (only for the distillation scripts). Prefer not to script it? Skip to the semi-automatic / manual kick-off above and just paste the prompts into any assistant.
 
