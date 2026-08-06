@@ -19,7 +19,7 @@
 #
 # Groups: A syntax/lint · B setup.sh · C leak guard · D .gitignore · E cron
 #         F discipline scanner · G distillation courier · H layer boundary
-#         I community lane
+#         I community lane · J the first-ten-minutes demo
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -28,8 +28,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
 
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
-            i_community_lane)
-MIN_ASSERTIONS=520   # floor for a full run (currently 528); raise it as you add tests
+            i_community_lane j_demo)
+MIN_ASSERTIONS=567   # floor for a full run (currently 575); raise it as you add tests
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }
