@@ -18,17 +18,25 @@ You are the approver of record. The AI is your back office. Your rejection reaso
 > On Sunday night the weekly distiller turns it into a principle in the judgment model.
 > The agent reads that model every session — the same rejection never comes back.
 
-Start with one paste:
+**There are two ways in, and this is the order.** ① **Just watch it** — a 10-minute demo; nothing to configure, no bill, your files untouched. ② **Put it in your own setup** — a 30-minute install, copy-paste.
+
+**① Just watch it (10 minutes).** One command, and the kit acts out from start to finish what it is actually for: how a piece of criticism you gave an AI — "that tone is too pushy for this client" — becomes a standing rule it follows from then on. It runs on made-up data, calls no AI (so there is no bill), and reads or writes none of your files — everything happens in a temporary folder it deletes on the way out.
 
 ```bash
-git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/setup.sh
+git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/demo-distillation.sh
 ```
 
-Then open the folder with your AI assistant (Claude Code / Codex / any) — details in [Quickstart](#3-quickstart-30-minutes-copy-paste).
+What appears on screen, step by step: [Watch it first](#watch-it-first-10-minutes).
 
-**Want to see it work before you wire anything up?** `./scripts/demo-distillation.sh` runs one full turn of the loop — correction → harvest → distil → review → promote → audit — in about ten minutes, with **no API billing, no logs of yours, and nothing written outside a temp sandbox it deletes on the way out** ([what you'll see](#3-quickstart-30-minutes-copy-paste)).
+**② Put it in your own setup (30 minutes).** In that same clone, one more paste lays the files down; after that you just open the folder with your AI assistant (Claude Code / Codex / any) and work in it.
 
-### What that command expands, and what it deliberately does not
+```bash
+./scripts/setup.sh
+```
+
+Full steps: [Set it up in your own environment](#3-set-it-up-in-your-own-environment-30-minutes-copy-paste).
+
+### What `setup.sh` expands, and what it deliberately does not
 
 This repository is **two layers**, and the line between them is the answer to "what did I just install?"
 
@@ -179,15 +187,28 @@ The diagram has two triggers. The **time trigger** (T1) ships as `morning_brief.
 
 ---
 
-## 3. Quickstart (30 minutes, copy-paste)
+## Watch it first (10 minutes)
 
-**Try it first — `./scripts/demo-distillation.sh` (10 minutes · no billing · nothing dirtied).**
+Nothing to set up, no API bill, nothing of yours touched.
 
 ```bash
 ./scripts/demo-distillation.sh          # DEMO_FAST=1 for no pauses · DEMO_KEEP=1 to keep the files
 ```
 
-One full turn of the loop in front of you: a correction you made → harvested into **events** → the threshold staying **silent** → firing once there is material → a promotion candidate with its eight review fields → **you** promoting it → the diff against your instructions file, **not applied** → the audit finding the promoted rule firing in a later session. Everything lives in a `mktemp` sandbox that is deleted on the way out: **no model is called, none of your logs are read, and not one byte is written outside it** — pinned by test group J, which asserts the checkout is byte-identical before and after. The session logs are obviously-synthetic and the distilling model is a stub wired in at `AGENT_CMD`; every other moving part is the shipped script you will be cronning below.
+It plays one full turn out in front of you, on invented data. In order:
+
+1. **You overrule the AI.** A few turns from a (synthetic) work session where you told the agent its draft was wrong, and why.
+2. **The correction is picked up.** A free, no-model script finds those turns and files each point as one **event** — say the same thing four ways and it counts once, not four times.
+3. **Nothing fires yet.** With only a handful of corrections on hand, the kit deliberately stays quiet: a model asked to draw principles out of thin material will not answer "not enough", it will produce thin principles.
+4. **More lands, and it drafts a rule.** Past the threshold it proposes one rule line, with the eight things you need in order to rule on it — the exact words it came from, where it applies and where it does not, anything in the material pointing the other way, where the rule should be filed, and when to re-check it.
+5. **You decide, and only you.** The proposal goes into a queue for you to read. The machine writes the diff against your instructions file and stops there: you see it, and it is **not applied**.
+6. **A later check asks whether the rule did anything.** The audit walks a subsequent session and quotes the passages where the accepted rule fired — plus the one from before it existed, where it was broken.
+
+Everything lives in a `mktemp` sandbox that is deleted on the way out: **no model is called, none of your logs are read, and not one byte is written outside it** — pinned by test group J, which asserts the checkout is byte-identical before and after. The session logs are obviously-synthetic and the distilling model is a stub wired in at `AGENT_CMD`; every other moving part is the shipped script you will be cronning below.
+
+---
+
+## 3. Set it up in your own environment (30 minutes, copy-paste)
 
 **Prerequisites** (for this scripted path only — the loop itself needs just the three things above)**:** `bash`; one AI CLI that runs a prompt non-interactively (default is the [Claude CLI](https://code.claude.com/), swappable to Codex/Gemini/etc.); optionally [ntfy.sh](https://ntfy.sh/) for phone notifications; Python 3 (only for the distillation scripts). Prefer not to script it? Skip to the semi-automatic / manual kick-off above and just paste the prompts into any assistant.
 
