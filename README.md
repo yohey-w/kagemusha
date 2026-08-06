@@ -177,7 +177,7 @@ The reasons you reject or edit are the most valuable log you produce ([§3](#3-w
 - **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
 - **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
 
-Why a *correction* outranks a *ruling*: the FAQ in [§10](#10-reference). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
+Why a *correction* outranks a *ruling*: the design Q&A in [§9](#design-rationale-qa). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
 
 ---
 
@@ -419,6 +419,20 @@ The bet behind the approval loop is that, on repetitive work where candidates ar
 
 One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / judgment).** Specifying, verifying, integrating, and relating are each their own work; folding them into "judgment" inflates the disposal bucket and blurs where your time really went.
 
+### Design rationale (Q&A)
+
+**Q. Why are rejections/corrections the "highest-value log"?**
+Because a ruling is predictable and a correction is not. Models get better at guessing which option you'll pick; they do not get better, on their own, at the exact places where *your* judgment diverges from theirs — that's what a correction marks. Mine your own logs and corrections outnumber clean rulings, yet the queue discards them the instant you click reject. Distillation captures that delta before it evaporates.
+
+**Q. Why build principles only from things the approver actually said?**
+The classic failure is promoting *your guess about the approver's reasoning* into a principle — it then silently biases every later call, and no one notices. So a principle is promoted only if a **verbatim quote** can be cited from the journal. Inferences stay tagged `[working hypothesis]` in the journal until the approver confirms them. Real utterances only; guesses stay quarantined.
+
+**Q. Why cap the judgment model at ~160 lines / ~32 principles?**
+Adherence, not aesthetics. Long instruction files stop being followed — the head is read, the tail ignored, and auto-bloated instructions can *lower* accuracy. So the one file injected every session is kept deliberately thin, and a machine lint enforces the budget. Want to add a principle past the cap? Merge or retire an old one first. **The cap is a cost, not a moat — the thinness is the point.** (Both limits are configurable in `weekly_distill.sh`.)
+
+**Q. How is this different from HITL (human-in-the-loop)?**
+HITL is the *mechanism* ("put a human in the loop"); this kit is the *design* — *where* to insert the human, *what* to make the agent declare (basis, undo-ability, doubt), *how* to turn rejections into assets, and *how* to widen trust over time. Having a stop button and designing when to stop are different things.
+
 ---
 
 ## 10. Reference
@@ -463,19 +477,7 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 | **[`cookbook/author/evidence/`](cookbook/author/evidence/README.md)** | **Proof the loop actually runs** — on the **sample shelf**: hand-redacted excerpts from the author's live instance, one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md). |
 
-### FAQ (design Q&A)
-
-**Q. Why are rejections/corrections the "highest-value log"?**
-Because a ruling is predictable and a correction is not. Models get better at guessing which option you'll pick; they do not get better, on their own, at the exact places where *your* judgment diverges from theirs — that's what a correction marks. Mine your own logs and corrections outnumber clean rulings, yet the queue discards them the instant you click reject. Distillation captures that delta before it evaporates.
-
-**Q. Why build principles only from things the approver actually said?**
-The classic failure is promoting *your guess about the approver's reasoning* into a principle — it then silently biases every later call, and no one notices. So a principle is promoted only if a **verbatim quote** can be cited from the journal. Inferences stay tagged `[working hypothesis]` in the journal until the approver confirms them. Real utterances only; guesses stay quarantined.
-
-**Q. Why cap the judgment model at ~160 lines / ~32 principles?**
-Adherence, not aesthetics. Long instruction files stop being followed — the head is read, the tail ignored, and auto-bloated instructions can *lower* accuracy. So the one file injected every session is kept deliberately thin, and a machine lint enforces the budget. Want to add a principle past the cap? Merge or retire an old one first. **The cap is a cost, not a moat — the thinness is the point.** (Both limits are configurable in `weekly_distill.sh`.)
-
-**Q. How is this different from HITL (human-in-the-loop)?**
-HITL is the *mechanism* ("put a human in the loop"); this kit is the *design* — *where* to insert the human, *what* to make the agent declare (basis, undo-ability, doubt), *how* to turn rejections into assets, and *how* to widen trust over time. Having a stop button and designing when to stop are different things.
+### FAQ (behavior & usage)
 
 **Q. Does the weekly distillation rewrite my judgment model unattended?**
 No — it proposes. Reinforcing an existing principle (adding a citation) is applied directly; a **new** principle or a **contradiction** is written to a `*_pending.md` file for you to confirm. An unattended rewrite of the model that governs the agent's calls is exactly the kind of un-undoable change this whole kit exists to gate.
