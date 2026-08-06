@@ -103,7 +103,7 @@ Everything lives in a `mktemp` sandbox that is deleted on the way out: **no mode
 
 ## 5. How the whole thing works
 
-One diagram, three canonical terms, one table. This section is the map; everything deeper is one link away.
+One diagram, three canonical terms, one table, and the feedback arm. This section is the map; everything deeper is one link away.
 
 ### Architecture (the whole loop)
 
@@ -157,7 +157,7 @@ The top half is the **approval loop** (mandate): generate → verify → inward 
 
 **The relation folds into one sentence: to stop being a human standing net, promote your corrections and close the judgment loop.**
 
-Which file carries which step is listed one by one in [§10](#10-reference). The mechanism in full: [`docs/judgment-distillation.md`](docs/judgment-distillation.md) · the light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md) · what happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
+The file-by-file map of the whole kit is [§10](#10-reference). The mechanism in full: [`docs/judgment-distillation.md`](docs/judgment-distillation.md) · the light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md) · what happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
 
 ### The four-layer equation
 

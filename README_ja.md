@@ -103,7 +103,7 @@ cd kagemusha
 
 ## 5. 仕組みの全景
 
-図1枚・正典3語・表1枚。ここは地図であって手引きではない——深い話はどれもリンク1つ先にある。
+図1枚・正典3語・表1枚・フィードバックの腕。ここは地図であって手引きではない——深い話はどれもリンク1つ先にある。
 
 ### 全体アーキテクチャ（ループ全景）
 
@@ -157,7 +157,7 @@ graph TD
 
 **関係は一文に畳める: 人間定置網をやめるには、訂正を昇格させ、判断ループを回す。**
 
-どのファイルがどの工程を担うかは [§10](#10-リファレンス) に1本ずつ並べてある。全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)・軽い日次レーンは [`docs/distillation-loop.md`](docs/distillation-loop.md)・昇格した後の話は [`docs/discipline-audit.md`](docs/discipline-audit.md)。
+キット全体のファイル単位の対応表は [§10](#10-リファレンス)。全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)・軽い日次レーンは [`docs/distillation-loop.md`](docs/distillation-loop.md)・昇格した後の話は [`docs/discipline-audit.md`](docs/discipline-audit.md)。
 
 ### 4層の等式
 
