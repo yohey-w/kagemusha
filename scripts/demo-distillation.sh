@@ -276,6 +276,7 @@ while read -r e; do
   case " $no_reason " in *" $e "*) continue ;; esac
   no_reason="${no_reason}${e} "
 done < <(printf '%s\n' "$prompt" | grep -oE 'E-[0-9a-f]{10}' | awk '!seen[$0]++')
+processed="${processed% }"; no_reason="${no_reason% }"
 
 cat <<REPORT
 <<<QUEUE-SECTION>>>
