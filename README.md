@@ -6,112 +6,43 @@
 
 **Inward work runs on its own. Anything going outward stops for your approval. Even your rejections become an asset.**
 
+---
+
+## 1. What kagemusha is
+
+kagemusha is **an installable kit: a set of Markdown forms plus the scripts that run them.** Not a resident agent and not a cloud service — you `git clone` it, run `./scripts/setup.sh`, and **forms with nothing filled in** land in your folder; from then on you open that folder with the AI assistant you already use (Claude Code, Codex, Cursor, …) and do your work in it.
+
 Hand it your repetitive work — first-pass inbox handling, drafts, research, prep for recurring meetings — and every morning a "board" arrives: finished drafts and research, plus an approval queue you can clear from your phone in a few minutes.
 
 You are the approver of record. The AI is your back office. Your rejection reasons are its curriculum.
 
 **Why "kagemusha"?** A *kagemusha* (影武者) was a feudal lord's body double — acting in the lord's place within delegated bounds, but never signing in his name. That is this kit's mandate design, baked into the name: inward acts run on their own; outward acts wait for your seal. (Formerly `approval-loop` — the approval queue lives on as the mechanism's name inside.)
 
-> **A morning with the loop.** Overnight, notifications stay silent — **but the inbound watch never stops.** At 06:53 your phone buzzes ([ntfy](https://ntfy.sh/)): today's board — 3 drafts and 1 research memo the loop finished yesterday, 2 requests that landed overnight, 2 items waiting in the approval queue.
-> Coffee in hand, you answer from your phone: YES, YES, NO — "too pushy for this client." Two minutes.
-> That NO, verbatim, is appended to the decisions journal.
-> On Sunday night the weekly distiller turns it into a principle in the judgment model.
-> The agent reads that model every session — the same rejection never comes back.
-
-**There are two ways in, and this is the order.** ① **Just watch it** — a 10-minute demo; nothing to configure, no bill, your files untouched. ② **Put it in your own setup** — a 30-minute install, copy-paste.
-
-**① Just watch it (10 minutes).** One command, and the kit acts out from start to finish what it is actually for: how a piece of criticism you gave an AI — "that tone is too pushy for this client" — becomes a standing rule it follows from then on. It runs on made-up data, calls no AI (so there is no bill), and reads or writes none of your files — everything happens in a temporary folder it deletes on the way out.
-
-```bash
-git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/demo-distillation.sh
-```
-
-What appears on screen — three screenshots of a real run — plus the full steps: [Watch it first](#watch-it-first-10-minutes).
-
-**② Put it in your own setup (30 minutes).** In that same clone, one more paste lays the files down; after that you just open the folder with your AI assistant (Claude Code / Codex / any) and work in it.
-
-```bash
-./scripts/setup.sh
-```
-
-Full steps: [Set it up in your own environment](#3-set-it-up-in-your-own-environment-30-minutes-copy-paste).
-
-### What `setup.sh` expands, and what it deliberately does not
-
-This repository is **two layers**, and the line between them is the answer to "what did I just install?"
-
-| | **Core** — `scripts/` `templates/` `docs/` `tests/` `manifests/` (the repository root) | **[`cookbook/`](cookbook/README.md)** — the sample shelf |
-|---|---|---|
-| What it is | the **mechanism**: scaffolding, scripts, **empty forms**, the acceptance gate | **content**: disciplines the author burned in a live loop, evidence excerpts, other people's shelves |
-| `setup.sh` | **touches only this.** Every file it copies is listed in [`manifests/scaffold.tsv`](manifests/scaffold.tsv) | **never read, never copied, never executed** — not one file |
-| What you get | forms with nothing filled in: zero principles, zero active patterns, zero dated entries | nothing, until **you read it, pick a line, and move it by hand** |
-
-**Core holds no opinion about which judgments you should adopt.** A borrowed principle eats the same budget as one you burned yourself, so the shelf is not a default and copying from it is a manual act on purpose — that act is where you choose. Boundary in full: [`docs/layers.md`](docs/layers.md). What the shelf's stamps do and don't mean: [`cookbook/README.md`](cookbook/README.md).
-
-⚠️ The split is **not a privacy boundary**: `cookbook/` and core are the same repository and the same permanent history.
-
-<details>
-<summary><b>core-only checkout</b> — don't want other people's content in your working tree at all?</summary>
-
-Because core never reads the shelf, you can simply not check it out. Verified end to end (clone → `ls` → `setup.sh` exits 0):
-
-```bash
-git clone --filter=blob:none --no-checkout https://github.com/yohey-w/kagemusha.git
-cd kagemusha
-git sparse-checkout set --no-cone '/*' '!/cookbook'
-git checkout
-./scripts/setup.sh          # runs exactly as it does with the shelf present
-```
-
-`--filter=blob:none` only saves bandwidth (it is ignored by some transports, harmlessly); the pattern pair is what leaves `cookbook/` out. Get it back any time with `git sparse-checkout disable`.
-
-**What this does not buy — read this before you rely on it.** It is a **checkout-size convenience, and nothing else.** The shelf is still in the remote, still in this clone's object database, and still in the history: `git log`, `git show`, and any later `git checkout` reach it. It grants no privacy, no isolation, and no guarantee about content — the same disclaimer as [`docs/layers.md`](docs/layers.md) and [`cookbook/README.md`](cookbook/README.md). **Do not call it a privacy mode.** The kit's own acceptance gate measures the underlying property directly: test group H deletes `cookbook/` outright and proves `setup.sh` still exits 0 and creates exactly the same set of files.
-
-</details>
+**There are two ways in, and this is the order.** ① **Just watch it** — a 10-minute demo (→ [§4](#4-watch-it-first-10-minutes)); nothing to configure, no bill, your files untouched. ② **Put it in your own setup** — a 30-minute install, copy-paste (→ [§6](#6-set-it-up-in-your-own-environment-30-minutes-copy-paste)).
 
 > 📖 Background article (Japanese, Zenn): **[Loop engineering isn't just for engineers anymore — running it on real work, the fourth thing you have to design turned out to be "mandate" (authority)](https://zenn.dev/shio_shoppaize/articles/loop-mandate-design)**
 
 ---
 
-## 訂正の昇格
+## 2. Who it fits — and who it does not
 
-**Promotion of Corrections — the canonical definitions.** Three terms, fixed in this wording, because **a term is only worth anything if it means the same thing everywhere it is quoted.** Quote them freely. (日本語版: [README_ja.md](README_ja.md#訂正の昇格))
+**It fits you if:**
 
-**訂正の昇格 — promotion of a correction.** *The step that takes a human's rejection or correction from a conversation with an AI, extracts a reusable criterion out of it, and raises that criterion into a standing rule through human review.*
+- **Operations that can't be undone** — sending, publishing, delivering, mutating a source of truth — are part of your day; you want to hand that work to an AI and you cannot afford the accident.
+- You keep giving the AI **the same note over and over**, and you know the reason is thrown away each time.
+- Most of what you'd hand over **isn't code**: mail, drafts, research, prep for recurring meetings.
+- You want to **design and evolve your own criteria** rather than borrow someone else's frozen ones.
 
-- **Counts:** "too pushy for this client" is rejected; the reason lands verbatim in the journal, comes back as a candidate rule in the promotion queue, and **you copy it into your own instructions file** — the copying is the promotion.
-- **Does not count:** harvesting the correction and piling it into a material file or the journal. That is preserving a fact, not promoting it — *moving text needs no gate; promoting a correction into a rule does* ([`docs/distillation-loop.md`](docs/distillation-loop.md)), and the gate is a person. Nothing that hasn't passed it has been promoted.
+**It does not fit you if:**
 
-**人間定置網 — the human standing net.** *Keeping a human at the end of the AI, but never returning the judgment made there to the next AI run, so the human keeps performing the same check.* (A 定置網 is a fishing net fixed in place: it catches what swims by, and catches the same thing again tomorrow.)
-
-- **Counts:** "you keep making the same calls by hand — reject this tone, fix that number, no source no claim. That judgment is an asset, and it's being thrown away every time you click reject" ([§1](#1-what-this-solves-the-1-minute-version)). The human works properly every single time, and the same rejection is back next week.
-- **Does not count:** putting a human in front of an irreversible outward operation **as such**. That is [calibrated reliance](#8-calibrated-reliance--the-principle-under-the-whole-queue) — irreversible acts get independent verification *before* they fire. A human being there is not the net. **The judgment made there not flowing back to the next run** is the net.
-
-**判断ループ — the judgment loop.** The umbrella term: **the [approval loop](#1-what-this-solves-the-1-minute-version) (generate → verify → inward auto / outward to the queue → a human decides) and [judgment distillation](#6-rejections-become-assets--judgment-distillation) (reject reason → journal → judgment model → next session's AI) closed into a single circuit.** Not a new mechanism — the name for the state in which those two are connected.
-
-- **Counts:** a rejection becomes a principle, and the agent that reads that principle stops producing the same draft in the first place ([evidence that the circuit closed in a live instance](cookbook/author/evidence/README.md)).
-- **Does not count:** wiring where only the top half turns — the approval queue works, but reject reasons flow nowhere and the model is never revised. That is an approval loop, not a judgment loop.
-
-**The relation folds into one sentence: to stop being a human standing net, promote your corrections and close the judgment loop.**
-
-### Which tool in this kit carries which step
-
-| Step | The tool |
-|---|---|
-| Harvest — pick up corrections and group them into events (no LLM, i.e. free) | [`scripts/correction_scan.py`](scripts/correction_scan.py) |
-| Fire — on **material**, not on the clock | [`scripts/distill.sh`](scripts/distill.sh) |
-| Hand off — one rule line plus eight review fields, placed in front of a person | [`templates/distill-prompt.md`](templates/distill-prompt.md) → [`templates/promotion_queue.md`](templates/promotion_queue.md) |
-| Preserve the fact — append-only, with verbatim quotes (**this is not promotion**) | [`templates/decisions_journal.md`](templates/decisions_journal.md) |
-| The human gate itself — where outward operations stop | [`templates/approval_queue.md`](templates/approval_queue.md) |
-| Promote into (a) — a *mechanical* hole becomes a verifier | [`templates/verifiers.md`](templates/verifiers.md) |
-| Promote into (b) — a *judgment* becomes a principle (≤160 lines) | [`templates/judgment_model.md`](templates/judgment_model.md) |
-| After promotion — audit whether the rule does anything in your environment | [`scripts/discipline_scan.py`](scripts/discipline_scan.py) |
-
-Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). The light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md). What happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
+- All you have is **a chat window with no file access** — not even the minimal setup works (full prerequisite table: [§6](#what-you-actually-need)).
+- You want a shared approval **UI or SaaS** for a team: the queue here is one Markdown file and there is no dashboard ([humanlayer](#related--prior-work) is the closer fit).
+- You are not willing to **write down why you rejected something** — that is the only fuel the feedback arm has, and without it the bottom half never turns.
+- You need a guarantee about **how much** it helps: what's on offer is n=1, one instance (scope and limits: [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md)).
 
 ---
 
-## 1. What this solves (the 1-minute version)
+## 3. What this solves (the 1-minute version)
 
 Hand a slice of your work to an AI and two things immediately become the bottleneck — neither of them the model's raw capability:
 
@@ -127,67 +58,9 @@ That's the whole thesis: **the approval queue makes it safe; judgment distillati
 
 ---
 
-## What you actually need
+## 4. Watch it first (10 minutes)
 
-The mechanism is **files and discipline** — a harness-agnostic core. The prerequisites are additive: the minimal setup needs exactly one thing — a folder plus an assistant that can touch it. Each level of automation and each listening channel adds exactly one more:
-
-| What you want to run | Prerequisites (additive) |
-|---|---|
-| Minimal: approval queue + SSOT + journal, run by hand | A folder of Markdown files + one AI assistant **that can read/write files in that folder** (Claude Code CLI or desktop, Codex CLI, Cursor, …). ⚠️ A plain chat window with no file access does **not** qualify — this is the most-missed hidden prerequisite. |
-| Morning board / weekly distill, semi-automatic | + any nudge (a calendar reminder is enough) |
-| Same, fully automatic | + a headlessly-launchable CLI + a scheduler (cron on Linux/macOS, Task Scheduler on Windows; macOS can also use the native launchd) — for one reason only: a scheduler cannot click a GUI |
-| Inbound catch, Tier 1 (recommended) | + MCP connectors for your channels (Gmail / Slack / Notion) connected in your client — OAuth handled by the platform. Availability varies by plan and client. |
-| Inbound catch, fully automatic (the Tier 2 script) | + channel credentials (Slack bot token / Gmail app password) — because an interactively-authenticated MCP session may be unavailable under an unattended scheduler |
-| Approving from your phone | + a push channel ([ntfy](https://ntfy.sh/) or similar, free) |
-
-**Three ways to kick off the weekly run** — all three are fine: **fully automatic** (the scheduler launches an AI *CLI* — the only mode that needs a CLI), **semi-automatic** (the scheduler just *notifies* you; you paste the weekly prompt into a desktop or web chat), or **manual** (on a fixed weekday, you simply ask your AI yourself — make it a small ritual).
-
-In this mechanism a human has to approve principle revisions anyway (the weekly distiller *proposes*; new principles wait for your OK). So a human doing the kick-off is **not a failure of automation** — the approval and the kick-off just collapse into the same single tap.
-
-(Those three are about *who* kicks off the same OS-scheduled run — a separate question from *which* loop mechanism to use at all. An OS scheduler, an agent's own built-in loop (e.g. Claude Code's `/loop`), and a schedule run by the coding agent's own service or app are not interchangeable — they differ in who holds the clock and whether the job can reach your local files. Comparison: [`docs/inbound-loop.md`](docs/inbound-loop.md).)
-
-That's it. The `scripts/` in this repo are a **convenience layer** (headless automation, log mining, budget lints), not a prerequisite. Delete them and the loop still runs: the core is the Markdown files plus the discipline of *inward = auto / outward = approval queue*. A CLI + a scheduler is just the example wiring — a desktop app + a weekly calendar nudge is equally valid.
-
----
-
-## 2. Architecture (the whole loop)
-
-```mermaid
-graph TD
-    T1["time trigger<br/>(morning / weekly)"] --> GEN
-    T2["inbox trigger<br/>(a request lands)"] --> GEN
-    W["inbound watch<br/>(mail · chat · RSS …)"] -.-> T2
-    subgraph LOOP["the agent's loop"]
-        GEN["generate<br/>(draft · research · tidy)<br/>+ pre-judge using the model"] --> VER["machine verify<br/>(lint · SSOT cross-check)"]
-        VER -->|"fail"| GEN
-    end
-    VER -->|"pass"| BR{"outward<br/>operation?"}
-    BR -->|"inward"| AUTO["auto-run<br/>(local only)"]
-    BR -->|"outward<br/>(send · publish · mutate SSOT)"| Q["approval queue"]
-    Q --> HUMAN["human: approve / edit / reject"]
-    HUMAN -->|"approve"| OUT["out into the world<br/>(no undo)"]
-
-    HUMAN -->|"reject / edit<br/>(reason, verbatim)"| J["decisions journal<br/>(append-only events)"]
-    MINE["mine conversation logs"] -.->|"catch corrections that<br/>never hit the queue"| J
-    J -->|"weekly distill"| M["judgment model<br/>(thin canon ≤160 lines)"]
-    M -.->|"injected each session"| GEN
-    CH["project charter<br/>(per-project deltas)"] -.->|"read before<br/>project work"| GEN
-
-    classDef feedback fill:#eef,stroke:#88a;
-    class J,MINE,M feedback;
-    classDef ctx fill:#efe,stroke:#8a8;
-    class CH ctx;
-```
-
-The top half is the **approval loop** (mandate): generate → verify → inward auto / outward to the queue → a human decides. The bottom half (shaded) is **judgment distillation** (the feedback arm): the human's reject/edit reasons flow into an append-only **journal**, a weekly job **distills** them into the **judgment model**, and that model is injected back so the agent pre-judges — closing the loop. A finished agent *product* is someone else's frozen trigger/verifier/stop-rule/mandate; here you design and **evolve your own criteria**.
-
-### Catching the world's input — the three loops
-
-The diagram has two triggers. The **time trigger** (T1) ships as `morning_brief.sh` / `weekly_distill.sh.example`. The **inbox trigger** (T2) is a loop of its own — an **inbound watch** that polls the channels where work lands on you (mail, chat, SNS mentions, blog reactions), classifies each new item with a closed enum, holds the night's noise for one morning roll-up, and appends every detection to an immutable ledger so nothing dies silently. Connect your Gmail / Slack via your assistant's connectors and run the sweep procedure ([`templates/inbound_sweep.md`](templates/inbound_sweep.md)) — the script ([`scripts/inbound_watch.sh.example`](scripts/inbound_watch.sh.example)) is only for unattended scheduler runs. Three loops, one system: **inbound catch** (the world → you) → **work loop** (generate → verify → queue) → **judgment feedback** (your rejections → the model). Design + setup: [`docs/inbound-loop.md`](docs/inbound-loop.md).
-
----
-
-## Watch it first (10 minutes)
+One command, and the kit acts out from start to finish what it is actually for: how a piece of criticism you gave an AI — "that tone is too pushy for this client" — becomes a standing rule it follows from then on.
 
 **What you need:** one terminal, on macOS / Linux / WSL. The only things that run inside it are `bash` and `python3`, both already on your machine. **No API key, no bill, nothing of yours touched.**
 
@@ -226,7 +99,125 @@ Everything lives in a `mktemp` sandbox that is deleted on the way out: **no mode
 
 ---
 
-## 3. Set it up in your own environment (30 minutes, copy-paste)
+## 5. How the whole thing works
+
+In order: one diagram, the canonical terms, the four-layer table, then the feedback arm.
+
+### Architecture (the whole loop)
+
+```mermaid
+graph TD
+    T1["time trigger<br/>(morning / weekly)"] --> GEN
+    T2["inbox trigger<br/>(a request lands)"] --> GEN
+    W["inbound watch<br/>(mail · chat · RSS …)"] -.-> T2
+    subgraph LOOP["the agent's loop"]
+        GEN["generate<br/>(draft · research · tidy)<br/>+ pre-judge using the model"] --> VER["machine verify<br/>(lint · SSOT cross-check)"]
+        VER -->|"fail"| GEN
+    end
+    VER -->|"pass"| BR{"outward<br/>operation?"}
+    BR -->|"inward"| AUTO["auto-run<br/>(local only)"]
+    BR -->|"outward<br/>(send · publish · mutate SSOT)"| Q["approval queue"]
+    Q --> HUMAN["human: approve / edit / reject"]
+    HUMAN -->|"approve"| OUT["out into the world<br/>(no undo)"]
+
+    HUMAN -->|"reject / edit<br/>(reason, verbatim)"| J["decisions journal<br/>(append-only events)"]
+    MINE["mine conversation logs"] -.->|"catch corrections that<br/>never hit the queue"| J
+    J -->|"weekly distill"| M["judgment model<br/>(thin canon ≤160 lines)"]
+    M -.->|"injected each session"| GEN
+    CH["project charter<br/>(per-project deltas)"] -.->|"read before<br/>project work"| GEN
+
+    classDef feedback fill:#eef,stroke:#88a;
+    class J,MINE,M feedback;
+    classDef ctx fill:#efe,stroke:#8a8;
+    class CH ctx;
+```
+
+The top half is the **approval loop** (mandate): generate → verify → inward auto / outward to the queue → a human decides. The bottom half (shaded) is **judgment distillation** (the feedback arm): the human's reject/edit reasons flow into an append-only **journal**, a weekly job **distills** them into the **judgment model**, and that model is injected back so the agent pre-judges — closing the loop.
+
+### 訂正の昇格
+
+**Promotion of Corrections — the canonical definitions.** Three terms, fixed in this wording, because **a term is only worth anything if it means the same thing everywhere it is quoted.** Quote them freely. (日本語版: [README_ja.md](README_ja.md#訂正の昇格))
+
+**訂正の昇格 — promotion of a correction.** *The step that takes a human's rejection or correction from a conversation with an AI, extracts a reusable criterion out of it, and raises that criterion into a standing rule through human review.*
+
+- **Counts:** "too pushy for this client" is rejected; the reason lands verbatim in the journal, comes back as a candidate rule in the promotion queue, and **you copy it into your own instructions file** — the copying is the promotion.
+- **Does not count:** harvesting the correction and piling it into a material file or the journal. That is preserving a fact, not promoting it — *moving text needs no gate; promoting a correction into a rule does* ([`docs/distillation-loop.md`](docs/distillation-loop.md)), and the gate is a person. Nothing that hasn't passed it has been promoted.
+
+**人間定置網 — the human standing net.** *Keeping a human at the end of the AI, but never returning the judgment made there to the next AI run, so the human keeps performing the same check.* (A 定置網 is a fishing net fixed in place: it catches what swims by, and catches the same thing again tomorrow.)
+
+- **Counts:** "you keep making the same calls by hand — reject this tone, fix that number, no source no claim. That judgment is an asset, and it's being thrown away every time you click reject" ([§3](#3-what-this-solves-the-1-minute-version)). The human works properly every single time, and the same rejection is back next week.
+- **Does not count:** putting a human in front of an irreversible outward operation **as such**. That is [calibrated reliance](#calibrated-reliance--the-principle-under-the-whole-queue) — irreversible acts get independent verification *before* they fire. A human being there is not the net. **The judgment made there not flowing back to the next run** is the net.
+
+**判断ループ — the judgment loop.** The umbrella term: **the [approval loop](#3-what-this-solves-the-1-minute-version) (generate → verify → inward auto / outward to the queue → a human decides) and [judgment distillation](#rejections-become-assets--judgment-distillation) (reject reason → journal → judgment model → next session's AI) closed into a single circuit.** Not a new mechanism — the name for the state in which those two are connected.
+
+- **Counts:** a rejection becomes a principle, and the agent that reads that principle stops producing the same draft in the first place ([evidence that the circuit closed in a live instance](cookbook/author/evidence/README.md)).
+- **Does not count:** wiring where only the top half turns — the approval queue works, but reject reasons flow nowhere and the model is never revised. That is an approval loop, not a judgment loop.
+
+**The relation folds into one sentence: to stop being a human standing net, promote your corrections and close the judgment loop.**
+
+#### Which tool in this kit carries which step
+
+| Step | The tool |
+|---|---|
+| Harvest — pick up corrections and group them into events (no LLM, i.e. free) | [`scripts/correction_scan.py`](scripts/correction_scan.py) |
+| Fire — on **material**, not on the clock | [`scripts/distill.sh`](scripts/distill.sh) |
+| Hand off — one rule line plus eight review fields, placed in front of a person | [`templates/distill-prompt.md`](templates/distill-prompt.md) → [`templates/promotion_queue.md`](templates/promotion_queue.md) |
+| Preserve the fact — append-only, with verbatim quotes (**this is not promotion**) | [`templates/decisions_journal.md`](templates/decisions_journal.md) |
+| The human gate itself — where outward operations stop | [`templates/approval_queue.md`](templates/approval_queue.md) |
+| Promote into (a) — a *mechanical* hole becomes a verifier | [`templates/verifiers.md`](templates/verifiers.md) |
+| Promote into (b) — a *judgment* becomes a principle (≤160 lines) | [`templates/judgment_model.md`](templates/judgment_model.md) |
+| After promotion — audit whether the rule does anything in your environment | [`scripts/discipline_scan.py`](scripts/discipline_scan.py) |
+
+Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). The light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md). What happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
+
+### The four-layer equation
+
+| Layer | The question | The answer at work |
+|---|---|---|
+| Context | What does it know? | **SSOT** (`decisions` / `tasks` / `glossary` / `people`) |
+| Harness | What can it do? | CLIs, scripts, file ops |
+| Loop | When does it act, how is it checked? | triggers (time / inbox) + verifiers |
+| **Mandate** | **How far is it trusted; who is accountable?** | **reversible = auto / irreversible = approval queue** (proxy: inward / outward) |
+
+The first three are "how to make it run"; only the fourth is "how far to trust it." Out of the lab and into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays — given current capability, authority, and risk thresholds — with the person who knows the work best.
+
+### Rejections become assets → judgment distillation
+
+The highest-leverage field in the approval queue is **"doubt"**: the agent declares *where to look to make the ship/no-ship call*, so you don't re-read every draft in full. Queue-clearing drops to tens of seconds an item.
+
+Then there's a second level. **The reasons you reject or edit are the most valuable log you produce** — and there are two things to distill them into:
+
+- **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
+- **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
+
+Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
+
+---
+
+## 6. Set it up in your own environment (30 minutes, copy-paste)
+
+### What you actually need
+
+The mechanism is **files and discipline** — a harness-agnostic core. The prerequisites are additive: the minimal setup needs exactly one thing — a folder plus an assistant that can touch it. Each level of automation and each listening channel adds exactly one more:
+
+| What you want to run | Prerequisites (additive) |
+|---|---|
+| Minimal: approval queue + SSOT + journal, run by hand | A folder of Markdown files + one AI assistant **that can read/write files in that folder** (Claude Code CLI or desktop, Codex CLI, Cursor, …). ⚠️ A plain chat window with no file access does **not** qualify — this is the most-missed hidden prerequisite. |
+| Morning board / weekly distill, semi-automatic | + any nudge (a calendar reminder is enough) |
+| Same, fully automatic | + a headlessly-launchable CLI + a scheduler (cron on Linux/macOS, Task Scheduler on Windows; macOS can also use the native launchd) — for one reason only: a scheduler cannot click a GUI |
+| Inbound catch, Tier 1 (recommended) | + MCP connectors for your channels (Gmail / Slack / Notion) connected in your client — OAuth handled by the platform. Availability varies by plan and client. |
+| Inbound catch, fully automatic (the Tier 2 script) | + channel credentials (Slack bot token / Gmail app password) — because an interactively-authenticated MCP session may be unavailable under an unattended scheduler |
+| Approving from your phone | + a push channel ([ntfy](https://ntfy.sh/) or similar, free) |
+
+**Three ways to kick off the weekly run** — all three are fine: **fully automatic** (the scheduler launches an AI *CLI* — the only mode that needs a CLI), **semi-automatic** (the scheduler just *notifies* you; you paste the weekly prompt into a desktop or web chat), or **manual** (on a fixed weekday, you simply ask your AI yourself — make it a small ritual).
+
+In this mechanism a human has to approve principle revisions anyway (the weekly distiller *proposes*; new principles wait for your OK). So a human doing the kick-off is **not a failure of automation** — the approval and the kick-off just collapse into the same single tap.
+
+(Those three are about *who* kicks off the same OS-scheduled run — a separate question from *which* loop mechanism to use at all. An OS scheduler, an agent's own built-in loop (e.g. Claude Code's `/loop`), and a schedule run by the coding agent's own service or app are not interchangeable — they differ in who holds the clock and whether the job can reach your local files. Comparison: [`docs/inbound-loop.md`](docs/inbound-loop.md).)
+
+That's it. The `scripts/` in this repo are a **convenience layer** (headless automation, log mining, budget lints), not a prerequisite. Delete them and the loop still runs: the core is the Markdown files plus the discipline of *inward = auto / outward = approval queue*. A CLI + a scheduler is just the example wiring — a desktop app + a weekly calendar nudge is equally valid.
+
+### The steps (copy-paste)
 
 **Prerequisites** (for this scripted path only — the loop itself needs just the three things above)**:** `bash`; one AI CLI that runs a prompt non-interactively (default is the [Claude CLI](https://code.claude.com/), swappable to Codex/Gemini/etc.); optionally [ntfy.sh](https://ntfy.sh/) for phone notifications; Python 3 (only for the distillation scripts). Prefer not to script it? Skip to the semi-automatic / manual kick-off above and just paste the prompts into any assistant.
 
@@ -261,8 +252,6 @@ $EDITOR config.env                    # set PROJECT_ROOT / AGENT_CMD / NTFY_TOPI
 #    53 6 * * *  /path/to/kagemusha/scripts/morning_brief.sh
 ```
 
-Each morning a one-page board arrives; anything outward is stacked in `approval_queue.md`; you approve / edit / reject. **Add one rule to `verifiers.md` and it applies to every future output.**
-
 **Then, once the loop is running, turn on the feedback side (optional):**
 
 ```bash
@@ -287,7 +276,9 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 
 `correction_scan.py` costs nothing (no LLM) and groups the day's corrections into **events** — four rephrasings of one point are one event, never four witnesses. `distill.sh` runs daily and almost always does nothing: a model asked to distill principles from two thin corrections will not say "not enough", it will produce two thin principles, so the threshold is what keeps the output honest. What it produces is a **promotion queue** for you to read — never an edit to your rules file. [`docs/distillation-loop.md`](docs/distillation-loop.md).
 
-**Optional but recommended: a verifier from a different model lineage.** This kit is built around the assumption that AI output can be wrong — that's the whole reason the approval queue and the verifiers exist. But there's a blind spot: if the model that checks the work shares a lineage with the model that did the work, a failure mode common to that lineage slips past both. (Research on inference-time scaling reports a pattern — getting pulled off track by irrelevant context the longer a model reasons — that shows up across a model *family*, not just one model: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417).) So it's worth wiring in one checker from a different vendor.
+### Optional: a verifier from a different model lineage
+
+This kit is built around the assumption that AI output can be wrong — that's the whole reason the approval queue and the verifiers exist. But there's a blind spot: if the model that checks the work shares a lineage with the model that did the work, a failure mode common to that lineage slips past both. (Research on inference-time scaling reports a pattern — getting pulled off track by irrelevant context the longer a model reasons — that shows up across a model *family*, not just one model: [Inverse Scaling in Test-Time Compute](https://arxiv.org/abs/2507.14417).) So it's worth wiring in one checker from a different vendor.
 
 - **What:** the [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) — an official plugin that calls OpenAI's Codex CLI from inside Claude Code — plus the Codex CLI itself and an OpenAI-side login. Its usage quota is billed separately from Claude usage, so reaching for it doesn't eat into your main work's budget.
 - **When to reach for it:** (1) a second diagnosis when you're stuck, (2) designing a fix for your *own* blind spot — don't ask the side that has the blind spot to design around it, (3) an independent check before a big publish or delivery. Having it review this kit's own verifiers, or a distilled change to the judgment model, is the typical case.
@@ -305,7 +296,132 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 
 ---
 
-## 4. What's in the box
+## 7. Your day, once it is running
+
+> **A morning with the loop.** Overnight, notifications stay silent — **but the inbound watch never stops.** At 06:53 your phone buzzes ([ntfy](https://ntfy.sh/)): today's board — 3 drafts and 1 research memo the loop finished yesterday, 2 requests that landed overnight, 2 items waiting in the approval queue.
+> Coffee in hand, you answer from your phone: YES, YES, NO — "too pushy for this client." Two minutes.
+> That NO, verbatim, is appended to the decisions journal.
+> On Sunday night the weekly distiller turns it into a principle in the judgment model.
+> The agent reads that model every session — the same rejection never comes back.
+
+Each morning a one-page board arrives; anything outward is stacked in `approval_queue.md`; you approve / edit / reject. **Add one rule to `verifiers.md` and it applies to every future output.**
+
+---
+
+## 8. Safety and data boundaries
+
+First, what this kit **does not** do to your data.
+
+### What `setup.sh` expands, and what it deliberately does not
+
+This repository is **two layers**, and the line between them is the answer to "what did I just install?"
+
+| | **Core** — `scripts/` `templates/` `docs/` `tests/` `manifests/` (the repository root) | **[`cookbook/`](cookbook/README.md)** — the sample shelf |
+|---|---|---|
+| What it is | the **mechanism**: scaffolding, scripts, **empty forms**, the acceptance gate | **content**: disciplines the author burned in a live loop, evidence excerpts, other people's shelves |
+| `setup.sh` | **touches only this.** Every file it copies is listed in [`manifests/scaffold.tsv`](manifests/scaffold.tsv) | **never read, never copied, never executed** — not one file |
+| What you get | forms with nothing filled in: zero principles, zero active patterns, zero dated entries | nothing, until **you read it, pick a line, and move it by hand** |
+
+**Core holds no opinion about which judgments you should adopt.** A borrowed principle eats the same budget as one you burned yourself, so the shelf is not a default and copying from it is a manual act on purpose — that act is where you choose. Boundary in full: [`docs/layers.md`](docs/layers.md). What the shelf's stamps do and don't mean: [`cookbook/README.md`](cookbook/README.md).
+
+⚠️ The split is **not a privacy boundary**: `cookbook/` and core are the same repository and the same permanent history.
+
+<details>
+<summary><b>core-only checkout</b> — don't want other people's content in your working tree at all?</summary>
+
+Because core never reads the shelf, you can simply not check it out. Verified end to end (clone → `ls` → `setup.sh` exits 0):
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/yohey-w/kagemusha.git
+cd kagemusha
+git sparse-checkout set --no-cone '/*' '!/cookbook'
+git checkout
+./scripts/setup.sh          # runs exactly as it does with the shelf present
+```
+
+`--filter=blob:none` only saves bandwidth (it is ignored by some transports, harmlessly); the pattern pair is what leaves `cookbook/` out. Get it back any time with `git sparse-checkout disable`.
+
+**What this does not buy — read this before you rely on it.** It is a **checkout-size convenience, and nothing else.** The shelf is still in the remote, still in this clone's object database, and still in the history: `git log`, `git show`, and any later `git checkout` reach it. It grants no privacy, no isolation, and no guarantee about content — the same disclaimer as [`docs/layers.md`](docs/layers.md) and [`cookbook/README.md`](cookbook/README.md). **Do not call it a privacy mode.** The kit's own acceptance gate measures the underlying property directly: test group H deletes `cookbook/` outright and proves `setup.sh` still exits 0 and creates exactly the same set of files.
+
+</details>
+
+**What keeps the data you create out of git** (the allowlist `.gitignore`) is shown with the actual layout in §9, "Running multiple projects."
+
+---
+
+## 9. Going further
+
+From here on, read only what you turn out to need.
+
+### Catching the world's input — the three loops
+
+The diagram in §5 has two triggers. The **time trigger** (T1) ships as `morning_brief.sh` / `weekly_distill.sh.example`. The **inbox trigger** (T2) is a loop of its own — an **inbound watch** that polls the channels where work lands on you (mail, chat, SNS mentions, blog reactions), classifies each new item with a closed enum, holds the night's noise for one morning roll-up, and appends every detection to an immutable ledger so nothing dies silently. Connect your Gmail / Slack via your assistant's connectors and run the sweep procedure ([`templates/inbound_sweep.md`](templates/inbound_sweep.md)) — the script ([`scripts/inbound_watch.sh.example`](scripts/inbound_watch.sh.example)) is only for unattended scheduler runs. Three loops, one system: **inbound catch** (the world → you) → **work loop** (generate → verify → queue) → **judgment feedback** (your rejections → the model). Design + setup: [`docs/inbound-loop.md`](docs/inbound-loop.md).
+
+### Running multiple projects — charters, the system map, and living in the clone
+
+Run the loop on more than one client or project and two structures earn their keep (both scaffolded by `setup.sh`):
+
+- **One charter per project — but the personality stays singular.** Should the judgment model be split per project? No. Corrections are the loop's most valuable signal (§5); split the model per project and that signal scatters into thin, separate streams. What differs per project is not the principles but *how they apply*. So the judgment model stays one file, and each project gets a **charter** (`projects/<name>/charter.md`, ≤60 lines) holding only the *deltas*: the counterpart's decision style, the delegation boundary for this project, pricing discipline, communication register, and which principles bite harder or take exceptions here. Never copy a principle's text into a charter — the same proposition in two places means a correction reaches only one, and the other rots. The agent reads the charter before any work on that project.
+- **A one-screen system map** (`system_map.md`, at the instance root — the hottest file gets the shortest path): standing mechanisms (what runs, why, how to stop it), one card per project (status / our next move / waiting on them / deadline), and a one-line roadmap. Status lives in the map, never in charters — **charters carry judgment deltas, the map carries state.**
+
+And you run all of it **directly inside the clone**. The allowlist `.gitignore` tracks only the kit (marked ✓ below); everything you create is untrackable by construction, and `git pull` upgrades the kit under your data. This kills the classic failure of copying a kit out into a separate dir and drifting from upstream:
+
+```text
+kagemusha/                     ← your clone = your instance
+├── README.md  docs/  scripts/  templates/  tests/  manifests/     ✓ tracked (core)
+├── cookbook/                    ✓ tracked (the sample shelf — never scaffolded)
+│   ├── author/                  the author's burned disciplines + evidence excerpts
+│   └── community/               one directory per contributor, format-lint only
+├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
+├── system_map.md                 the one-screen board
+├── approval_queue.md             the queue outward operations pile into
+├── verifiers.md                  standing verifiers
+├── ssot/                         current truth (overwritten in place)
+├── judgment/                     append-only past (journal + judgment model)
+├── projects/
+│   ├── <name>/charter.md         per-project deltas (one folder per map card)
+│   └── _archive/                 retired projects (mv, don't delete)
+├── briefs/  logs/  local/        daily boards · run logs · machine-local scripts & secrets
+```
+
+Five invariants drive this layout: **card = folder = charter (1:1:1)** — one map card ↔ one `projects/<name>/` ↔ one `charter.md` inside it, so drift is lintable; **state vs history** — `ssot/` is overwritten truth, the journal is append-only past; **the personality is singular** — `judgment/` never splits per project; **the hottest file gets the shortest path** — the map sits at the root; **archive = one folder move** — retiring a project is `mv projects/<name> projects/_archive/`, and its charter travels with it. Rationale in [`docs/design.md`](docs/design.md).
+
+### Calibrated reliance — the principle under the whole queue
+
+Why gate outward operations at all? Because of one quiet failure mode: **the fact that an AI produced something is not evidence that it's correct.** Fluency and a confident tone are not proof. The approval queue is only the operational form of a deeper rule this kit adopts (arrived at through outside audit of the design):
+
+> **Short form.** The fact that an AI produced it is not evidence that it's right. Before you use an output as an answer, put it through verification proportional to its use.
+
+The full form spells out *how much* verification:
+
+> Don't treat an LLM's output as correct on the strength of fluency or a decisive tone alone. For each output, set the level of checking by the loss if it's wrong, its reversibility, how detectable an error would be, and the cost of checking — then verify with independent sources, deterministic tests, experiments, a separate line of evaluation, or expert human judgment. For low-risk, reversible uses, a sample audit or after-the-fact monitoring can be enough; for high-risk or irreversible uses, require independent verification *before* execution. The goal is not to distrust AI at all times, but to design the *right* reliance — adopt the correct outputs, reject the wrong ones.
+
+This is exactly why the split is **inward = auto / outward = approval queue.** Inward operations are reversible and low-loss, so a sample audit after the fact is enough; outward operations are often irreversible and high-loss, so they get independent verification *before* they fire. The queue is calibrated reliance applied to the one axis that bites hardest at work — whether an action can be undone.
+
+**Which means inward/outward is a proxy, not the axis itself.** In practice it misfires in exactly two places: **reversible-outward** (a push that leaves history and can be reverted — gating each one buys no safety and makes you the bottleneck) and **irreversible-inward** (a local-only data operation with no way back). Use the proxy where it's convenient; in those two places, re-decide on the real axis — **can this be undone?** (See [`docs/design.md`](docs/design.md) and P1 of [`templates/judgment_model.md`](templates/judgment_model.md).)
+
+### Count your work — where does your time actually go? (G/S/D/V/I/R)
+
+The loop's promise is that your day shifts *from doing the work to improving the loop* (§3). That's a claim about **where your time goes** — so make it measurable. Tag each slice of your own effort with one of six letters:
+
+| Tag | Kind of work | What it means |
+|---|---|---|
+| **G** | Generate | You produce the first substantive draft or candidate. |
+| **S** | Specify | You set the goal, the question, the constraints, the context. |
+| **D** | Dispose | You accept, reject, partially select, or order a fix. |
+| **V** | Verify | You test, fact-check, run an experiment, measure the result. |
+| **I** | Integrate | You wire it into a system or the real workplace. |
+| **R** | Relate | You persuade, negotiate, reach agreement, share accountability. |
+
+The bet behind the approval loop is that, on repetitive work where candidates are cheap to generate and outputs are cheap to evaluate, the share of **G** falls and the share of **D + V** rises — you spend less time *making the first draft* and more time *disposing of and verifying* the agent's. This codebook lets you check that against your own logs instead of taking it on faith.
+
+One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / judgment).** Specifying, verifying, integrating, and relating are each their own work; folding them into "judgment" inflates the disposal bucket and blurs where your time really went.
+
+---
+
+## 10. Reference
+
+### What's in the box
 
 | Path | Role |
 |---|---|
@@ -345,121 +461,7 @@ See [`docs/judgment-distillation.md`](docs/judgment-distillation.md) for how it 
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 | **[`cookbook/author/evidence/`](cookbook/author/evidence/README.md)** | **Proof the loop actually runs** — on the **sample shelf**: hand-redacted excerpts from the author's live instance, one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md). |
 
----
-
-## 5. The four-layer equation
-
-| Layer | The question | The answer at work |
-|---|---|---|
-| Context | What does it know? | **SSOT** (`decisions` / `tasks` / `glossary` / `people`) |
-| Harness | What can it do? | CLIs, scripts, file ops |
-| Loop | When does it act, how is it checked? | triggers (time / inbox) + verifiers |
-| **Mandate** | **How far is it trusted; who is accountable?** | **reversible = auto / irreversible = approval queue** (proxy: inward / outward) |
-
-The first three are "how to make it run"; only the fourth is "how far to trust it." Out of the lab and into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays — given current capability, authority, and risk thresholds — with the person who knows the work best.
-
----
-
-## 6. Rejections become assets → judgment distillation
-
-The highest-leverage field in the approval queue is **"doubt"**: the agent declares *where to look to make the ship/no-ship call*, so you don't re-read every draft in full. Queue-clearing drops to tens of seconds an item.
-
-Then there's a second level. **The reasons you reject or edit are the most valuable log you produce** — and there are two things to distill them into:
-
-- **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
-- **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
-
-Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
-
----
-
-## This kit grows — and that is the design, not a slogan
-
-§6 is about your rejections becoming your assets. The same circuit runs one level up, on the kit itself.
-
-- **From the author's live instance.** This repository is not written *about* a loop; it is written *from inside* one. The author runs it on real work daily, and the weekly distiller turns that week's rejections into principles. Whatever survives having the client, the profession, and the environment stripped off comes back here as a change to the templates and docs.
-- **From yours.** A discipline only one person has been burned by is n=1. The second person to report the same hole is what turns it into something worth shipping — so issues and PRs are the other inflow, especially "this rule didn't transfer to my setup, and here's what broke."
-
-Why growth is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why §6 sends your rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material is split along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
-
-**The step is defined at the top of this README: [訂正の昇格](#訂正の昇格), promoting a correction.** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
-
-The first thing shipped out of that inflow is **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** — a **menu, not a template**, on the sample shelf and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
-
----
-
-Want to contribute a discipline forged in your own loop? There are **three places and two kinds of review** — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
-
-- **The curated set and the kit itself** (`cookbook/author/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
-- **Your own shelf** — [`cookbook/community/<your GitHub login>/`](cookbook/community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`cookbook/community/README.md`](cookbook/community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
-
-## 7. Running multiple projects — charters, the system map, and living in the clone
-
-Run the loop on more than one client or project and two structures earn their keep (both scaffolded by `setup.sh`):
-
-- **One charter per project — but the personality stays singular.** Should the judgment model be split per project? No. Corrections are the loop's most valuable signal (§6); split the model per project and that signal scatters into thin, separate streams. What differs per project is not the principles but *how they apply*. So the judgment model stays one file, and each project gets a **charter** (`projects/<name>/charter.md`, ≤60 lines) holding only the *deltas*: the counterpart's decision style, the delegation boundary for this project, pricing discipline, communication register, and which principles bite harder or take exceptions here. Never copy a principle's text into a charter — the same proposition in two places means a correction reaches only one, and the other rots. The agent reads the charter before any work on that project.
-- **A one-screen system map** (`system_map.md`, at the instance root — the hottest file gets the shortest path): standing mechanisms (what runs, why, how to stop it), one card per project (status / our next move / waiting on them / deadline), and a one-line roadmap. Status lives in the map, never in charters — **charters carry judgment deltas, the map carries state.**
-
-And you run all of it **directly inside the clone**. The allowlist `.gitignore` tracks only the kit (marked ✓ below); everything you create is untrackable by construction, and `git pull` upgrades the kit under your data. This kills the classic failure of copying a kit out into a separate dir and drifting from upstream:
-
-```text
-kagemusha/                     ← your clone = your instance
-├── README.md  docs/  scripts/  templates/  tests/  manifests/     ✓ tracked (core)
-├── cookbook/                    ✓ tracked (the sample shelf — never scaffolded)
-│   ├── author/                  the author's burned disciplines + evidence excerpts
-│   └── community/               one directory per contributor, format-lint only
-├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
-├── system_map.md                 the one-screen board
-├── approval_queue.md             the queue outward operations pile into
-├── verifiers.md                  standing verifiers
-├── ssot/                         current truth (overwritten in place)
-├── judgment/                     append-only past (journal + judgment model)
-├── projects/
-│   ├── <name>/charter.md         per-project deltas (one folder per map card)
-│   └── _archive/                 retired projects (mv, don't delete)
-├── briefs/  logs/  local/        daily boards · run logs · machine-local scripts & secrets
-```
-
-Five invariants drive this layout: **card = folder = charter (1:1:1)** — one map card ↔ one `projects/<name>/` ↔ one `charter.md` inside it, so drift is lintable; **state vs history** — `ssot/` is overwritten truth, the journal is append-only past; **the personality is singular** — `judgment/` never splits per project; **the hottest file gets the shortest path** — the map sits at the root; **archive = one folder move** — retiring a project is `mv projects/<name> projects/_archive/`, and its charter travels with it. Rationale in [`docs/design.md`](docs/design.md).
-
----
-
-## 8. Calibrated reliance — the principle under the whole queue
-
-Why gate outward operations at all? Because of one quiet failure mode: **the fact that an AI produced something is not evidence that it's correct.** Fluency and a confident tone are not proof. The approval queue is only the operational form of a deeper rule this kit adopts (arrived at through outside audit of the design):
-
-> **Short form.** The fact that an AI produced it is not evidence that it's right. Before you use an output as an answer, put it through verification proportional to its use.
-
-The full form spells out *how much* verification:
-
-> Don't treat an LLM's output as correct on the strength of fluency or a decisive tone alone. For each output, set the level of checking by the loss if it's wrong, its reversibility, how detectable an error would be, and the cost of checking — then verify with independent sources, deterministic tests, experiments, a separate line of evaluation, or expert human judgment. For low-risk, reversible uses, a sample audit or after-the-fact monitoring can be enough; for high-risk or irreversible uses, require independent verification *before* execution. The goal is not to distrust AI at all times, but to design the *right* reliance — adopt the correct outputs, reject the wrong ones.
-
-This is exactly why the split is **inward = auto / outward = approval queue.** Inward operations are reversible and low-loss, so a sample audit after the fact is enough; outward operations are often irreversible and high-loss, so they get independent verification *before* they fire. The queue is calibrated reliance applied to the one axis that bites hardest at work — whether an action can be undone.
-
-**Which means inward/outward is a proxy, not the axis itself.** In practice it misfires in exactly two places: **reversible-outward** (a push that leaves history and can be reverted — gating each one buys no safety and makes you the bottleneck) and **irreversible-inward** (a local-only data operation with no way back). Use the proxy where it's convenient; in those two places, re-decide on the real axis — **can this be undone?** (See [`docs/design.md`](docs/design.md) and P1 of [`templates/judgment_model.md`](templates/judgment_model.md).)
-
----
-
-## 9. Count your work — where does your time actually go? (G/S/D/V/I/R)
-
-The loop's promise is that your day shifts *from doing the work to improving the loop* (§1). That's a claim about **where your time goes** — so make it measurable. Tag each slice of your own effort with one of six letters:
-
-| Tag | Kind of work | What it means |
-|---|---|---|
-| **G** | Generate | You produce the first substantive draft or candidate. |
-| **S** | Specify | You set the goal, the question, the constraints, the context. |
-| **D** | Dispose | You accept, reject, partially select, or order a fix. |
-| **V** | Verify | You test, fact-check, run an experiment, measure the result. |
-| **I** | Integrate | You wire it into a system or the real workplace. |
-| **R** | Relate | You persuade, negotiate, reach agreement, share accountability. |
-
-The bet behind the approval loop is that, on repetitive work where candidates are cheap to generate and outputs are cheap to evaluate, the share of **G** falls and the share of **D + V** rises — you spend less time *making the first draft* and more time *disposing of and verifying* the agent's. This codebook lets you check that against your own logs instead of taking it on faith.
-
-One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / judgment).** Specifying, verifying, integrating, and relating are each their own work; folding them into "judgment" inflates the disposal bucket and blurs where your time really went.
-
----
-
-## 10. FAQ (design Q&A)
+### FAQ (design Q&A)
 
 **Q. Why are rejections/corrections the "highest-value log"?**
 Because a ruling is predictable and a correction is not. Models get better at guessing which option you'll pick; they do not get better, on their own, at the exact places where *your* judgment diverges from theirs — that's what a correction marks. Mine your own logs and corrections outnumber clean rulings, yet the queue discards them the instant you click reject. Distillation captures that delta before it evaporates.
@@ -481,9 +483,25 @@ Yes. Swap `AGENT_CMD` / `AGENT_MODEL` / `AGENT_FLAGS` in `config.env` and edit t
 
 More in [`docs/faq.md`](docs/faq.md).
 
----
+### This kit grows — and that is the design, not a slogan
 
-## Related & prior work
+§5 is about your rejections becoming your assets. The same circuit runs one level up, on the kit itself.
+
+- **From the author's live instance.** This repository is not written *about* a loop; it is written *from inside* one. The author runs it on real work daily, and the weekly distiller turns that week's rejections into principles. Whatever survives having the client, the profession, and the environment stripped off comes back here as a change to the templates and docs.
+- **From yours.** A discipline only one person has been burned by is n=1. The second person to report the same hole is what turns it into something worth shipping — so issues and PRs are the other inflow, especially "this rule didn't transfer to my setup, and here's what broke."
+
+Why growth is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why §5 sends your rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material is split along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
+
+**The step is defined in §5: [訂正の昇格](#訂正の昇格), promoting a correction.** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
+
+The first thing shipped out of that inflow is **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** — a **menu, not a template**, on the sample shelf and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
+
+Want to contribute a discipline forged in your own loop? There are **three places and two kinds of review** — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
+
+- **The curated set and the kit itself** (`cookbook/author/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
+- **Your own shelf** — [`cookbook/community/<your GitHub login>/`](cookbook/community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`cookbook/community/README.md`](cookbook/community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
+
+### Related & prior work
 
 This layer already has good pioneers; this kit owes them a lot.
 
@@ -494,17 +512,13 @@ This layer already has good pioneers; this kit owes them a lot.
 
 This kit's one differentiator: **it treats the human's judgment log (the queue's reject/edit reasons) as a first-class input, and runs non-code work on plain markdown alone.**
 
----
-
-## Genealogy (same author, prior work)
+### Genealogy (same author, prior work)
 
 - **[multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun)** — parallel orchestration; topology design across many agents.
 - **[CoDD (codd-dev)](https://github.com/yohey-w/codd-dev)** — deliverable verification ("consistency-driven development"); the "prevent false success" idea. This kit's verifiers are its work-world version.
 
 Third in the series: orchestration (who acts) → verification (is it right) → **mandate (how far to trust)**.
 
----
-
-## License
+### License
 
 MIT. See [LICENSE](LICENSE).
