@@ -63,6 +63,44 @@ git checkout
 
 ---
 
+## 訂正の昇格
+
+**Promotion of Corrections — the canonical definitions.** Three terms, fixed in this wording, because **a term is only worth anything if it means the same thing everywhere it is quoted.** Quote them freely. (日本語版: [README_ja.md](README_ja.md#訂正の昇格))
+
+**訂正の昇格 — promotion of a correction.** *The step that takes a human's rejection or correction from a conversation with an AI, extracts a reusable criterion out of it, and raises that criterion into a standing rule through human review.*
+
+- **Counts:** "too pushy for this client" is rejected; the reason lands verbatim in the journal, comes back as a candidate rule in the promotion queue, and **you copy it into your own instructions file** — the copying is the promotion.
+- **Does not count:** harvesting the correction and piling it into a material file or the journal. That is preserving a fact, not promoting it — *moving text needs no gate; promoting a correction into a rule does* ([`docs/distillation-loop.md`](docs/distillation-loop.md)), and the gate is a person. Nothing that hasn't passed it has been promoted.
+
+**人間定置網 — the human standing net.** *Keeping a human at the end of the AI, but never returning the judgment made there to the next AI run, so the human keeps performing the same check.* (A 定置網 is a fishing net fixed in place: it catches what swims by, and catches the same thing again tomorrow.)
+
+- **Counts:** "you keep making the same calls by hand — reject this tone, fix that number, no source no claim. That judgment is an asset, and it's being thrown away every time you click reject" ([§1](#1-what-this-solves-the-1-minute-version)). The human works properly every single time, and the same rejection is back next week.
+- **Does not count:** putting a human in front of an irreversible outward operation **as such**. That is [calibrated reliance](#8-calibrated-reliance--the-principle-under-the-whole-queue) — irreversible acts get independent verification *before* they fire. A human being there is not the net. **The judgment made there not flowing back to the next run** is the net.
+
+**判断ループ — the judgment loop.** The umbrella term: **the [approval loop](#1-what-this-solves-the-1-minute-version) (generate → verify → inward auto / outward to the queue → a human decides) and [judgment distillation](#6-rejections-become-assets--judgment-distillation) (reject reason → journal → judgment model → next session's AI) closed into a single circuit.** Not a new mechanism — the name for the state in which those two are connected.
+
+- **Counts:** a rejection becomes a principle, and the agent that reads that principle stops producing the same draft in the first place ([evidence that the circuit closed in a live instance](cookbook/author/evidence/README.md)).
+- **Does not count:** wiring where only the top half turns — the approval queue works, but reject reasons flow nowhere and the model is never revised. That is an approval loop, not a judgment loop.
+
+**The relation folds into one sentence: to stop being a human standing net, promote your corrections and close the judgment loop.**
+
+### Which tool in this kit carries which step
+
+| Step | The tool |
+|---|---|
+| Harvest — pick up corrections and group them into events (no LLM, i.e. free) | [`scripts/correction_scan.py`](scripts/correction_scan.py) |
+| Fire — on **material**, not on the clock | [`scripts/distill.sh`](scripts/distill.sh) |
+| Hand off — one rule line plus eight review fields, placed in front of a person | [`templates/distill-prompt.md`](templates/distill-prompt.md) → [`templates/promotion_queue.md`](templates/promotion_queue.md) |
+| Preserve the fact — append-only, with verbatim quotes (**this is not promotion**) | [`templates/decisions_journal.md`](templates/decisions_journal.md) |
+| The human gate itself — where outward operations stop | [`templates/approval_queue.md`](templates/approval_queue.md) |
+| Promote into (a) — a *mechanical* hole becomes a verifier | [`templates/verifiers.md`](templates/verifiers.md) |
+| Promote into (b) — a *judgment* becomes a principle (≤160 lines) | [`templates/judgment_model.md`](templates/judgment_model.md) |
+| After promotion — audit whether the rule does anything in your environment | [`scripts/discipline_scan.py`](scripts/discipline_scan.py) |
+
+Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). The light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md). What happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
+
+---
+
 ## 1. What this solves (the 1-minute version)
 
 Hand a slice of your work to an AI and two things immediately become the bottleneck — neither of them the model's raw capability:
@@ -295,7 +333,7 @@ Why corrections matter most: a *ruling* (which option to pick) is something a mo
 
 Why growth is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why §6 sends your rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material is split along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
 
-**The step has a name here: *promoting a correction* (訂正の昇格).** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
+**The step is defined at the top of this README: [訂正の昇格](#訂正の昇格), promoting a correction.** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
 
 The first thing shipped out of that inflow is **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** — a **menu, not a template**, on the sample shelf and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
 
