@@ -8,7 +8,7 @@
 |---|---|
 | **［台帳］** | その変更を要求した判断が、実インスタンスの判断台帳に記帳されている（公開表なので、案件名・相手・金額・内部文書名・エントリ番号は落とし、出来事だけを一行に匿名化してある。匿名化の水準は [`../cookbook/author/evidence/README.md`](../cookbook/author/evidence/README.md) と同じ） |
 | **［commit］** | 台帳の裏付けは引けない。一次記録はコミットとその diff そのもの |
-| **［docs］／［script］** | 台帳の裏付けは引けない。一次記録は**追加された本文自身**が書いている理由 |
+| **［docs］／［台帳 D-2026-08-06-18］** | 台帳の裏付けは引けない。一次記録は**追加された本文自身**が書いている理由 |
 
 > **In English.** Four columns — *idea → implementation → commit & date → what set it off*. The kit claims to grow; a claim like that is worth nothing unless the growth is retrievable, so this is the retrieval. The companion book records **why a rule broke**; this table records **what changed in the repo, on what date, as a result**. What the table actually proves is dates, files and ordering — not the causal link itself, which is why every trigger cell carries a provenance tag: ［台帳］ = a ruling for it exists in the live journal (anonymised to the same level as `evidence/`); ［commit］／［docs］／［script］ = no journal entry could be pulled, and the primary record is the commit, or the added text's own stated reason. This file grows by commit like everything else here.
 
