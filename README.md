@@ -26,7 +26,7 @@ You are the approver of record. The AI is your back office. Your rejection reaso
 git clone https://github.com/yohey-w/kagemusha && cd kagemusha && ./scripts/demo-distillation.sh
 ```
 
-What appears on screen, step by step: [Watch it first](#watch-it-first-10-minutes).
+What appears on screen — three screenshots of a real run — plus the full steps: [Watch it first](#watch-it-first-10-minutes).
 
 **② Put it in your own setup (30 minutes).** In that same clone, one more paste lays the files down; after that you just open the folder with your AI assistant (Claude Code / Codex / any) and work in it.
 
@@ -189,20 +189,38 @@ The diagram has two triggers. The **time trigger** (T1) ships as `morning_brief.
 
 ## Watch it first (10 minutes)
 
-Nothing to set up, no API bill, nothing of yours touched.
+**What you need:** one terminal, on macOS / Linux / WSL. The only things that run inside it are `bash` and `python3`, both already on your machine. **No API key, no bill, nothing of yours touched.**
 
 ```bash
-./scripts/demo-distillation.sh          # DEMO_FAST=1 for no pauses · DEMO_KEEP=1 to keep the files
+git clone https://github.com/yohey-w/kagemusha
+cd kagemusha
+./scripts/demo-distillation.sh
 ```
 
-It plays one full turn out in front of you, on invented data. In order:
+Then just press Enter to read your way through it (`DEMO_FAST=1 ./scripts/demo-distillation.sh` runs it with no pauses; `DEMO_KEEP=1` keeps the files the demo made so you can open them).
+
+It plays one full turn out in front of you, on invented data. In order — and **the three screenshots below are that exact command, run for real, with nothing about the output edited**:
 
 1. **You overrule the AI.** A few turns from a (synthetic) work session where you told the agent its draft was wrong, and why.
 2. **The correction is picked up.** A free, no-model script finds those turns and files each point as one **event** — say the same thing four ways and it counts once, not four times.
 3. **Nothing fires yet.** With only a handful of corrections on hand, the kit deliberately stays quiet: a model asked to draw principles out of thin material will not answer "not enough", it will produce thin principles.
+
+   ![Demo screen: the run below the threshold prints SKIPPED and does nothing; once enough material has landed the next run prints FIRED and distils](images/demo/01-threshold.png)
+
+   *While the material is thin it stays silent (SKIPPED); only on the day enough has landed does it fire (FIRED). Nothing has cost anything yet.*
+
 4. **More lands, and it drafts a rule.** Past the threshold it proposes one rule line, with the eight things you need in order to rule on it — the exact words it came from, where it applies and where it does not, anything in the material pointing the other way, where the rule should be filed, and when to re-check it.
 5. **You decide, and only you.** The proposal goes into a queue for you to read. The machine writes the diff against your instructions file and stops there: you see it, and it is **not applied**.
+
+   ![Demo screen: the review queue shows two candidates with all eight fields filled in, and then asks whether to promote or skip](images/demo/02-review-card.png)
+
+   *A proposed rule never arrives as a bare line — evidence, scope, exception, counter-evidence, where to file it and when to re-check it all come with it, and then you are asked one thing: promote, or skip.*
+
 6. **A later check asks whether the rule did anything.** The audit walks a subsequent session and quotes the passages where the accepted rule fired — plus the one from before it existed, where it was broken.
+
+   ![Demo screen: the diff against CLAUDE.md.proposed, followed by the audit quoting a FIRE line and a BREACH line](images/demo/03-diff-and-audit.png)
+
+   *The machine writes the diff and stops — it never applies it. The later audit puts the line where the rule fired (FIRE) next to the one from before it existed, where it was broken (BREACH).*
 
 Everything lives in a `mktemp` sandbox that is deleted on the way out: **no model is called, none of your logs are read, and not one byte is written outside it** — pinned by test group J, which asserts the checkout is byte-identical before and after. The session logs are obviously-synthetic and the distilling model is a stub wired in at `AGENT_CMD`; every other moving part is the shipped script you will be cronning below.
 
