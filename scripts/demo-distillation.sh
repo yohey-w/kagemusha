@@ -207,6 +207,9 @@ ja "  ・④のサブエージェント発話と道具出力は、そもそも�
 canon "一つのことを何通りに言い直しても、証人は一人だ（cluster-one-vote）"
 en "One point restated four times is one witness, never four."
 [[ "$P1" = "3" ]] || die "expected 3 pending events, got '$P1'"
+# The claim above, checked rather than asserted: neither impostor is in the file.
+grep -q "別エージェントの発話" "$MATERIAL" && die "a subagent turn was harvested as yours"
+grep -q "これは道具の出力" "$MATERIAL" && die "a tool result was harvested as yours"
 
 # ═══ 3. the firing decision — and the silence ══════════════════════════════
 step "3. 発火判定 — distill.sh は、ほとんどの日なにもしない"
@@ -378,7 +381,8 @@ printf '\n'
 ja "起きたことを順に:"
 en "What just happened, in order:"
 ja "  ① バッチを凍結（イベントidと本文のsha256をファイルに固定）してから送った"
-ja "  ② モデルは1バイトも書いていない。書く道具を渡していない（stdoutだけ）"
+ja "  ② モデルには書く道具を渡していない——この config.env は AGENT_FLAGS に"
+ja "     --dangerously-skip-permissions を持っているのに、distill.sh はこの呼び出しにだけは渡さない"
 ja "  ③ その報告をバッチ台帳と突き合わせ、6イベント全部の処分が揃って初めて"
 ja "  ④ このスクリプトがキューへ追記し、そのあとで未蒸留カウンタを進めた"
 canon "終了コード0は、プロセスが終わったことしか証明しない"
