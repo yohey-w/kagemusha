@@ -97,11 +97,13 @@ It plays one full turn out in front of you, on invented data. In order — and *
 
 Everything lives in a `mktemp` sandbox that is deleted on the way out: **no model is called, none of your logs are read, and not one byte is written outside it** — pinned by test group J, which asserts the checkout is byte-identical before and after. The session logs are obviously-synthetic and the distilling model is a stub wired in at `AGENT_CMD`; every other moving part is the shipped script you will be cronning below.
 
+**Two ways on from here.** Want it running in your own setup now → **[§6](#6-set-it-up-in-your-own-environment-30-minutes-copy-paste)**. Want the mechanism first → **[§5](#5-how-the-whole-thing-works)**.
+
 ---
 
 ## 5. How the whole thing works
 
-In order: one diagram, the canonical terms, the four-layer table, then the feedback arm.
+One diagram, three canonical terms, one table. This section is the map; everything deeper is one link away.
 
 ### Architecture (the whole loop)
 
@@ -140,13 +142,13 @@ The top half is the **approval loop** (mandate): generate → verify → inward 
 
 **訂正の昇格 — promotion of a correction.** *The step that takes a human's rejection or correction from a conversation with an AI, extracts a reusable criterion out of it, and raises that criterion into a standing rule through human review.*
 
-- **Counts:** "too pushy for this client" is rejected; the reason lands verbatim in the journal, comes back as a candidate rule in the promotion queue, and **you copy it into your own instructions file** — the copying is the promotion.
-- **Does not count:** harvesting the correction and piling it into a material file or the journal. That is preserving a fact, not promoting it — *moving text needs no gate; promoting a correction into a rule does* ([`docs/distillation-loop.md`](docs/distillation-loop.md)), and the gate is a person. Nothing that hasn't passed it has been promoted.
+- **Counts:** a rejection lands verbatim in the journal, comes back as a candidate rule in the promotion queue, and **you copy it into your own instructions file** — the copying is the promotion.
+- **Does not count:** piling the correction into a material file or the journal. *Moving text needs no gate; promoting a correction into a rule does* ([`docs/distillation-loop.md`](docs/distillation-loop.md)) — and the gate is a person.
 
 **人間定置網 — the human standing net.** *Keeping a human at the end of the AI, but never returning the judgment made there to the next AI run, so the human keeps performing the same check.* (A 定置網 is a fishing net fixed in place: it catches what swims by, and catches the same thing again tomorrow.)
 
-- **Counts:** "you keep making the same calls by hand — reject this tone, fix that number, no source no claim. That judgment is an asset, and it's being thrown away every time you click reject" ([§3](#3-what-this-solves-the-1-minute-version)). The human works properly every single time, and the same rejection is back next week.
-- **Does not count:** putting a human in front of an irreversible outward operation **as such**. That is [calibrated reliance](#calibrated-reliance--the-principle-under-the-whole-queue) — irreversible acts get independent verification *before* they fire. A human being there is not the net. **The judgment made there not flowing back to the next run** is the net.
+- **Counts:** the human rules properly every single time — and the same rejection is back next week ([§3](#3-what-this-solves-the-1-minute-version)).
+- **Does not count:** putting a human in front of an irreversible outward operation **as such** — that is [calibrated reliance](#calibrated-reliance--the-principle-under-the-whole-queue). A human being there is not the net; **the judgment made there not flowing back to the next run** is.
 
 **判断ループ — the judgment loop.** The umbrella term: **the [approval loop](#3-what-this-solves-the-1-minute-version) (generate → verify → inward auto / outward to the queue → a human decides) and [judgment distillation](#rejections-become-assets--judgment-distillation) (reject reason → journal → judgment model → next session's AI) closed into a single circuit.** Not a new mechanism — the name for the state in which those two are connected.
 
@@ -155,20 +157,7 @@ The top half is the **approval loop** (mandate): generate → verify → inward 
 
 **The relation folds into one sentence: to stop being a human standing net, promote your corrections and close the judgment loop.**
 
-#### Which tool in this kit carries which step
-
-| Step | The tool |
-|---|---|
-| Harvest — pick up corrections and group them into events (no LLM, i.e. free) | [`scripts/correction_scan.py`](scripts/correction_scan.py) |
-| Fire — on **material**, not on the clock | [`scripts/distill.sh`](scripts/distill.sh) |
-| Hand off — one rule line plus eight review fields, placed in front of a person | [`templates/distill-prompt.md`](templates/distill-prompt.md) → [`templates/promotion_queue.md`](templates/promotion_queue.md) |
-| Preserve the fact — append-only, with verbatim quotes (**this is not promotion**) | [`templates/decisions_journal.md`](templates/decisions_journal.md) |
-| The human gate itself — where outward operations stop | [`templates/approval_queue.md`](templates/approval_queue.md) |
-| Promote into (a) — a *mechanical* hole becomes a verifier | [`templates/verifiers.md`](templates/verifiers.md) |
-| Promote into (b) — a *judgment* becomes a principle (≤160 lines) | [`templates/judgment_model.md`](templates/judgment_model.md) |
-| After promotion — audit whether the rule does anything in your environment | [`scripts/discipline_scan.py`](scripts/discipline_scan.py) |
-
-Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). The light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md). What happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
+Which file carries which step is listed one by one in [§10](#10-reference). The mechanism in full: [`docs/judgment-distillation.md`](docs/judgment-distillation.md) · the light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md) · what happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
 
 ### The four-layer equation
 
@@ -179,18 +168,16 @@ Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md)
 | Loop | When does it act, how is it checked? | triggers (time / inbox) + verifiers |
 | **Mandate** | **How far is it trusted; who is accountable?** | **reversible = auto / irreversible = approval queue** (proxy: inward / outward) |
 
-The first three are "how to make it run"; only the fourth is "how far to trust it." Out of the lab and into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays — given current capability, authority, and risk thresholds — with the person who knows the work best.
+The first three are "how to make it run"; only the fourth is "how far to trust it" — and out of the lab, into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays with the person who knows the work best. Which file each part lands in: [`docs/design.md`](docs/design.md).
 
 ### Rejections become assets → judgment distillation
 
-The highest-leverage field in the approval queue is **"doubt"**: the agent declares *where to look to make the ship/no-ship call*, so you don't re-read every draft in full. Queue-clearing drops to tens of seconds an item.
-
-Then there's a second level. **The reasons you reject or edit are the most valuable log you produce** — and there are two things to distill them into:
+The reasons you reject or edit are the most valuable log you produce ([§3](#3-what-this-solves-the-1-minute-version)) — and there are two places to distill them into:
 
 - **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
 - **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
 
-Why corrections matter most: a *ruling* (which option to pick) is something a model eventually predicts on its own; a *correction* (you overruling its output) is the **delta between the model and you**, and that signal doesn't go stale. This is the part a finished agent product — someone else's frozen criteria — can never have: **it doesn't learn *your* judgment.** Full mechanism: [`docs/judgment-distillation.md`](docs/judgment-distillation.md). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
+Why a *correction* outranks a *ruling*: the FAQ in [§10](#10-reference). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
 
 ---
 
@@ -304,7 +291,22 @@ This kit is built around the assumption that AI output can be wrong — that's t
 > On Sunday night the weekly distiller turns it into a principle in the judgment model.
 > The agent reads that model every session — the same rejection never comes back.
 
-Each morning a one-page board arrives; anything outward is stacked in `approval_queue.md`; you approve / edit / reject. **Add one rule to `verifiers.md` and it applies to every future output.**
+That is the shape. Here is the actual handling, and the file each step happens in.
+
+**Morning.**
+
+1. **Open the approval queue** — the unprocessed section of `approval_queue.md`. Every card already carries what you need in order to rule *without* re-reading the deliverable: the artifact itself (never a summary), whether the act can be undone, the agent's declared doubt, its one recommendation, and what it will do if you say nothing. The mark in the heading is the weight — 🔴 nothing moves until you rule, 🟡 taste, so no answer means it proceeds on the recommendation — and a batch is at most three cards. Tick approve / edit-and-approve / reject. → [`templates/approval_queue.md`](templates/approval_queue.md), [`docs/decision-cards.md`](docs/decision-cards.md)
+2. **Read the one-page board** — `briefs/<date>.md`, written by the time trigger before you woke up: what happened overnight, today's deadlines and promises, what is waiting on you (each with one recommended line), work in progress, and — stated plainly — whatever that unattended run could *not* read. → [`scripts/morning_brief.sh`](scripts/morning_brief.sh)
+
+**Whenever you reject — this is the entire fuel supply for the bottom half.**
+
+3. **Write the reason on the card**, in your own words, in the reject line's reason slot. Then the settled card moves to the processed section and the reason is copied **verbatim** into the judgment journal — that verbatim quote is the only thing a principle may later be built from. → [`templates/approval_queue.md`](templates/approval_queue.md), [`templates/decisions_journal.md`](templates/decisions_journal.md)
+4. **If the rejection was a mechanical hole, add one verifier** to `verifiers.md`. One line, and it applies to every future output. → [`templates/verifiers.md`](templates/verifiers.md)
+
+**Once a week.**
+
+5. **Rule on the promotion candidates** (about five minutes) — read `promotion_queue.md` and copy **only the ones you accept** into your own instructions file. The copying *is* the promotion — the distillation lane may write this queue and nothing else: not your instructions file, not the principles, not the source of truth. → [`templates/promotion_queue.md`](templates/promotion_queue.md), [`docs/distillation-loop.md`](docs/distillation-loop.md)
+6. **Read the discipline audit** — the week's scan quotes the passages where each discipline you adopted fired or was broken, and the prompt turns them into a finding of thirty lines or less. It quotes; it does not judge. A dead-letter candidate is an invitation to look, not a proposal to delete. → [`scripts/discipline_scan.py`](scripts/discipline_scan.py), [`docs/discipline-audit.md`](docs/discipline-audit.md)
 
 ---
 
@@ -345,7 +347,7 @@ git checkout
 
 </details>
 
-**What keeps the data you create out of git** (the allowlist `.gitignore`) is shown with the actual layout in §9, "Running multiple projects."
+**What keeps the data you create out of git** is the allowlist `.gitignore`: only the kit's own files are tracked, so your SSOT, journal, and config cannot be committed even by accident — and `git pull` updates the kit underneath them. Which paths are the kit's and which are yours is drawn file by file in [§9](#9-going-further).
 
 ---
 
@@ -396,7 +398,7 @@ The full form spells out *how much* verification:
 
 > Don't treat an LLM's output as correct on the strength of fluency or a decisive tone alone. For each output, set the level of checking by the loss if it's wrong, its reversibility, how detectable an error would be, and the cost of checking — then verify with independent sources, deterministic tests, experiments, a separate line of evaluation, or expert human judgment. For low-risk, reversible uses, a sample audit or after-the-fact monitoring can be enough; for high-risk or irreversible uses, require independent verification *before* execution. The goal is not to distrust AI at all times, but to design the *right* reliance — adopt the correct outputs, reject the wrong ones.
 
-This is exactly why the split is **inward = auto / outward = approval queue.** Inward operations are reversible and low-loss, so a sample audit after the fact is enough; outward operations are often irreversible and high-loss, so they get independent verification *before* they fire. The queue is calibrated reliance applied to the one axis that bites hardest at work — whether an action can be undone.
+This is exactly why the split of [§3](#3-what-this-solves-the-1-minute-version) falls where it does: inward operations are reversible and low-loss, so a sample audit after the fact is enough; outward operations are often irreversible and high-loss, so they get independent verification *before* they fire. The queue is calibrated reliance applied to the one axis that bites hardest at work — whether an action can be undone.
 
 **Which means inward/outward is a proxy, not the axis itself.** In practice it misfires in exactly two places: **reversible-outward** (a push that leaves history and can be reverted — gating each one buys no safety and makes you the bottleneck) and **irreversible-inward** (a local-only data operation with no way back). Use the proxy where it's convenient; in those two places, re-decide on the real axis — **can this be undone?** (See [`docs/design.md`](docs/design.md) and P1 of [`templates/judgment_model.md`](templates/judgment_model.md).)
 
@@ -483,23 +485,14 @@ Yes. Swap `AGENT_CMD` / `AGENT_MODEL` / `AGENT_FLAGS` in `config.env` and edit t
 
 More in [`docs/faq.md`](docs/faq.md).
 
-### This kit grows — and that is the design, not a slogan
+### Adding to the kit — where a contribution goes
 
-§5 is about your rejections becoming your assets. The same circuit runs one level up, on the kit itself.
+Two inflows keep this repository from freezing: the author's live instance, and your reports of what did not transfer. Why growth is structural rather than a promise, and what a contribution is measured against: [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
 
-- **From the author's live instance.** This repository is not written *about* a loop; it is written *from inside* one. The author runs it on real work daily, and the weekly distiller turns that week's rejections into principles. Whatever survives having the client, the profession, and the environment stripped off comes back here as a change to the templates and docs.
-- **From yours.** A discipline only one person has been burned by is n=1. The second person to report the same hole is what turns it into something worth shipping — so issues and PRs are the other inflow, especially "this rule didn't transfer to my setup, and here's what broke."
+**Three places, two kinds of review.**
 
-Why growth is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why §5 sends your rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material is split along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
-
-**The step is defined in §5: [訂正の昇格](#訂正の昇格), promoting a correction.** Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — a promotion does, and the gate is a person.
-
-The first thing shipped out of that inflow is **[`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md)** — a **menu, not a template**, on the sample shelf and deliberately not scaffolded. Each discipline carries the burn it came from, a **portability label** (*works standalone* / *needs a mechanism, stated* / *take the shape, the content is yours to burn*), and a **paste target**. Two rules govern it: **take only the ones whose hole you have already fallen into** — an unearned rule is noise, and borrowed principles eat the same ≤32-principle budget as the ones you earn — and **only the physics of working with an AI qualifies.** Disciplines belonging to your profession can be burned only from your own rejections, and their home is your own judgment model.
-
-Want to contribute a discipline forged in your own loop? There are **three places and two kinds of review** — see [`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
-
-- **The curated set and the kit itself** (`cookbook/author/starter-disciplines.md`, docs, formats) — **a maintainer rules on it**, against the same four axes the file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
-- **Your own shelf** — [`cookbook/community/<your GitHub login>/`](cookbook/community/README.md), for what the curated gate throws away on purpose: disciplines that are specific to your environment, and disciplines that belong to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`cookbook/community/README.md`](cookbook/community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
+- **The kit itself and the curated discipline set** ([`cookbook/author/starter-disciplines.md`](cookbook/author/starter-disciplines.md), docs, formats) — **a maintainer rules on it**, against the four axes that file's own `## 増やし方` states: burned from a real rejection, the proposition survives having the profession stripped off, "delete this line — does the agent then get it wrong?", and the entry metadata (portability label / paste target / burn origin). No automation merges here.
+- **Your own shelf** — [`cookbook/community/<your GitHub login>/`](cookbook/community/README.md), for what the curated gate throws away on purpose: disciplines specific to your environment, and disciplines belonging to your profession. A PR touching only your directory and passing a mechanical format lint is **auto-approved and squash-merged with nobody reading it** — which is exactly why [`cookbook/community/README.md`](cookbook/community/README.md) is about where the responsibility sits, and why it stays in the git history whatever you delete later.
 
 ### Related & prior work
 

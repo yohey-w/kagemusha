@@ -20,6 +20,16 @@ Read [`cookbook/community/README.md`](../cookbook/community/README.md) before us
 
 ---
 
+## Why this kit grows — structure, not a promise
+
+Two inflows feed it. **From the author's live instance:** this repository is not written *about* a loop, it is written *from inside* one — the author runs it on real work daily, the weekly distiller turns that week's rejections into principles, and whatever survives having the client, the profession, and the environment stripped off comes back here as a change to the templates and docs. **From yours:** issues and PRs are the other inflow, and "this rule didn't transfer to my setup, and here's what broke" is as welcome as a new discipline (how it is judged: the maintainer's lane, below).
+
+Why that is structural rather than a promise: **append-only artifacts accrete; snapshots rot.** A frozen best-practices document is a snapshot — stale the moment your work moves — which is exactly why the kit sends rejections to an append-only journal instead of a rewrite. The author's long-form writing on this material splits along the same seam: the theory half is *revised* and carries a freshness date, the practice half is *appended to*.
+
+And what is being contributed here is narrower than it looks. Tools that capture corrections, route them past a human reviewer, and fold them into a canonical document already exist — as starred open source and as shipped product features — so that plumbing is not what this kit is for. What no tool ships is **the criteria the review runs on, and the governance of a rule once it has been promoted**: a correction is a *fact* and lands in an append-only journal; a discipline is a *norm* and **overwrites** the rule it replaces. Moving and reflecting need no gate — promoting does, and the gate is a person ([the canonical definition](../README.md#訂正の昇格)).
+
+---
+
 ## The maintainer's lane — the kit itself, and the sample loop
 
 The kit's curated discipline set is [`cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md). Its own `## 増やし方` section states the gate, and a PR into that file is measured against it — **three conditions, plus the metadata every entry carries.**
@@ -70,6 +80,16 @@ The full rule table, the format for an entry, and the removal procedure live in 
 つまり**3つのうち2つは管理者裁定レーンで、自動なのはちょうど1つだけ**です。core と `cookbook/` の境界そのものは [`docs/layers.md`](../docs/layers.md)、それぞれの棚の判子が何を意味し何を意味しないかは [`cookbook/README.md`](../cookbook/README.md) にあります。
 
 自動レーンを使う前に [`cookbook/community/README.md`](../cookbook/community/README.md) を読んでください。短いですが、**git 履歴が恒久である**という段が、いちばん飛ばされる段です。
+
+---
+
+## なぜこのキットは育つのか — 約束ではなく構造
+
+流入路は2本あります。**作者の実走から。** このリポジトリはループ*について*書かれたものではなく、ループの*内側から*書かれています——作者は毎日これを実務で回し、週次蒸留がその週の却下を原則に変え、そこから**顧客・職業・環境を落としても残ったもの**だけが、テンプレートとドキュメントの改訂としてここへ還ってきます。**あなたの実走から。** もう一方の流入路が issue と PR で、とくに「この規律は自分の環境に移植できなかった、こう壊れた」は新規の規律と同じくらい歓迎です（判定の仕方は下の管理者裁定レーン）。
+
+なぜ「育つ」が約束ではなく構造なのか: **追記型は積み上がり、スナップショットは腐る。** 凍結されたベストプラクティス集はスナップショットで、あなたの仕事が動いた瞬間に古くなります——このキットが却下を「書き換え」ではなく**追記型の台帳**へ送るのと同じ理由です。作者がこの題材で書いている長文も同じ継ぎ目で割れています——**理論部は改訂型**（鮮度の日付が要る）、**実践部は追記型**。
+
+そして、ここで配っているものは見た目より狭い。訂正を捕捉し、人間のレビューを通し、正本に定着させる道具は**すでに既製品としてあります**（星の付いた OSS にも、製品の標準機能にも）。だからこのキットが配るのはその配管ではなく、**審査の基準の作り方と、昇格した規律の統治**のほうです——訂正は**事実**なので追記型の台帳に積み、規律は**規範**なので既存の規則を**上書き**する。移動や反映に関門は要りませんが、**昇格には要ります**——その関門は人間です（[正典定義](../README_ja.md#訂正の昇格)）。
 
 ---
 
