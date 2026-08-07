@@ -35,6 +35,20 @@
 !/templates
 !/tests
 
+# ...and the norms shelf's SHAPE — its README and the empty .example — while the
+# entries themselves stay instance data. ssot/ is un-ignored only as far as
+# those two exact files: ssot/norms/writing.md and any ssot/norms/*.md you add
+# are still uncommittable, like the rest of ssot/. The order matters — a parent
+# directory has to be un-excluded before a file inside it can be re-included —
+# and the width of the hole is asserted by test groups D and H, not promised
+# here. See ssot/norms/README.md and docs/norms-loop.md.
+!/ssot
+/ssot/*
+!/ssot/norms
+/ssot/norms/*
+!/ssot/norms/README.md
+!/ssot/norms/writing.md.example
+
 # inside the tracked dirs: your live weekly distiller (holds your paths/CONFIG)
 scripts/weekly_distill.sh
 # ...and your live inbound watcher (same pattern: the .example is the kit)

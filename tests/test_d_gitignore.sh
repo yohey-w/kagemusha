@@ -39,6 +39,8 @@ D_INSTANCE=(
   "ssot/decisions.md"
   "ssot/tasks.md"
   "ssot/private_notes.md"
+  "ssot/norms/writing.md"
+  "ssot/norms/proposal.md"
   "judgment/decisions_journal.md"
   "judgment/judgment_model.md"
   "judgment/mining/lord_corpus.txt"
@@ -91,6 +93,12 @@ printf 'new kit file\n' > "$D_FX/docs/newdoc.md"
 mkdir -p "$D_FX/cookbook/author" "$D_FX/manifests"
 printf 'a sample, deliberately tracked\n' > "$D_FX/cookbook/author/newsample.md"
 printf 'templates/x.md\tx.md\tskip-if-exists\n' > "$D_FX/manifests/newmanifest.tsv"
+# the norms shelf is the one hole in the allowlist, and it is exactly two files
+# wide: the SHAPE (its README and the empty .example) is kit and must be
+# committable; the ENTRIES — writing.md and any domain file a user adds — are
+# instance data and were asserted invisible above. A hole nobody measured is a
+# hole that widens, so both directions are asserted here.
+printf '\n<!-- ci positive control -->\n' >> "$D_FX/ssot/norms/README.md"
 git -C "$D_FX" status --porcelain > "$TEST_TMP/d_status.txt"
 assert_grep "D: control — an edit to a tracked kit file IS reported" "README.md" "$TEST_TMP/d_status.txt"
 assert_grep "D: control — a NEW file under docs/ IS reported" "docs/newdoc.md" "$TEST_TMP/d_status.txt"
@@ -98,3 +106,16 @@ assert_grep "D: a NEW file under cookbook/ IS committable (kit, not instance dat
   "cookbook/author/newsample.md" "$TEST_TMP/d_status.txt"
 assert_grep "D: a NEW file under manifests/ IS committable" \
   "manifests/newmanifest.tsv" "$TEST_TMP/d_status.txt"
+assert_grep "D: an edit to the tracked norms README IS reported (the shelf's shape is kit)" \
+  "ssot/norms/README.md" "$TEST_TMP/d_status.txt"
+assert_no_grep "D: a NEW domain file under ssot/norms/ is NOT committable (entries are instance data)" \
+  "ssot/norms/proposal.md" "$TEST_TMP/d_status.txt"
+assert_no_grep "D: the live norms entries are NOT committable" \
+  "ssot/norms/writing.md" "$TEST_TMP/d_status.txt"
+# and the shape really is tracked, rather than merely un-ignored
+d_norms_untracked=""
+for p in ssot/norms/README.md ssot/norms/writing.md.example; do
+  git -C "$D_FX" ls-files --error-unmatch -- "$p" >/dev/null 2>&1 \
+    || d_norms_untracked="${d_norms_untracked}${p}"$'\n'
+done
+assert_empty_str "D: the norms shelf's shape (README + .example) is tracked by git" "$d_norms_untracked"

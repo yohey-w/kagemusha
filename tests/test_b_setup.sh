@@ -171,7 +171,12 @@ assert_file "B: <target>/ssot/decisions.md created" "$B_TARGET/ssot/decisions.md
 assert_file "B: <target>/CLAUDE.md created" "$B_TARGET/CLAUDE.md"
 assert_file "B: <target>/system_map.md created" "$B_TARGET/system_map.md"
 assert_dir  "B: <target>/judgment/mining created" "$B_TARGET/judgment/mining"
-assert_absent "B: kit root NOT scaffolded when a target is given" "$B_FX3/ssot"
+# the kit itself ships ssot/norms/ (the norms shelf's SHAPE — README + the
+# empty .example), so the directory existing at the kit root is no longer
+# evidence that the scaffolder wrote there. The scaffolded FILES are.
+assert_absent "B: kit root NOT scaffolded when a target is given" "$B_FX3/ssot/decisions.md"
+assert_absent "B: …and no judgment/ tree at the kit root either" "$B_FX3/judgment"
+assert_file "B: …while the shipped norms shelf is left untouched" "$B_FX3/ssot/norms/README.md"
 assert_absent "B: kit root gets no CLAUDE.md when a target is given" "$B_FX3/CLAUDE.md"
 # config.env is the one exception: it lives next to the scripts that source it
 assert_file "B: config.env still lands next to the scripts" "$B_FX3/config.env"

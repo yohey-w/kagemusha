@@ -267,6 +267,53 @@ for h_f in decisions tasks glossary people approval_queue verifiers system_map \
 done
 assert_empty_str "H3: no core template carries a real calendar date" "$h_dated"
 
+# ── H3b. the norms shelf ships shape only ──────────────────────────────────
+# The one form that does NOT live under templates/: the norms shelf ships in
+# place, at ssot/norms/, because that is where the entries accumulate. The scan
+# above therefore does not reach it — and an .example that ships with entries
+# is exactly how a sample becomes everybody's default without anyone choosing
+# it. Same rule, asserted where the file actually lives.
+H_NORMS="$REPO_ROOT/ssot/norms/writing.md.example"
+assert_file "H3b: the norms example ships" "$H_NORMS"
+assert_file "H3b: the norms shelf README ships" "$REPO_ROOT/ssot/norms/README.md"
+
+# an entry is a list line carrying a ladder tag. The ladder LEGEND is a table,
+# so the legend cannot be counted; a line inside an HTML comment is the row
+# format being documented, not an adopted norm — same reading as h_table_rows.
+h_norm_entries() {
+  awk '/^[[:space:]]*<!--/ { c = 1 }
+       c { if (/-->/) c = 0; next }
+       /^[[:space:]]*[-*][[:space:]]+.*\*\*\[/ { n++ }
+       END { print n + 0 }' "$1"
+}
+assert_eq "H3b: the norms example ships with zero norm entries" \
+  "0" "$(h_norm_entries "$H_NORMS")"
+
+# the instrument table ships with its header and no measurements
+H3_NORMS_SEC="$TEST_TMP/h3_norms_section.md"
+h_section "$H_NORMS" '## 実測表' > "$H3_NORMS_SEC"
+assert_ge "H3b: the instrument section was found" "$(wc -l < "$H3_NORMS_SEC" | tr -d ' ')" 3
+assert_eq "H3b: the norms instrument table ships with zero measurements" \
+  "0" "$(h_table_rows "$H3_NORMS_SEC")"
+
+# no real calendar date, same rule as the templates above
+assert_empty_str "H3b: the norms example carries no real calendar date" \
+  "$(grep -oE '20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$H_NORMS" || true)"
+
+# and it must not be named *.md — anything globbing the shelf for entries would
+# otherwise read the shipped sample as one of the user's own norms
+assert_eq "H3b: the norms example is not a *.md file" \
+  "writing.md.example" "$(basename "$H_NORMS")"
+h_norms_md="$(cd "$REPO_ROOT" && git ls-files -- 'ssot/norms/*.md' | grep -v '^ssot/norms/README\.md$' || true)"
+assert_empty_str "H3b: no *.md norms entry file is tracked (only the README and the .example)" \
+  "$h_norms_md"
+
+# control: the entry detector CAN see an entry
+H3_NPROBE="$TEST_TMP/h3_norms_probe.md"
+printf -- '- **[規約]** something — AXIS — src\n' > "$H3_NPROBE"
+assert_eq "H3b: control — a norm entry IS counted when present" \
+  "1" "$(h_norm_entries "$H3_NPROBE")"
+
 # control: the detectors above CAN see content — run them against a file that
 # has some. A detector nobody has watched detect anything is not evidence.
 H3_PROBE="$TEST_TMP/h3_probe.md"
@@ -432,7 +479,7 @@ assert_grep "H6: cookbook/community/README.md denies that the move buys privacy"
 # green on any five files landing anywhere under either directory.
 h_untracked=""
 for p in cookbook/README.md cookbook/author/README.md cookbook/community/README.md \
-         manifests/scaffold.tsv; do
+         manifests/scaffold.tsv ssot/norms/README.md ssot/norms/writing.md.example; do
   git -C "$REPO_ROOT" ls-files --error-unmatch -- "$p" >/dev/null 2>&1 \
     || h_untracked="${h_untracked}${p}"$'\n'
 done
