@@ -172,10 +172,11 @@ The first three are "how to make it run"; only the fourth is "how far to trust i
 
 ### Rejections become assets → judgment distillation
 
-The reasons you reject or edit are the most valuable log you produce ([§3](#3-what-this-solves-the-1-minute-version)) — and there are two places to distill them into:
+The reasons you reject or edit are the most valuable log you produce ([§3](#3-what-this-solves-the-1-minute-version)) — and there are three places to distill them into:
 
 - **Into `verifiers.md`** — when a rejection is a *mechanical* hole (wrong weekday, missing addressee, unverified number), add one verifier and the whole class of error dies in the machine layer. You never give the same note twice.
 - **Into `judgment_model.md`** — when a rejection is a *judgment* ("that tone is wrong", "price from hours not vibes"), distill it into a principle in the thin value-judgment model. The agent reads it next session and pre-judges — so that draft never reaches the queue.
+- **Into `ssot/norms/<domain>.md`** — when a rejection is *the same shape of edit on the deliverable itself* ("put the artifact before the summary", "plain wording before the compressed slogan"), distill it into a norm that goes into **the brief the next first draft is written from**. Adding it to the checker only makes you faster at finding the same failure; putting it into the generator stops it happening — linear versus compounding. → [`docs/norms-loop.md`](docs/norms-loop.md)
 
 Why a *correction* outranks a *ruling*: the design Q&A in [§9](#design-rationale-qa). **Proof this circuit actually closed — an unattended distillation run and the journal entries behind one principle in this repo:** [`cookbook/author/evidence/`](cookbook/author/evidence/README.md).
 
