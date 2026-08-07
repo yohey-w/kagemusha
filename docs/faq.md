@@ -39,3 +39,54 @@
 ### Q. 却下の蒸留って自動でやってくれるの？
 
 **提案までを自動、採用は承認**にするのを勧める。週次で判断台帳（`decisions.md`）を読んで検証器の増補案を出すところまでは自動化できるが、検証器の書き換え自体が正本更新（外向き）なので承認キューを通す。検証器を無人で書き換えると、検証器が偽陽性/偽陰性を静かに獲得して誰も気づかない、という事故が起きうる。
+
+---
+
+## 設計の考え方（Q&A）
+
+挙動・使い方ではなく、**なぜこの設計なのか**の問い。
+
+### Q. なぜ却下・訂正が「最高価値のログ」なのか？
+
+裁定は予測でき、訂正は予測できないから。モデルは「あなたがどの案を選ぶか」の推測は上達するが、*あなたの*判断がモデルと分岐する正確な場所は、自力では上達しない——それを刻むのが訂正だ。自分のログを採掘すると訂正が裁定を上回るのが普通なのに、キューは却下を押した瞬間にそれを捨てる。蒸留はその差分を、蒸発する前に捕まえる。
+
+### Q. なぜ承認者の実発話でしか原則を作らないのか？
+
+典型的な事故は、*承認者の内心の推測*を原則に昇格させることだ——それが以後の全判断を静かに偏らせ、誰も気づかない。だから原則に昇格してよいのは、台帳から**実発話 quote** が引けるものだけ。推論は承認者が確認するまで台帳に `[working hypothesis]` タグで留める。実発話のみ・推測は隔離。
+
+### Q. なぜ価値判断モデルを ≒160行・≒32原則で上限するのか？
+
+美観ではなく遵守率だ。長い指示ファイルは守られなくなる——先頭だけ読まれ末尾が無視され、自動生成で膨らんだ指示はむしろ精度を下げる。だから毎セッション注入する唯一のファイルは意図して薄く保ち、機械 lint で予算を守る。上限を超えて原則を足したい？ まず古い原則を統合するか引退させよ。**上限は堀でなく原価——薄さそのものが効き目だ。**（両上限とも `weekly_distill.sh` で設定可。）
+
+### Q. HITL（human-in-the-loop）と何が違う？
+
+→ 冒頭の同名Qを参照（このドキュメントの1問目）。
+
+---
+
+## English — design rationale (Q&A)
+
+Why the design is what it is, rather than how to operate it. (The Q&As above this section are Japanese only.)
+
+**Q. Why are rejections/corrections the "highest-value log"?**
+Because a ruling is predictable and a correction is not. Models get better at guessing which option you'll pick; they do not get better, on their own, at the exact places where *your* judgment diverges from theirs — that's what a correction marks. Mine your own logs and corrections outnumber clean rulings, yet the queue discards them the instant you click reject. Distillation captures that delta before it evaporates.
+
+**Q. Why build principles only from things the approver actually said?**
+The classic failure is promoting *your guess about the approver's reasoning* into a principle — it then silently biases every later call, and no one notices. So a principle is promoted only if a **verbatim quote** can be cited from the journal. Inferences stay tagged `[working hypothesis]` in the journal until the approver confirms them. Real utterances only; guesses stay quarantined.
+
+**Q. Why cap the judgment model at ~160 lines / ~32 principles?**
+Adherence, not aesthetics. Long instruction files stop being followed — the head is read, the tail ignored, and auto-bloated instructions can *lower* accuracy. So the one file injected every session is kept deliberately thin, and a machine lint enforces the budget. Want to add a principle past the cap? Merge or retire an old one first. **The cap is a cost, not a moat — the thinness is the point.** (Both limits are configurable in `weekly_distill.sh`.)
+
+**Q. How is this different from HITL (human-in-the-loop)?**
+HITL is the *mechanism* ("put a human in the loop"); this kit is the *design* — *where* to insert the human, *what* to make the agent declare (basis, undo-ability, doubt), *how* to turn rejections into assets, and *how* to widen trust over time. Having a stop button and designing when to stop are different things.
+
+## English — behaviour & usage
+
+Two questions the README used to answer, kept here so an English reader does not lose them.
+
+**Q. Does the weekly distillation rewrite my judgment model unattended?**
+No — it proposes. Reinforcing an existing principle (adding a citation) is applied directly; a **new** principle or a **contradiction** is written to a `*_pending.md` file for you to confirm. An unattended rewrite of the model that governs the agent's calls is exactly the kind of un-undoable change this whole kit exists to gate.
+
+**Q. Can I use a CLI other than Claude?**
+Yes. Swap `AGENT_CMD` / `AGENT_MODEL` / `AGENT_FLAGS` in `config.env` and edit the one invocation line at the "CLI-SWAP POINT" comment in the scripts. Any CLI that takes a prompt on argv and runs non-interactively works (Codex, Gemini, …). Prompts and SSOT formats are model-agnostic.
+

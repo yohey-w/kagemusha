@@ -2,6 +2,54 @@
 
 記事の要約ではなく、**このキットで実際にループを組むときの対応表と手順**。4部品＋マンデートが、どのファイル・どのスクリプトに落ちているかを示す。
 
+*日本語が本文。全景図・4層の等式・依存校正は末尾に英語版がある（English versions of the loop diagram, the four-layer equation, and calibrated reliance are at the bottom of this document）。*
+
+---
+
+## 全体アーキテクチャ（ループ全景）
+
+```mermaid
+graph TD
+    T1["時刻トリガー<br/>(朝・週次)"] --> GEN
+    T2["受信箱トリガー<br/>(依頼が落ちる)"] --> GEN
+    W["inbound watch<br/>(メール · チャット · RSS …)"] -.-> T2
+    subgraph LOOP["エージェントのループ"]
+        GEN["生成<br/>(下書き・調査・整理)<br/>+ モデルで一次判断"] --> VER["機械検証<br/>(lint・正本突合)"]
+        VER -->|"NG"| GEN
+    end
+    VER -->|"OK"| BR{"外向き<br/>操作か?"}
+    BR -->|"内向き"| AUTO["自動実行<br/>(ローカル完結)"]
+    BR -->|"外向き<br/>(送信・公開・正本更新)"| Q["承認キュー"]
+    Q --> HUMAN["人間: 承認 / 修正 / 却下"]
+    HUMAN -->|"承認"| OUT["世界へ<br/>(undo不可)"]
+
+    HUMAN -->|"却下・修正<br/>(理由・実発話)"| J["判断台帳<br/>(追記専用イベント)"]
+    MINE["会話ログ採掘"] -.->|"キューに載らない<br/>訂正を補完"| J
+    J -->|"週次蒸留"| M["価値判断モデル<br/>(薄い正本 ≤160行)"]
+    M -.->|"毎セッション注入"| GEN
+    CH["プロジェクト憲章<br/>(案件ごとの差分)"] -.->|"案件作業の前に読む"| GEN
+
+    classDef feedback fill:#eef,stroke:#88a;
+    class J,MINE,M feedback;
+    classDef ctx fill:#efe,stroke:#8a8;
+    class CH ctx;
+```
+
+上半分が**承認ループ**（マンデート）: 生成 → 検証 → 内向き自動 / 外向きはキューへ → 人間が判断。下半分（網掛け）が**判断蒸留**（フィードバックの腕）: 人間の却下・修正理由が追記専用の**台帳**へ流れ、週次ジョブがそれを**価値判断モデル**へ**蒸留**し、そのモデルが注入されてエージェントが一次判断する——輪が閉じる。
+
+---
+
+## 4層の等式
+
+| 層 | 問い | 業務での答え |
+|---|---|---|
+| コンテキスト | 何を知っているか | **SSOT**（`decisions` / `tasks` / `glossary` / `people`） |
+| ハーネス | 何ができるか | CLI・スクリプト・ファイル操作 |
+| ループ | いつ動き・どう検証するか | トリガー（時刻/受信箱）＋検証器 |
+| **マンデート** | **どこまで任せるか・誰が責任を持つか** | **戻せる＝自動 / 戻せない＝承認キュー**（近似: 内向き / 外向き） |
+
+3つ目までは「どう動かすか」、4つ目だけが「どこまで任せるか」——実験室を出て業務に置くと、効いてくるのは圧倒的に後者だ。業務の言葉に置き直すと4部品はぜんぶ昔からある概念——**トリガー＝段取り／検証器＝チェックリスト／停止規則＝締切／マンデート＝決裁。** コードはエージェントが書く。ループの設計図を引く仕事は、その仕事を一番知っている人間に留保される。どの部品がどのファイルに落ちるかは**次節の対応表**。
+
 ---
 
 ## 4部品＋マンデートの実装対応表
@@ -13,6 +61,22 @@
 | **検証器** | チェックリスト | `templates/verifiers.md`（機械層の lint／正本突合／日付検算／構造整合／未確認の断定と否定の射程＋成果物タイプ別 DoD） |
 | **停止規則** | 締切 | 監査は最大2周（`verifiers.md`）／**夜間は回さない**／締切レーダーは `tasks.md` から生成 |
 | **マンデート** | 決裁 | **戻せるものは自動、戻せないものは `approval_queue.md`**。実務上の近似が「内向き＝自動／外向き＝承認」で、分類は下表 |
+
+---
+
+## 依存校正 — キュー全体の底にある原則
+
+そもそもなぜ外向き操作をゲートするのか。理由は一つの静かな失敗モードにある: **AI が出したという事実は、正しさの証拠ではない。** 流暢さや断定的な口調は証明ではない。承認キューは、このキットが採用する——設計の外部監査を経てたどり着いた——より深い原則の、運用上の形にすぎない:
+
+> **短い看板。** AI が出したという事実は、正しさの証拠ではない。答えとして使う前に、用途に見合う検証を通す。
+
+正式版は*どれだけ*検証するかまで定める:
+
+> LLM の出力を、流暢さや断定調だけを根拠に正解として扱わない。各出力について、誤った場合の損失・可逆性・検出可能性・検証費用に応じて必要な確認水準を定め、独立資料・決定論的テスト・実験・別系統の評価・または人間の専門判断で検証する。低リスクで可逆な用途なら標本監査や事後監視で足りることもあるが、高リスクまたは不可逆な用途では実行*前*の独立検証を要求する。目的は AI を常に疑うことではなく、正しい出力を採用し誤った出力を拒む*適切な*依存を設計することだ。
+
+次節の分類が、まさにこの理由でそこに落ちている。内向き操作は可逆で損失が小さいから、事後に標本監査すれば足りる。外向き操作はしばしば不可逆で損失が大きいから、撃つ*前*に独立検証をかける。承認キューは、業務で最も効く一軸——その操作が取り消せるか否か——に依存校正を適用したものだ。
+
+**だから「内向き/外向き」は近似であって、軸そのものではない。** 実運用で当たるのは決まって2箇所——**可逆な外向き**（履歴が残って取り消せる push など。一件ずつ承認に回しても安全は増えず、承認者がボトルネックになるだけ）と、**不可逆な内向き**（ローカルで完結していても戻し口の無いデータ操作）。近似が便利な場面ではそのまま使い、この2箇所では本来の軸——**戻せるか**——で判定し直す（→ 次節の分類表・[`../templates/judgment_model.md`](../templates/judgment_model.md) P1）。
 
 ---
 
@@ -139,3 +203,65 @@
 - **監査の周回上限**: 指摘ゼロで報告、指摘ありで1回だけ直してもう1周、計2周まで。収束しなければ人間へ（承認キューの「迷い」欄）。
 - **夜間停止**: 自律実行の成果物は人間が読む速度を超える。読まれない在庫を積まないため、生成トリガーは日中のみ。
 - **締切**: `tasks.md` の期日列が停止規則の外枠。締切レーダーは朝のブリーフが毎日出す。
+
+---
+
+## English
+
+The three sections below are the English text of the loop diagram, the four-layer equation, and calibrated reliance — the same material as the Japanese sections of the same names above. The rest of this document is Japanese only.
+
+### Architecture (the whole loop)
+
+```mermaid
+graph TD
+    T1["time trigger<br/>(morning / weekly)"] --> GEN
+    T2["inbox trigger<br/>(a request lands)"] --> GEN
+    W["inbound watch<br/>(mail · chat · RSS …)"] -.-> T2
+    subgraph LOOP["the agent's loop"]
+        GEN["generate<br/>(draft · research · tidy)<br/>+ pre-judge using the model"] --> VER["machine verify<br/>(lint · SSOT cross-check)"]
+        VER -->|"fail"| GEN
+    end
+    VER -->|"pass"| BR{"outward<br/>operation?"}
+    BR -->|"inward"| AUTO["auto-run<br/>(local only)"]
+    BR -->|"outward<br/>(send · publish · mutate SSOT)"| Q["approval queue"]
+    Q --> HUMAN["human: approve / edit / reject"]
+    HUMAN -->|"approve"| OUT["out into the world<br/>(no undo)"]
+
+    HUMAN -->|"reject / edit<br/>(reason, verbatim)"| J["decisions journal<br/>(append-only events)"]
+    MINE["mine conversation logs"] -.->|"catch corrections that<br/>never hit the queue"| J
+    J -->|"weekly distill"| M["judgment model<br/>(thin canon ≤160 lines)"]
+    M -.->|"injected each session"| GEN
+    CH["project charter<br/>(per-project deltas)"] -.->|"read before<br/>project work"| GEN
+
+    classDef feedback fill:#eef,stroke:#88a;
+    class J,MINE,M feedback;
+    classDef ctx fill:#efe,stroke:#8a8;
+    class CH ctx;
+```
+
+The top half is the **approval loop** (mandate): generate → verify → inward auto / outward to the queue → a human decides. The bottom half (shaded) is **judgment distillation** (the feedback arm): the human's reject/edit reasons flow into an append-only **journal**, a weekly job **distills** them into the **judgment model**, and that model is injected back so the agent pre-judges — closing the loop.
+
+### The four-layer equation
+
+| Layer | The question | The answer at work |
+|---|---|---|
+| Context | What does it know? | **SSOT** (`decisions` / `tasks` / `glossary` / `people`) |
+| Harness | What can it do? | CLIs, scripts, file ops |
+| Loop | When does it act, how is it checked? | triggers (time / inbox) + verifiers |
+| **Mandate** | **How far is it trusted; who is accountable?** | **reversible = auto / irreversible = approval queue** (proxy: inward / outward) |
+
+The first three are "how to make it run"; only the fourth is "how far to trust it" — and out of the lab, into real work, the fourth is what actually bites. Put in workplace words, the parts are all old ideas: **trigger = the setup, verifier = the checklist, stop rule = the deadline, mandate = sign-off authority.** The agent writes the code; drawing the loop's blueprint stays with the person who knows the work best. Which file each part lands in: the implementation table near the top of this document.
+
+### Calibrated reliance — the principle under the whole queue
+
+Why gate outward operations at all? Because of one quiet failure mode: **the fact that an AI produced something is not evidence that it's correct.** Fluency and a confident tone are not proof. The approval queue is only the operational form of a deeper rule this kit adopts (arrived at through outside audit of the design):
+
+> **Short form.** The fact that an AI produced it is not evidence that it's right. Before you use an output as an answer, put it through verification proportional to its use.
+
+The full form spells out *how much* verification:
+
+> Don't treat an LLM's output as correct on the strength of fluency or a decisive tone alone. For each output, set the level of checking by the loss if it's wrong, its reversibility, how detectable an error would be, and the cost of checking — then verify with independent sources, deterministic tests, experiments, a separate line of evaluation, or expert human judgment. For low-risk, reversible uses, a sample audit or after-the-fact monitoring can be enough; for high-risk or irreversible uses, require independent verification *before* execution. The goal is not to distrust AI at all times, but to design the *right* reliance — adopt the correct outputs, reject the wrong ones.
+
+This is exactly why the inward / outward split falls where it does: inward operations are reversible and low-loss, so a sample audit after the fact is enough; outward operations are often irreversible and high-loss, so they get independent verification *before* they fire. The queue is calibrated reliance applied to the one axis that bites hardest at work — whether an action can be undone.
+
+**Which means inward/outward is a proxy, not the axis itself.** In practice it misfires in exactly two places: **reversible-outward** (a push that leaves history and can be reverted — gating each one buys no safety and makes you the bottleneck) and **irreversible-inward** (a local-only data operation with no way back). Use the proxy where it's convenient; in those two places, re-decide on the real axis — **can this be undone?** (See the inward / outward classification table above and P1 of [`../templates/judgment_model.md`](../templates/judgment_model.md).)
