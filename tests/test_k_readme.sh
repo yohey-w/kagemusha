@@ -77,6 +77,49 @@ limits · routing). Anything else belongs in docs/ — see docs/README.md."; fi
 
   # ── the evidence tag is the same in both files ───────────────────────────
   assert_grep "K: $k_name names the fixed evidence tag" "evidence-v1.0.0" "$k_f"
+
+  # ── the floor: a budget with only a ceiling can be met by an empty page ──
+  # So the porch is checked for the four things it exists to carry. Presence,
+  # never wording — except the one line that IS the project's claim, which is
+  # quoted elsewhere and has to keep saying the same thing.
+  k_porch_txt="$TEST_TMP/k_porch_$k_name.txt"
+  k_between "$k_f" '<!-- porch:start -->' '<!-- porch:end -->' > "$k_porch_txt"
+
+  assert_grep "K: $k_name porch carries the brand line" \
+    "$([[ "$k_name" == "README_ja.md" ]] && echo '判断の中身は配らない。形だけ配る。' || echo 'We ship the forms')" \
+    "$k_porch_txt"
+
+  # who it is for, and who it is not — both halves, or the reader cannot self-select
+  k_fit_yes="$([[ "$k_name" == "README_ja.md" ]] && echo '**向く人**' || echo '**Fits**')"
+  k_fit_no="$([[ "$k_name" == "README_ja.md" ]] && echo '**向かない人**' || echo '**Does not fit**')"
+  assert_grep "K: $k_name porch says who it fits" "$k_fit_yes" "$k_porch_txt"
+  assert_grep "K: $k_name porch says who it does NOT fit" "$k_fit_no" "$k_porch_txt"
+
+  # the three ways in: the frozen evidence, the demo, the install
+  assert_grep "K: $k_name porch links the fixed evidence" "tree/evidence-v1.0.0" "$k_porch_txt"
+  assert_grep "K: $k_name porch links the demo page" "docs/getting-started.md#" "$k_porch_txt"
+  k_entries="$(grep -oE '\]\((docs/[^)]*|https://github\.com/[^)]*tree/evidence-v[^)]*)\)' "$k_porch_txt" | wc -l | tr -d ' ')"
+  if [[ "$k_entries" -ge 3 && "$k_entries" -le 4 ]]; then
+    pass "K: $k_name porch offers 3-4 ways in (got $k_entries)"
+  else
+    fail "K: $k_name porch offers 3-4 ways in" "got $k_entries — the porch hands over three entrances, not a link farm"
+  fi
+
+  # and the one command that makes it real, inside a fence, inside the porch
+  assert_grep "K: $k_name porch carries the runnable demo command" \
+    "./scripts/demo-distillation.sh" "$k_porch_txt"
+  assert_eq "K: $k_name porch's demo sits in a fenced block" \
+    "2" "$(grep -c '^```' "$k_porch_txt" || true)"
+
+  # ── the routing index actually routes: six destinations, all of them real ──
+  k_routes="$TEST_TMP/k_routes_$k_name.txt"
+  awk 'index($0,"<!-- contract:routes -->"){f=1;next} index($0,"<!-- contract:field-record -->"){f=0} f' "$k_f" > "$k_routes"
+  k_missing_route=""
+  for k_dest in docs/getting-started.md docs/operations.md docs/design.md \
+                docs/layers.md docs/judgment-distillation.md docs/README.md; do
+    grep -qF -- "($k_dest)" "$k_routes" || k_missing_route="${k_missing_route}${k_dest}"$'\n'
+  done
+  assert_empty_str "K: $k_name routes to all six destinations" "$k_missing_route"
 done
 
 # ── the canon block matches its fixture, byte for byte ─────────────────────
@@ -153,7 +196,8 @@ for f in sys.argv[2:]:
         if t.startswith(('http://', 'https://', 'mailto:')):
             continue
         path, _, frag = t.partition('#')
-        target = os.path.join(root, path) if path else p
+        # relative links resolve against the linking FILE's directory
+        target = os.path.normpath(os.path.join(os.path.dirname(p), path)) if path else p
         if path and not os.path.exists(target):
             bad.append(f'{f}: missing file: {t}')
             continue
@@ -163,6 +207,25 @@ print('\n'.join(bad))
 PYEOF
 assert_empty_str "K: every link in both READMEs resolves (file and anchor)" \
   "$(python3 "$K_LINKCHECK" "$REPO_ROOT" README.md README_ja.md)"
+
+# ── and every other tracked markdown file, too ─────────────────────────────
+# The READMEs were the reason this checker exists, but a shipped kit whose
+# sample shelf links into nowhere is the same defect one directory down — and
+# it had been there for months, unmeasured, because nothing was measuring.
+#
+# tests/fixtures/ is excluded BY CONSTRUCTION, not by convenience: those files
+# are byte-identical copies of a README fragment, so their links are relative
+# to the repository root and "fixing" them would break the freeze they exist
+# to hold. (The community lane's own format lint rejects `../` outright, so a
+# contributed shelf cannot add a relative link that lands here.)
+K_ALL_MD=()
+while IFS= read -r f; do
+  case "$f" in tests/fixtures/*) continue ;; esac
+  K_ALL_MD+=("$f")
+done < <(git -C "$REPO_ROOT" ls-files '*.md')
+assert_ge "K: tracked markdown files to link-check" "${#K_ALL_MD[@]}" 40
+assert_empty_str "K: every link in every tracked markdown file resolves" \
+  "$(python3 "$K_LINKCHECK" "$REPO_ROOT" "${K_ALL_MD[@]}")"
 
 # control: the link checker CAN see a broken link
 K_PROBE_DIR="$TEST_TMP/k_probe"; mkdir -p "$K_PROBE_DIR"

@@ -62,7 +62,7 @@
 > 焼けた出自: 承認者に「判断を求めるときの提示が読みにくい」と言われた。ループの速度は生成では律速せず**承認で律速する**。**生成する側は疲れないが、承認する側は疲れる**——エージェントの手間を1増やすと承認者の手間が10減る、という非対称がここにある。
 
 **機械化**: 差し出しテンプレートを4枠必須にし、欠けた枠があるなら送らない。
-※ この4点の背後の原理（系列位置効果・信号検出・再認＞想起・デフォルト効果）は [`../docs/decision-cards.md`](../docs/decision-cards.md)。ここは現物だけ。
+※ この4点の背後の原理（系列位置効果・信号検出・再認＞想起・デフォルト効果）は [`../docs/decision-cards.md`](../../docs/decision-cards.md)。ここは現物だけ。
 
 ### A2. Report the board, not the event.
 
@@ -116,7 +116,7 @@
 > 焼けた出自: 競合調査が1つの棚（SNS 検索）だけで終わり、別の棚（イベント／動画コミュニティ）の最前線を丸ごと落とした。**依頼した側から網羅性は監査できない**——中身を全部知っていなければ結論は検品できないからだ。**棚のリストなら10秒で穴を刺せる。**
 
 **機械化**: 報告の第1ブロックが棚リスト（未掃を含む）でなければ出さない、を出荷条件にする。
-※ 一度きりを定点の便に変えるときの設計は [`../docs/fixed-point-sweep.md`](../docs/fixed-point-sweep.md)。
+※ 一度きりを定点の便に変えるときの設計は [`../docs/fixed-point-sweep.md`](../../docs/fixed-point-sweep.md)。
 
 ---
 
@@ -219,7 +219,7 @@
 
 ## 取り入れたあとに
 
-**ここから持ち帰った規律が自分の環境で動いているかは、[`../scripts/discipline_scan.py`](../scripts/discipline_scan.py) で監査できる**（A 群を監査可能な形に書いたカタログの実例が [`discipline_catalog.example.yaml`](discipline_catalog.example.yaml)、設計思想は [`../docs/discipline-audit.md`](../docs/discipline-audit.md)）。つまみ食いの当たり外れは、ラベルではなくあなたのログが決める。
+**ここから持ち帰った規律が自分の環境で動いているかは、[`../scripts/discipline_scan.py`](../../scripts/discipline_scan.py) で監査できる**（A 群を監査可能な形に書いたカタログの実例が [`discipline_catalog.example.yaml`](../../templates/discipline_catalog.example.yaml)、設計思想は [`../docs/discipline-audit.md`](../../docs/discipline-audit.md)）。つまみ食いの当たり外れは、ラベルではなくあなたのログが決める。
 
 ---
 
@@ -237,4 +237,4 @@ Each entry also names its **paste target** (L1 judgment model / agent instructio
 
 The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
 
-Whether the ones you took are doing anything in *your* environment is answerable only from your own logs: [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py) audits them (section A written up as a working catalog in [`discipline_catalog.example.yaml`](discipline_catalog.example.yaml); the design note is [`../docs/discipline-audit.md`](../docs/discipline-audit.md)).
+Whether the ones you took are doing anything in *your* environment is answerable only from your own logs: [`../scripts/discipline_scan.py`](../../scripts/discipline_scan.py) audits them (section A written up as a working catalog in [`discipline_catalog.example.yaml`](../../templates/discipline_catalog.example.yaml); the design note is [`../docs/discipline-audit.md`](../../docs/discipline-audit.md)).

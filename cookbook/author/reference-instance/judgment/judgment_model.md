@@ -3,7 +3,7 @@
 > **判断原則の畳み込み結果（L1）。** `decisions_journal.md`（台帳）を週次蒸留した成果物。
 > エージェントが判断・推奨を生成する直前に読む唯一の正本。**薄さが効き目**——予算を守る。
 > 台帳や会話ログ（L2/L3）は根拠。ここには結論の原則だけを、出典タグ付きで置く。
-> 詳しくは [`../docs/judgment-distillation.md`](../docs/judgment-distillation.md)。
+> 詳しくは [`../docs/judgment-distillation.md`](../../../../docs/judgment-distillation.md)。
 
 **この正本の規約**
 

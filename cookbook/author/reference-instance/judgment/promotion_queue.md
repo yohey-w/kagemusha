@@ -10,9 +10,9 @@ Machine-written, human-emptied. `scripts/distill.sh` appends one dated section p
 4. **Prefer trace form.** "Never assert what you haven't checked" cannot be audited; "hit the primary source once before asserting" leaves a trace in the log, and `scripts/discipline_scan.py` can tell you later whether it ever fired.
 5. **Delete what you have handled.** This file is a queue, not an archive — the journal is the archive. A queue you never empty becomes a wall you stop reading.
 
-**Rules expire.** Give each promoted rule a freshness date, and when the discipline audit reports it as a dead-letter candidate (no firing all week, trace type), decide deliberately: keep, rewrite in a form that can fire, or retire it. Retiring is *dormancy*, not deletion — the ID stays, so it can come back if the situation that earned it returns. See [`../docs/discipline-audit.md`](../docs/discipline-audit.md).
+**Rules expire.** Give each promoted rule a freshness date, and when the discipline audit reports it as a dead-letter candidate (no firing all week, trace type), decide deliberately: keep, rewrite in a form that can fire, or retire it. Retiring is *dormancy*, not deletion — the ID stays, so it can come back if the situation that earned it returns. See [`../docs/discipline-audit.md`](../../../../docs/discipline-audit.md).
 
-**The shape of an entry.** `distill.sh` appends candidates in the format below, and the same field names live in [`distill-prompt.md`](distill-prompt.md) — if you rewrite that prompt (you should, it is yours), keep the field names in step, or the queue stops being skimmable in one pass. Every field is always present: `none on record` is information about what the material did not contain, a missing line is not.
+**The shape of an entry.** `distill.sh` appends candidates in the format below, and the same field names live in [`distill-prompt.md`](../../../../templates/distill-prompt.md) — if you rewrite that prompt (you should, it is yours), keep the field names in step, or the queue stops being skimmable in one pass. Every field is always present: `none on record` is information about what the material did not contain, a missing line is not.
 
 ```
 ### C-2026-01-31-1 · Hit the primary source once before asserting a version number

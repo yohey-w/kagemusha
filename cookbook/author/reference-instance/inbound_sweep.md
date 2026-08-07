@@ -7,12 +7,12 @@
 > ③コネクタを設定した CLI にスケジューラ（Linux/macOS なら cron、Windows ならタスクスケジューラ。
 > macOS 純正の launchd でも可）から食わせる。
 > **③はヘッドレス実行なので、コネクタのツールに `--allowedTools` の明示許可が要る場合がある**
-> ——無人化の前に1回手で検証すること（[`../docs/inbound-loop.md`](../docs/inbound-loop.md) の
+> ——無人化の前に1回手で検証すること（[`../docs/inbound-loop.md`](../../../docs/inbound-loop.md) の
 > 「全自動（モード3）で MCP を使うなら」）。無人スケジューラ専用のフォールバックは
-> [`../scripts/inbound_watch.sh.example`](../scripts/inbound_watch.sh.example)（→ [`../docs/inbound-loop.md`](../docs/inbound-loop.md)）。
+> [`../scripts/inbound_watch.sh.example`](../../../scripts/inbound_watch.sh.example)（→ [`../docs/inbound-loop.md`](../../../docs/inbound-loop.md)）。
 > `<...>` を自分の環境に合わせて埋めてから使う。
 > 来歴: 手順の設計原則は実運転済みだが、この成文化テンプレート自体は著者の実運転より新しい
-> **先行文書化（beta）**——[`../docs/inbound-loop.md`](../docs/inbound-loop.md) の「来歴」参照。
+> **先行文書化（beta）**——[`../docs/inbound-loop.md`](../../../docs/inbound-loop.md) の「来歴」参照。
 
 ---
 
