@@ -93,7 +93,7 @@
 - 週次蒸留が**人の起動なしに**定刻で走り、その週の実データを処理して成果物を出したこと
 - 台帳が**追記専用の実ファイル**として存在し、実発話の quote を保持していること
 - 訂正の日付・蒸留の窓・L1 差し替えの文言が**この順序で並んでいる**こと（配管内部の受け渡しそのものは非公開。→ `ledger_excerpt.md` の ⚠️ 注記）
-- その原則が、**いまあなたが読んでいるキット本体**（README §5 の表・`templates/judgment_model.md` の原則1）に載っていること
+- その原則が、**いまあなたが読んでいるキット本体**（[`docs/design.md`](../../../docs/design.md) の4層の等式の表・`templates/judgment_model.md` の原則1）に載っていること
 
 **証明していない:**
 
@@ -156,7 +156,7 @@
 ## 自分で確かめられること / what you can check yourself
 
 1. `bash scripts/test.sh` — キット自身の検収ゲート（skip 無し）。グループ C はこのディレクトリも走査する
-2. `ledger_excerpt.md` の 2026-07-28 の裁定と、`templates/judgment_model.md` の原則1・README §5 の表を突き合わせる。**同じ命題が同じ軸で書かれているはず**
+2. `ledger_excerpt.md` の 2026-07-28 の裁定と、`templates/judgment_model.md` の原則1・[`docs/design.md`](../../../docs/design.md) の4層の等式の表を突き合わせる。**同じ命題が同じ軸で書かれているはず**
 3. `weekly_distill_log_excerpt.txt` の lint 行（`L1本文=75行/上限160・原則数=31/上限32`）と、`templates/judgment_model.md` が宣言している上限（≤160行）を突き合わせる
 4. **母数の検算**（`evidence/` で実行）:
    ```
