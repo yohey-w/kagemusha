@@ -45,6 +45,20 @@ Format changes, doc fixes, and scripts are the same lane: a maintainer rules. So
 
 ---
 
+### The README entry exam — five conditions
+
+The README is a **budget**, not a canvas: five jobs and nothing else (say what this is · say who it is for · hand over one safe run · point at the evidence *and its limits* · route to the right document). A feature PR is expected to change **zero** lines of it. If you do want to change it, name in the PR body which of these five it serves:
+
+1. **identity** — what this is, in a sentence someone can repeat
+2. **the one safe run** — the shortest way to see it work without installing anything
+3. **evidence** — where the fixed evidence lives, and what it does not claim
+4. **the boundary** — what is core, what is the sample shelf, and what touches your data
+5. **the canon** — the frozen `### 訂正の昇格` section and its contract
+
+**If the answer is "none of the five", the change belongs in `docs/`, not the README** — start at [`docs/README.md`](../docs/README.md). Test group K holds the budget (line counts, one code block, the frozen canon, link resolution); it is not advice.
+
+---
+
 ## The `cookbook/community/` lane — auto-merged
 
 A pull request is auto-approved and squash-merged when **all** of the following hold. Any one of them failing means it is not merged automatically; nothing is rejected or closed by the machine.
@@ -105,6 +119,20 @@ The full rule table, the format for an entry, and the removal procedure live in 
 このレーンでは **「この規律は自分の環境に移植できなかった、こう壊れた」** も歓迎で、同じ基準で裁定します。1人しか踏んでいない穴は n=1——**同じ穴を2人目が報告した時点**で、出荷する価値のある規律になります。
 
 書式修正・ドキュメント・スクリプトも同じレーン（管理者の裁定）です。[`cookbook/author/`](../cookbook/author/README.md) も同じで——あの棚は**1つの実走ループの記録**なので、そこへの PR は「記録の訂正」であり、いま起きたことをまだ正しく書けているかを管理者が裁定します。`scripts/test.sh` は緑のまま保ってください——これが受け入れゲートで、CI はこれをそのまま実行し、この suite には skip の仕組みがありません。
+
+---
+
+### README 入場審査 — 5条件
+
+README は**予算**であって画布ではありません。仕事は5つだけです（**何者か**を言う・**誰向けか**を言う・**安全な一度の実走**を渡す・**証拠とその射程**を示す・**正しい文書へ送る**）。機能追加の PR は README の差分**ゼロ**が既定です。変えたいときは、次の5つのどれに当たるかを PR 本文に書いてください:
+
+1. **識別** — これが何者か、人が復唱できる一文
+2. **安全な一度の実走** — 何も入れずに動くところを見る最短路
+3. **証拠** — 固定証拠の在り処と、**主張していないこと**
+4. **境界** — どこまでが core で、どこからが標本棚か。あなたのデータに何が触れるか
+5. **正典** — 凍結された `### 訂正の昇格` 節とその契約
+
+**5つのどれでもないなら、その変更は README ではなく `docs/` の話です**——入口は [`docs/README.md`](../docs/README.md)。この予算（行数・コードブロック1個・正典の凍結・リンクの解決）は**テスト群 K が保持**していて、助言ではありません。
 
 ---
 

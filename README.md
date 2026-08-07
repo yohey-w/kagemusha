@@ -8,7 +8,7 @@
 <!-- contract:identity -->
 **We do not ship the content of your judgment. We ship the forms.**
 
-kagemusha is a kit that ships, as Markdown forms plus scripts, an AI agent's **"inward runs on its own / outward waits for human approval"** rule and the loop that returns your rejection reasons to the next run as standing rules. It is not a resident agent and not a SaaS, and **your own judgment criteria are not included**.
+kagemusha is **a set of Markdown forms plus the scripts that run them**, for the AI coding agent you already use (Claude Code, Codex, Cursor, …): it makes **inward work run on its own and anything outward wait for your approval**, and it returns the reasons you rejected something to the next run as standing rules. It is not a resident agent and not a SaaS, and **your own judgment criteria are not included**.
 
 **Fits** you if operations that cannot be undone are part of your day and you are willing to write down why you rejected something. **Does not fit** you if you want ready-made judgment criteria, or an approval SaaS for a team.
 
@@ -21,6 +21,8 @@ cd kagemusha
 ./scripts/demo-distillation.sh   # ~10 min · no API key · nothing of yours is touched
 ```
 <!-- porch:end -->
+
+*Section numbers are inherited from the older, longer README so that existing links and citations keep resolving; the gaps are deliberate, and what they used to hold now lives in [`docs/`](docs/README.md).*
 
 ## 3. What this solves (the 1-minute version)
 
@@ -43,6 +45,8 @@ Hand work to an AI and two things become the bottleneck, neither of them the mod
 
 <!-- contract:canon -->
 ## 5. How the whole thing works
+
+*The section below keeps its Japanese heading — 訂正の昇格, **promotion of corrections** — because the term is quoted elsewhere and has to read identically wherever it appears. Its definitions are in English; only the three term names are not.*
 
 <!-- canon:correction-promotion:start -->
 ### 訂正の昇格
@@ -79,11 +83,11 @@ Set the level of checking by the loss if it is wrong, its reversibility, how det
 
 ## 6. Set it up in your own environment (30 minutes, copy-paste)
 
-Moved → [`docs/getting-started.md`](docs/getting-started.md#the-steps-copy-paste) — the prerequisite table, the copy-paste steps, and the optional verifier from a different model lineage.
+**Moved → [`docs/getting-started.md`](docs/getting-started.md#the-steps-copy-paste).** Clone it, run `./scripts/setup.sh`, and forms with nothing filled in land in your folder — from then on you open that folder with the assistant you already use. The prerequisite table, the copy-paste steps and the optional verifier from a different model lineage are all there. *(The heading stays: articles and the companion book cite this section by number.)*
 
 ## 9. Going further
 
-Moved → [`docs/operations.md`](docs/operations.md) (your day and your week, multiple projects, counting your own work G/S/D/V/I/R) · [`docs/inbound-loop.md`](docs/inbound-loop.md) (catching what the world sends you) · [`docs/faq.md`](docs/faq.md) (design rationale).
+**Moved → [`docs/operations.md`](docs/operations.md)** — your day and your week, running several projects at once, and counting where your own time goes (G/S/D/V/I/R). Also [`docs/inbound-loop.md`](docs/inbound-loop.md) (catching what the world sends you) and [`docs/faq.md`](docs/faq.md) (design rationale). *(The heading stays: the book's appendix cites this section by number.)*
 
 <!-- contract:routes -->
 ## 10. Reference
@@ -100,7 +104,7 @@ Moved → [`docs/operations.md`](docs/operations.md) (your day and your week, mu
 <!-- contract:field-record -->
 ### Background and field record
 
-This repository is sufficient to install, operate, and inspect the kit. The design decisions behind it, the options that were tried and dropped, and the timeline of corrections turning into disciplines are recorded in [a free article](https://zenn.dev/shio_shoppaize/articles/kagemusha-shogun-disband) (Japanese) and in the paid Zenn book [*AI家臣団を解散して、影武者を一人だけ残した　兵法書と訓練記録*](https://zenn.dev/shio_shoppaize/books/kagemusha-book). Neither contains setup instructions missing from this repository.
+**This repository is sufficient to install, operate, and inspect the kit.** The design decisions behind it, the options that were tried and dropped, and the timeline of corrections turning into disciplines are recorded in [a free article](https://zenn.dev/shio_shoppaize/articles/kagemusha-shogun-disband) and in a paid Zenn book, [*AI家臣団を解散して、影武者を一人だけ残した　兵法書と訓練記録*](https://zenn.dev/shio_shoppaize/books/kagemusha-book) — **both in Japanese only**. **Neither contains setup instructions missing from this repository.**
 
 ### Contributing · License
 
