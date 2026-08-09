@@ -64,7 +64,7 @@ In this mechanism a human has to approve principle revisions anyway (the weekly 
 
 (Those three are about *who* kicks off the same OS-scheduled run — a separate question from *which* loop mechanism to use at all. An OS scheduler, an agent's own built-in loop (e.g. Claude Code's `/loop`), and a schedule run by the coding agent's own service or app are not interchangeable — they differ in who holds the clock and whether the job can reach your local files. Comparison: [`inbound-loop.md`](inbound-loop.md).)
 
-That's it. The `scripts/` in this repo are a **convenience layer** (headless automation, log mining, budget lints), not a prerequisite. Delete them and the loop still runs: the core is the Markdown files plus the discipline of *inward = auto / outward = approval queue*. A CLI + a scheduler is just the example wiring — a desktop app + a weekly calendar nudge is equally valid.
+That's it. The `scripts/` in this repo are a **convenience layer** (headless automation, log mining, budget lints), not a prerequisite. Delete them and the loop still runs: the core is the Markdown files plus the discipline of *inward = auto / outward = approval queue* — which is a convenient proxy for the axis that actually decides, **can this be undone?** ([`design.md`](design.md)). A CLI + a scheduler is just the example wiring — a desktop app + a weekly calendar nudge is equally valid.
 
 ## The steps (copy-paste)
 
@@ -225,7 +225,7 @@ cd kagemusha
 
 （この3段階は「同じOSスケジューラ駆動の実行を誰が着火するか」の話で、「そもそもループをどこで回すか」とは別の問いだ。OSのスケジューラ・動いているセッション自身に繰り返させる方法（例: Claude Code の `/loop`）・AIコーディングエージェントのサービス側やアプリ側に時計を持たせる方法は、互換ではない——誰が時計を持ち、どこで走るかが違い、それが手元のファイルに届くかどうかを決める。比較: [`inbound-loop.md`](inbound-loop.md)。）
 
-これだけだ。このリポジトリの `scripts/` は**おまけの効率化**（ヘッドレス自動化・ログ採掘・予算 lint）であって、前提ではない。消してもループは回る——本体は Markdown ファイルと「**内向き＝自動 / 外向き＝承認キュー**」という規律だ。CLI ＋ スケジューラはあくまで一例の配線で、デスクトップ版アプリ ＋ 週次のカレンダー通知でも等価に成立する。
+これだけだ。このリポジトリの `scripts/` は**おまけの効率化**（ヘッドレス自動化・ログ採掘・予算 lint）であって、前提ではない。消してもループは回る——本体は Markdown ファイルと「**内向き＝自動 / 外向き＝承認キュー**」という規律だ（これは便利な近似で、実際に判定しているのは「**戻せるか**」のほう——[`design.md`](design.md)）。CLI ＋ スケジューラはあくまで一例の配線で、デスクトップ版アプリ ＋ 週次のカレンダー通知でも等価に成立する。
 
 ## 手順（コピペ）
 
