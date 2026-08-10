@@ -20,7 +20,7 @@
 | ファイル | 何の証拠か |
 |---|---|
 | [`weekly_distill_log_excerpt.txt`](weekly_distill_log_excerpt.txt) | **機構が無人で発火している**——OSスケジューラが日曜 21:04 に週次蒸留を起動し、その週の AI-CLI ログから承認者の発話 469 件を採り、142 件を判断信号として分類し、L1 の行数・原則数を lint した実ログ。**非ゼロ終了で終わった事実もそのまま載せてある**（成果物は出ている——詳細はファイル冒頭）。 |
-| [`ledger_excerpt.md`](ledger_excerpt.md) | **訂正がモデルまで届いている**——2026-07-28 に承認者が一言で規律を曲げ（台帳へ記帳）、その週の蒸留が残した保留を 2026-08-03 に裁定した結果、**L1 原則の本文が同じ命題へ差し替わった**。台帳2件（追記専用・実発話 quote つき）。 |
+| [`ledger_excerpt.md`](ledger_excerpt.md) | **訂正がモデルまで届いている**——2026-07-28 に承認者が一言で規律を曲げ（台帳へ記帳）、その週の蒸留が残した保留を 2026-08-03 に裁定した結果、**L1 原則の本文が同じ命題へ差し替わった**。台帳2件（追記専用・実発話 quote つき——⚠️ **ただし 2026-08-03 側の引用は逐語ではない**。後日の監査で判明し、当該ファイルに注記してある）。 |
 
 **2つで一周が閉じる。** ログ側が「機構が回っている」、台帳側が「回った結果、判断が更新された」。
 片方だけでは cron が動いているだけ、あるいは手で書いた作文と区別がつかない。
@@ -92,6 +92,8 @@
 
 - 週次蒸留が**人の起動なしに**定刻で走り、その週の実データを処理して成果物を出したこと
 - 台帳が**追記専用の実ファイル**として存在し、実発話の quote を保持していること
+  （⚠️ **例外1件**——2026-08-03 のエントリの引用は、後日の監査で**逐語ではない**と判明した。
+  削除せず、逐語でない旨を [`ledger_excerpt.md`](ledger_excerpt.md) の当該箇所に注記してある）
 - 訂正の日付・蒸留の窓・L1 差し替えの文言が**この順序で並んでいる**こと（配管内部の受け渡しそのものは非公開。→ `ledger_excerpt.md` の ⚠️ 注記）
 - その原則が、**いまあなたが読んでいるキット本体**（[`docs/design.md`](../../../docs/design.md) の4層の等式の表・`templates/judgment_model.md` の原則1）に載っていること
 
@@ -113,7 +115,8 @@
 ⑥ローカルのプロジェクトディレクトリ名（`[dir-1]` 等へ置換）⑦承認者・エージェントの内輪の呼称
 （キットの語彙＝**承認者 / サブエージェント**へ置換）。
 
-残したもの: **実発話の quote**（要約は台帳の規律違反）・件数・判断の骨格・失敗の記録・
+残したもの: **実発話の quote**（要約は台帳の規律違反。⚠️ 逐語でなかった例外1件は
+[`ledger_excerpt.md`](ledger_excerpt.md) に注記）・件数・判断の骨格・失敗の記録・
 **機構側の日付**（台帳エントリ ID・実ログの時刻・上の2抜粋が並べる3イベント）。
 ⚠️ **quote の出典タグの日付は残していない**——判断公開パッケージの原則ファイルでは
 変換 `T6` で**月粒度**（`[C:MM]`）へ粗くしてある（→ [`disclosure-policy.md`](disclosure-policy.md) §6）。
@@ -149,7 +152,10 @@
 > tidied-up quote and a sample ID; the real ruling is `D-2026-07-28-13`, reproduced in
 > `ledger_excerpt.md` — redacted, but with the spoken quote left verbatim, which the template's
 > is not. Template samples are the author explaining a format — they can never be
-> evidence for it. Only the excerpts in this directory are.
+> evidence for it. Only the excerpts in this directory are. ⚠️ **One quotation in that file — the
+> one in the 2026-08-03 entry — turned out not to be verbatim.** A later audit found no matching
+> utterance in the session logs; the quote is flagged in place rather than removed, and the note
+> there says why.
 
 ---
 

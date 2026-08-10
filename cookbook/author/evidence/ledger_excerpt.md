@@ -115,7 +115,7 @@ exception**, found in a later audit and flagged in place at D-2026-08-03-02 belo
 > and above — is not a transcript of what the approver said. An audit on 2026-08-10 searched the
 > underlying session logs in full and found **no utterance matching that wording**; the phrase first
 > appears at the moment this entry was written into the journal. **It has the form of a quotation,
-> but its source is the writer's (the AI's) own prose.** An utterance that may well have carried the
+> but its source is the writer's (the AI's) own prose.** An utterance that may have carried the
 > sense of approval is on record from around the same time — repetitive and cross-talking, seemingly
 > dictated [inferred] — but **it is not a verbatim record of the four pending items being ruled on
 > one by one.** It stays here, undeleted: this excerpt opens by declaring that the quoted speech is
