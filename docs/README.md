@@ -60,7 +60,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
 | **[`cookbook/author/evidence/`](../cookbook/author/evidence/README.md)** | **Proof the loop actually runs** — on the **sample shelf**: hand-redacted excerpts from the author's live instance, one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`cookbook/author/evidence/README.md`](../cookbook/author/evidence/README.md). |
 | **[`docs/getting-started.md`](getting-started.md)** | **Try it, then install it** — the 10-minute demo in full (with the three screenshots), the additive prerequisite table, the copy-paste steps, and the optional verifier from a different model lineage. |
-| **[`docs/operations.md`](operations.md)** | **Your day and your week** once the loop runs — the morning pass, the weekly ruling, several projects at once (charter + system map), and the G/S/D/V/I/R codebook for counting where your own time goes. |
+| **[`docs/operations.md`](operations.md)** | **Your day and your week** once the loop runs — the morning pass, the weekly ruling, who keeps the ledger of promises / deadlines / whose ball (the agent, not you), several projects at once (charter + system map), and the G/S/D/V/I/R codebook for counting where your own time goes. |
 | **[`docs/norms-loop.md`](norms-loop.md)** | **Making your edits compound** — sending a correction back to the *generator* rather than the checker: the distillation of a revision, the promotion ladder, the instrument, the overfit guards. |
 | `docs/README.md` | This page — the document map plus this table. |
 
@@ -145,7 +145,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
 | **[`cookbook/author/evidence/`](../cookbook/author/evidence/README.md)** | **一周が実走している証拠**——**標本棚**にある、著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`cookbook/author/evidence/README.md`](../cookbook/author/evidence/README.md) に明記。 |
 | **[`docs/getting-started.md`](getting-started.md)** | **試す→入れる**——10分デモの全文（スクショ3枚つき）・積み上げ式の前提表・コピペ手順・任意の血統違い検算器。 |
-| **[`docs/operations.md`](operations.md)** | **走り出したあとの毎日と毎週**——朝の一周・週次の裁定・複数案件（憲章＋システム地図）・自分の時間を数える G/S/D/V/I/R のコードブック。 |
+| **[`docs/operations.md`](operations.md)** | **走り出したあとの毎日と毎週**——朝の一周・週次の裁定・**約束と期限とボールの台帳は誰が持つか**（あなたではなくエージェント）・複数案件（憲章＋システム地図）・自分の時間を数える G/S/D/V/I/R のコードブック。 |
 | **[`docs/norms-loop.md`](norms-loop.md)** | **作業改善を複利にする**——直しを検査側でなく**生成側**へ戻す: 改稿の蒸留・昇格階段・複利の計器・過剰適合ガード。 |
 | `docs/README.md` | このページ——ドキュメント地図とこの表。 |
 

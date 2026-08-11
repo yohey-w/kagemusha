@@ -21,6 +21,18 @@ The day-to-day after setup is done: the actual handling each morning and each we
 5. **Rule on the promotion candidates** (about five minutes) — read `promotion_queue.md` and copy **only the ones you accept** into your own instructions file. The copying *is* the promotion — the distillation lane may write this queue and nothing else: not your instructions file, not the principles, not the source of truth. → [`../templates/promotion_queue.md`](../templates/promotion_queue.md), [`distillation-loop.md`](distillation-loop.md)
 6. **Read the discipline audit** — the week's scan quotes the passages where each discipline you adopted fired or was broken, and the prompt turns them into a finding of thirty lines or less. It quotes; it does not judge. A dead-letter candidate is an invitation to look, not a proposal to delete. → [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py), [`discipline-audit.md`](discipline-audit.md)
 
+## Promises, deadlines, whose ball — the agent keeps that ledger, not you
+
+The deal this loop offers is that you do not read the correspondence. Then whatever *only* the correspondence knows — what was promised to a counterparty, by when, and whose move it is now — has to be tracked by the agent, structurally. The day you ask "so what happened with that thing?", this layer has already lost: **the question is the symptom of a ledger that isn't being kept.**
+
+No new file for it. `ssot/tasks.md` is already the single source of truth for *who owes what, by when, and where it came from*, and the system map already carries *waiting on them / deadline* per project. What is needed is not another place to look — a second home for dated promises is the same rot as a principle copied into a charter — but three rules about the one that exists:
+
+1. **A promise starts the moment the agent writes "I'll send you X", not when the send button is pressed.** Every commitment inside an outbound draft — the next deliverable, the follow-up check, the "I'll report back on Friday" — becomes a row before the draft goes into the approval queue. The row that gets lost is the one that waited for the approval.
+2. **The agent holds the master copy.** A sent-items folder is not a ledger: anything you have to search for in order to remember is, operationally, untracked. Never make the human transcribe it back.
+3. **Deadlines are surfaced before they are asked about.** An approaching date is reported as a diff at the next natural break, not held until the human wonders. The morning brief already builds its deadline radar from this table (step 2) — an empty table makes an empty radar, and the loop looks calm right up to the day it is late.
+
+And when the next outbound message is being drafted, the outstanding promises are inventoried *first*. If a promise lives only inside the sent mail, nobody is holding it but the person waiting on it. A worked example of this as a verifier is on the sample shelf: the outbound-document DoD in [`../cookbook/author/reference-instance/verifiers.md`](../cookbook/author/reference-instance/verifiers.md).
+
 ## Running multiple projects — charters, the system map, and living in the clone
 
 Run the loop on more than one client or project and two structures earn their keep (both scaffolded by `setup.sh`):
@@ -89,6 +101,18 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 
 5. **昇格候補を審査する**（5分）——`promotion_queue.md` を読み、**採るものだけ**自分の指示ファイルへ写す。写した行為が昇格だ——蒸留便が書いてよいのはこの審査キューだけで、指示ファイル・原則・正本には書かせない。→ [`../templates/promotion_queue.md`](../templates/promotion_queue.md)・[`distillation-loop.md`](distillation-loop.md)
 6. **規律監査を読む**——その週の走査が、取り入れた規律ごとに発火・破れの原文断片を引用し、週次プロンプトがそれを30行以内の所見に変える。引用して止まる——判定はしない。死文候補の名指しは削除の提案ではなく、「見に行け」の列挙だ。→ [`../scripts/discipline_scan.py`](../scripts/discipline_scan.py)・[`discipline-audit.md`](discipline-audit.md)
+
+## 約束・期限・ボール — その台帳は、あなたではなくエージェントが持つ
+
+このループの取引条件は、**あなたが案件のやり取りを読まない**ことだ。読まないのなら、やり取りの中にしか無いもの——**相手に何を約束したか・期限はいつか・いまボールはどちらにあるか**——の追跡は、構造上エージェントの責務になる。あなたが「あの件どうなってた?」と聞いた時点で、この層は負けている。**その質問は、台帳が持たれていないことの症状だ。**
+
+**置き場所は増やさない。** `ssot/tasks.md` が既に「誰が・何を・いつまでに・どこから来たか」の正本で、システム地図が案件ごとに「待ち＝相手のボール／期限」を持っている。要るのは新しい置き場所ではなく——期限つきの約束の家が2つあるのは、原則を憲章に写したときと同じ腐り方だ——**既にある1箇所についての規律3つ**だ:
+
+1. **約束は、送信ボタンではなく「送ります」と書いた瞬間に発生する。** 対外文書の下書きに書いた約束（次に出す成果物・次にやる調査・報告するタイミング）は、その下書きが承認キューへ載る**前に**1行になる。落ちるのは、承認待ちのあいだ宙に浮いていた1行だ。
+2. **正本を持つのはエージェント。** 送信済みフォルダは台帳ではない——**思い出すために検索が要るものは、運用上は追跡されていない**。人間に転記させない。
+3. **期限は、聞かれる前に出す。** 期日の接近は、次の区切りで差分として先回りで報告する（人間が気にし始めるまで持たない）。朝の便はこの表から締切レーダーを作っている（毎日の2.）——**表が空ならレーダーも空**で、遅れた当日まで盤面は静かなままだ。
+
+そして次の対外便を組むときは、**未履行の約束を先に棚卸ししてから書き出す**。約束が送信済みメールの中にしか無いなら、それを持っているのは待っている相手だけだ。これを検証器の形にした実例は標本棚にある——[`../cookbook/author/reference-instance/verifiers.md`](../cookbook/author/reference-instance/verifiers.md) の対外文書 DoD。
 
 ## 複数案件を回す — 憲章・システム地図・clone に住む
 
