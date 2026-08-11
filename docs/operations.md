@@ -27,7 +27,7 @@ The deal this loop offers is that you do not read the correspondence. Then whate
 
 No new file for it. `ssot/tasks.md` is already the single source of truth for *who owes what, by when, and where it came from*; the system map *displays* that state one card per project (*waiting on them / deadline*) and is a view, never a second home for the promise itself — a dated promise living in two files is the same rot as a principle copied into a charter. What is needed is three rules about the one file that already exists:
 
-1. **A promise starts the moment the agent writes "I'll send you X", not when the send button is pressed.** Every commitment inside an outbound draft — the next deliverable, the follow-up check, the "I'll report back on Friday" — becomes a row before the draft goes into the approval queue. The row that gets lost is the one that waited for the approval — and if the draft is rejected and never sent, the row is struck out with it.
+1. **A promise starts the moment the agent writes "I'll send you X", not when the send button is pressed.** Every commitment inside an outbound draft — the next deliverable, the follow-up check, the "I'll report back on Friday" — becomes a row before the draft goes into the approval queue. The row that gets lost is the one that waited for the approval — and if the draft is rejected and never sent, the row is closed as withdrawn rather than deleted (history is kept here, same as a completed row).
 2. **The agent holds the master copy.** A sent-items folder is not a ledger: anything you have to search for in order to remember is, operationally, untracked. Never make the human transcribe it back.
 3. **Deadlines are surfaced before they are asked about.** An approaching date is reported as a diff at the next natural break, not held until the human wonders. The morning brief already builds its deadline radar from this table (step 2) — an empty table makes an empty radar, and the loop looks calm right up to the day it is late.
 
@@ -108,7 +108,7 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 
 **置き場所は増やさない。** `ssot/tasks.md` が既に「誰が・何を・いつまでに・どこから来たか」の正本だ。システム地図はそれを案件ごとのカード（「待ち＝相手のボール／期限」）に**映しているだけの表示**であって、約束そのものの2軒目の家ではない——期限つきの約束が2つのファイルに住むのは、原則を憲章へ写したときと同じ腐り方だからだ。要るのは新しい置き場所ではなく、**この1ファイルについての規律3つ**:
 
-1. **約束は、送信ボタンではなく「送ります」と書いた瞬間に発生する。** 対外文書の下書きに書いた約束（次に出す成果物・次にやる調査・報告するタイミング）は、その下書きが承認キューへ載る**前に**1行になる。落ちるのは、承認待ちのあいだ宙に浮いていた1行だ（却下されて送られなければ、その行も一緒に消す）。
+1. **約束は、送信ボタンではなく「送ります」と書いた瞬間に発生する。** 対外文書の下書きに書いた約束（次に出す成果物・次にやる調査・報告するタイミング）は、その下書きが承認キューへ載る**前に**1行になる。落ちるのは、承認待ちのあいだ宙に浮いていた1行だ（却下されて送られなかったら、その行は**取り下げとして閉じる**——完了行と同じく、消さずに履歴として残す）。
 2. **正本を持つのはエージェント。** 送信済みフォルダは台帳ではない——**思い出すために検索が要るものは、運用上は追跡されていない**。人間に転記させない。
 3. **期限は、聞かれる前に出す。** 期日の接近は、次の区切りで差分として先回りで報告する（人間が気にし始めるまで持たない）。朝の便はこの表から締切レーダーを作っている（毎日の2.）——**表が空ならレーダーも空**で、遅れた当日まで盤面は静かなままだ。
 
