@@ -23,11 +23,11 @@ The day-to-day after setup is done: the actual handling each morning and each we
 
 ## Promises, deadlines, whose ball — the agent keeps that ledger, not you
 
-The deal this loop offers is that you do not read the correspondence. Then whatever *only* the correspondence knows — what was promised to a counterparty, by when, and whose move it is now — has to be tracked by the agent, structurally. The day you ask "so what happened with that thing?", this layer has already lost: **the question is the symptom of a ledger that isn't being kept.**
+The deal this loop offers is that you do not read the correspondence. Then whatever *only* the correspondence knows — what was promised to a counterparty, by when, and whose move it is now — has to be tracked by the agent, structurally. The day you have to ask "so what happened with that thing?", this part of the loop has already lost — not because the question is wrong, but because **having to ask is the symptom of a ledger nobody is keeping.**
 
-No new file for it. `ssot/tasks.md` is already the single source of truth for *who owes what, by when, and where it came from*, and the system map already carries *waiting on them / deadline* per project. What is needed is not another place to look — a second home for dated promises is the same rot as a principle copied into a charter — but three rules about the one that exists:
+No new file for it. `ssot/tasks.md` is already the single source of truth for *who owes what, by when, and where it came from*; the system map *displays* that state one card per project (*waiting on them / deadline*) and is a view, never a second home for the promise itself — a dated promise living in two files is the same rot as a principle copied into a charter. What is needed is three rules about the one file that already exists:
 
-1. **A promise starts the moment the agent writes "I'll send you X", not when the send button is pressed.** Every commitment inside an outbound draft — the next deliverable, the follow-up check, the "I'll report back on Friday" — becomes a row before the draft goes into the approval queue. The row that gets lost is the one that waited for the approval.
+1. **A promise starts the moment the agent writes "I'll send you X", not when the send button is pressed.** Every commitment inside an outbound draft — the next deliverable, the follow-up check, the "I'll report back on Friday" — becomes a row before the draft goes into the approval queue. The row that gets lost is the one that waited for the approval — and if the draft is rejected and never sent, the row is struck out with it.
 2. **The agent holds the master copy.** A sent-items folder is not a ledger: anything you have to search for in order to remember is, operationally, untracked. Never make the human transcribe it back.
 3. **Deadlines are surfaced before they are asked about.** An approaching date is reported as a diff at the next natural break, not held until the human wonders. The morning brief already builds its deadline radar from this table (step 2) — an empty table makes an empty radar, and the loop looks calm right up to the day it is late.
 
@@ -104,11 +104,11 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 
 ## 約束・期限・ボール — その台帳は、あなたではなくエージェントが持つ
 
-このループの取引条件は、**あなたが案件のやり取りを読まない**ことだ。読まないのなら、やり取りの中にしか無いもの——**相手に何を約束したか・期限はいつか・いまボールはどちらにあるか**——の追跡は、構造上エージェントの責務になる。あなたが「あの件どうなってた?」と聞いた時点で、この層は負けている。**その質問は、台帳が持たれていないことの症状だ。**
+このループの取引条件は、**あなたが案件のやり取りを読まない**ことだ。読まないのなら、やり取りの中にしか無いもの——**相手に何を約束したか・期限はいつか・いまボールはどちらにあるか**——の追跡は、構造上エージェントの責務になる。あなたが「あの件どうなってた?」と**聞かなければ分からない**時点で、この仕組みは負けている——質問が悪いのではなく、**聞かないと出てこない状態**が負けだ。
 
-**置き場所は増やさない。** `ssot/tasks.md` が既に「誰が・何を・いつまでに・どこから来たか」の正本で、システム地図が案件ごとに「待ち＝相手のボール／期限」を持っている。要るのは新しい置き場所ではなく——期限つきの約束の家が2つあるのは、原則を憲章に写したときと同じ腐り方だ——**既にある1箇所についての規律3つ**だ:
+**置き場所は増やさない。** `ssot/tasks.md` が既に「誰が・何を・いつまでに・どこから来たか」の正本だ。システム地図はそれを案件ごとのカード（「待ち＝相手のボール／期限」）に**映しているだけの表示**であって、約束そのものの2軒目の家ではない——期限つきの約束が2つのファイルに住むのは、原則を憲章へ写したときと同じ腐り方だからだ。要るのは新しい置き場所ではなく、**この1ファイルについての規律3つ**:
 
-1. **約束は、送信ボタンではなく「送ります」と書いた瞬間に発生する。** 対外文書の下書きに書いた約束（次に出す成果物・次にやる調査・報告するタイミング）は、その下書きが承認キューへ載る**前に**1行になる。落ちるのは、承認待ちのあいだ宙に浮いていた1行だ。
+1. **約束は、送信ボタンではなく「送ります」と書いた瞬間に発生する。** 対外文書の下書きに書いた約束（次に出す成果物・次にやる調査・報告するタイミング）は、その下書きが承認キューへ載る**前に**1行になる。落ちるのは、承認待ちのあいだ宙に浮いていた1行だ（却下されて送られなければ、その行も一緒に消す）。
 2. **正本を持つのはエージェント。** 送信済みフォルダは台帳ではない——**思い出すために検索が要るものは、運用上は追跡されていない**。人間に転記させない。
 3. **期限は、聞かれる前に出す。** 期日の接近は、次の区切りで差分として先回りで報告する（人間が気にし始めるまで持たない）。朝の便はこの表から締切レーダーを作っている（毎日の2.）——**表が空ならレーダーも空**で、遅れた当日まで盤面は静かなままだ。
 
