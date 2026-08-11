@@ -8,7 +8,7 @@ The day-to-day after setup is done: the actual handling each morning and each we
 
 **Morning.**
 
-1. **Open the approval queue** — the unprocessed section of `approval_queue.md`. Every card already carries what you need in order to rule *without* re-reading the deliverable: the artifact itself (never a summary), whether the act can be undone, the agent's declared doubt, its one recommendation, and what it will do if you say nothing. The mark in the heading is the weight — 🔴 nothing moves until you rule, 🟡 taste, so no answer means it proceeds on the recommendation — and a batch is at most three cards. Tick approve / edit-and-approve / reject. → [`../templates/approval_queue.md`](../templates/approval_queue.md), [`decision-cards.md`](decision-cards.md)
+1. **Open the approval queue** — the unprocessed section of `approval_queue.md`. Every card already carries what you need in order to rule *without* re-reading the deliverable — or the correspondence behind it: two or three lines of **premise** (when, to whom, what was done — you are not expected to remember the thread), the artifact itself (never a summary), whether the act can be undone, the agent's declared doubt, its one recommendation, and what it will do if you say nothing. The mark in the heading is the weight — 🔴 nothing moves until you rule, 🟡 taste, so no answer means it proceeds on the recommendation — and a batch is at most three cards. Tick approve / edit-and-approve / reject. → [`../templates/approval_queue.md`](../templates/approval_queue.md), [`decision-cards.md`](decision-cards.md)
 2. **Read the one-page board** — `briefs/<date>.md`, written by the time trigger before you woke up: what happened overnight, today's deadlines and promises, what is waiting on you (each with one recommended line), work in progress, and — stated plainly — whatever that unattended run could *not* read. → [`../scripts/morning_brief.sh`](../scripts/morning_brief.sh)
 
 **Whenever you reject — this is the entire fuel supply for the bottom half.**
@@ -77,7 +77,7 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 
 **朝。**
 
-1. **承認キューを開く**——`approval_queue.md` の「未処理」。各札には、成果物を読み返さずに裁くために要るものが揃っている: **現物**（要約で代替しない）・取り消し可能性・エージェントの**迷い**・**推奨**1つ・**無回答時**の既定動作。見出しの印が重み——🔴 は決まらないと止まるもの、🟡 は好みで、無回答なら推奨で進む——そして1バッチは**3枚まで**。承認／修正して承認／却下にチェックを入れる。→ [`../templates/approval_queue.md`](../templates/approval_queue.md)・[`decision-cards.md`](decision-cards.md)
+1. **承認キューを開く**——`approval_queue.md` の「未処理」。各札には、成果物も——その裏のやり取りも——読み返さずに裁くために要るものが揃っている: **前提**2〜3行（いつ・誰に・何をしたか。経緯はあなたが覚えていなくてよい）・**現物**（要約で代替しない）・取り消し可能性・エージェントの**迷い**・**推奨**1つ・**無回答時**の既定動作。見出しの印が重み——🔴 は決まらないと止まるもの、🟡 は好みで、無回答なら推奨で進む——そして1バッチは**3枚まで**。承認／修正して承認／却下にチェックを入れる。→ [`../templates/approval_queue.md`](../templates/approval_queue.md)・[`decision-cards.md`](decision-cards.md)
 2. **盤面1枚を読む**——`briefs/<日付>.md`。あなたが起きる前に時刻トリガーが書いている: 夜のあいだに起きたこと／今日の締切と約束／あなた待ち（1件1行の推奨つき）／進行中／**この自動実行では読めなかったもの**（読めなかったと明記させる）。→ [`../scripts/morning_brief.sh`](../scripts/morning_brief.sh)
 
 **却下するときは毎回——下半分の燃料はこれしかない。**

@@ -57,12 +57,13 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル（承認キューを使うならその型にも）
 
-エージェントが人間に**質問・承認依頼を出すときは、読む側の形に整形してから差し出す**。固定の4点——①**冒頭に置く**（末尾に埋めない）②**現物を貼る**（「§3の言い切りを弱めました」でなく before → after そのもの）③**推奨を1つ付ける**（開いた問いを投げない）④**無回答時の既定動作を宣言する**。**1件1判断・1バッチ3件まで。**
+エージェントが人間に**質問・承認依頼を出すときは、読む側の形に整形してから差し出す**。固定の5点——①**冒頭に置く**（末尾に埋めない）②**前提を2〜3行積む**（いつ・誰に・何をしたか。承認者が経緯を覚えている前提で書かない）③**現物を貼る**（「§3の言い切りを弱めました」でなく before → after そのもの）④**推奨を1つ付ける**（開いた問いを投げない）⑤**無回答時の既定動作を宣言する**。**1件1判断・1バッチ3件まで。**
 
 > 焼けた出自: 承認者に「判断を求めるときの提示が読みにくい」と言われた。ループの速度は生成では律速せず**承認で律速する**。**生成する側は疲れないが、承認する側は疲れる**——エージェントの手間を1増やすと承認者の手間が10減る、という非対称がここにある。
+> ②だけは出自が違う: 承認依頼が過去の往復を説明なしに参照し、承認者が「なんのこと?」で止まった。**承認者が経緯を知らないのは事故ではなく、このループの仕様**だ（人間が通信を読まなくても回ることが目的なのだから）。**人間の記憶をキャッシュとして使った時点で負け。**
 
-**機械化**: 差し出しテンプレートを4枠必須にし、欠けた枠があるなら送らない。
-※ この4点の背後の原理（系列位置効果・信号検出・再認＞想起・デフォルト効果）は [`../docs/decision-cards.md`](../../docs/decision-cards.md)。ここは現物だけ。
+**機械化**: 差し出しテンプレートを5枠必須にし、欠けた枠があるなら送らない。②は枠があるだけでは埋まらないので、配送前に**文脈を持たない別セッションへ文面だけ渡し**、「これだけで OK/NG が出せるか」を答えさせる（**書いた本人のセルフチェックは検収に数えない**——書き手は自分が省いた前提を見られない）。
+※ この5点の背後の原理（系列位置効果・信号検出・再認＞想起・デフォルト効果・知識の呪い）と、前提ゼロゲートの5問は [`../docs/decision-cards.md`](../../docs/decision-cards.md)。ここは現物だけ。
 
 ### A2. Report the board, not the event.
 
@@ -235,6 +236,6 @@ Every entry carries a **portability label**, because skimming disciplines off so
 
 Each entry also names its **paste target** (L1 judgment model / agent instructions file / `verifiers.md`) and the **burn it came from**. Paste into L1 with the `△` mark (provisional, pending the approver's confirmation): rewrite the source tag to your own `[C:]`/`[D:]` the day your journal confirms it, delete it the day your journal contradicts it. Your one rejection outranks any borrowed principle.
 
-The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
+The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader — and carrying its own premise, since an approver who has not read the correspondence is this loop's specification rather than its accident; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
 
 Whether the ones you took are doing anything in *your* environment is answerable only from your own logs: [`../scripts/discipline_scan.py`](../../scripts/discipline_scan.py) audits them (section A written up as a working catalog in [`discipline_catalog.example.yaml`](../../templates/discipline_catalog.example.yaml); the design note is [`../docs/discipline-audit.md`](../../docs/discipline-audit.md)).
