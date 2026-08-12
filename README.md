@@ -26,12 +26,26 @@ cd kagemusha
 
 ## 3. What this solves (the 1-minute version)
 
-Hand work to an AI and two things become the bottleneck, neither of them the model's capability: **operations that cannot be undone**, and **your own judgment, thrown away every time you click reject**. The **approval queue** answers the first — inward work runs autonomously, outward work stops for you. **Judgment distillation** answers the second — every reject reason is logged, distilled, and read back by the agent next session. The design in full: [`docs/design.md`](docs/design.md).
+Hand work to an AI and two things become the bottleneck: **operations that cannot be undone**, and **your own judgment, thrown away every time you reject something**. A more capable model alone clears neither. The **approval queue** answers the first — inward work runs autonomously, outward work stops for you. **Judgment distillation** answers the second — every reject reason is logged, distilled, and read back by the agent next session. The design in full: [`docs/design.md`](docs/design.md).
+
+### Beyond the minute — the north star, and what is still open
+
+*The 1-minute version ends above.* The two mechanisms above do what was just described. What is not settled is the general question underneath them, which they answer only in part: **what is the least you can be shown, and the least you can be asked, for the call to still be yours?**
+
+Yours in three specific senses — **you wrote the value judgment**, **you answer for it outward**, **you can still undo it**. And the thrift — how much can be cut from what you are shown — is bounded: deciding on the short version must not cost you more than a tolerance you set, against what you would have decided having read everything.
+
+Stated exactly, for anyone who wants the full form: *for each decision, what is the smallest decision representation and interaction that holds the extra decision loss — measured against having examined the full evidence — inside a tolerance you set, while leaving your authorship of the value call, your answerability to the outside, and your ability to recover later intact?*
+
+**Why a stronger model alone will not settle it.** The bottleneck is human attention and working memory, which does not move when the model improves. Answerability stays with a person whether or not the machine was right, so the *shape of what is handed over* is a permanent need. And trust comes from structure — an append-only journal, verbatim quotes, a gate — while a more persuasive model makes inference look more like fact, not less. This is not a claim that the model side is inert (there is work on models learning when to defer): it is a claim that capability **alone** does not close it, so the format, the gate and the journal have to be designed too.
+
+What the question implies but this kit does **not** ship yet: grading decisions by class — not everything deserves an OK/NG prompt, and for some decisions a yes-or-no is the wrong instrument altogether. That is an open line of work, not a feature.
 
 <!-- contract:evidence -->
 ## Evidence and scope
 
 **Fixed evidence: [`evidence-v1.0.0`](https://github.com/yohey-w/kagemusha/tree/evidence-v1.0.0)** — that a scheduled weekly distillation really ran, and that one correction really reached a standing rule, shown as redacted artifacts from a live instance. **It is n=1 field evidence, and claims neither an effect size nor generalisability.** `main` is the mechanism as it stands today; the tag is the evidence, frozen. Scope and limits: [`cookbook/author/evidence/README.md`](cookbook/author/evidence/README.md).
+
+**And what this repository is.** Not a product with a moat around it — **the public notebook of someone working in the open on the wall above: human attention, and answerability that stays with a person.** The method, and the record of running it. The parts of an answer already exist elsewhere, in four fields: human-automation oversight, conversational grounding, situation awareness, and the minimal manual. The nearest published framing is Zhu et al. (2026), *AI and Ethics* 6(3): separate the AI's **operative agency** (doing the work) from the human's **evaluative agency** (deciding whether it stands), and exploit the **solve-verify asymmetry** — checking costs less than redoing it — to shape the output so a person can check and contest it without doing the work again. What we have not found, as far as we have looked, is those parts run as **one** thing: scaling the hand-off to the weight of the decision, fitting that to how much of the story the human is actually still holding, cutting the format itself down experimentally, treating later recovery as a constraint, treating value decisions as authorship rather than comprehension, and keeping the AI that wrote the summary out of the check on it — all six at once. If prior work does integrate them, telling us is worth more here than a GitHub star ([`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md)).
 
 <!-- contract:boundary -->
 ## 8. Safety and data boundaries
