@@ -63,13 +63,28 @@
 
 **手順。** 案件の文脈を一切与えない別エージェント（新しいセッションでよい）に、**カードの文面だけ**を渡す。タスクの説明も、なぜそう書いたかの診断も渡さない——渡した瞬間に文脈を与えたことになり、ゲートは自分の検査対象を汚す。血統は問わない（ここで探すのは事実の誤りではなく**前提の欠落**なので、同じ血統でも検出できる）。
 
-**5問。**
+### 検査観点の拡張 — 人間の認知特性への接地
 
-1. **これだけで OK/NG を判断できるか。**（上の合格条件そのもの。残り4問は、これが No のときに原因を切り分けるためにある）
-2. **前提知識を要求している語・参照を全部挙げよ。**（「例の件」「前回の」「あのリンク」——指示語と、既知扱いされた名詞句が主犯）
-3. **判断に必要なのに書かれていない情報は何か。**
-4. **判断に効かない行はどれか**（消せる行）。
-5. **30秒で読み切れるか。**
+前提ゼロゲートの検査は「書き手が省いた前提の検出」に加えて、**読み手の認知限界**への適合を検査する。根拠は次の3つの実証知見に置く。
+
+- **読み手は画面上の文章の2〜3割しか読まない**（Nielsen Norman Group のアイトラッキング実測、Nielsen 2008）。冒頭で答えが取れない文面は、内容が正しくても読まれずに捨てられる
+- **ワーキングメモリは同時に約4チャンクしか保持できない**（Cowan 2001。Miller 1956 の 7±2 の改訂）。読み手に4つを超える「未回収の要素」を持たせる文は、理解される前に崩壊する
+- **構成の悪さはそれ自体が認知負荷**（Sweller の認知負荷理論）。内容の難しさと別に、構成由来の負荷は書き手側で全て削れる
+
+### 検査観点（10問）
+
+1. **直答**: 1文目が相手の質問の述語への直接の答え（Yes/No/事実）か。相手の具体的な状況に当てはめた答えか（一般論だけ返して翻訳を相手にやらせていないか）。**依頼された内容そのものが実施されたと分かるか**（近い別の対応で完了報告にすり替えていないか）
+2. **冒頭集中**（逆ピラミッド）: 結論と相手のアクションが文面の前半3割までに出ているか。各段落の1文目がその段落の主題か（Kieras 1978）
+3. **完結性**: この文面だけで相手は次の行動（クローズ・返信・判断）ができるか。判断に必要な情報の欠落はないか
+4. **前提ゼロ**: 前提知識を要求する語・指示語・既知扱いの名詞句・内輪語はないか
+5. **既知→新規**（given-new contract）: 新情報が相手の既知（相手の発言・対象文書の記載）に接続して出ているか。唐突な新主張はないか（Clark & Haviland 1977）
+6. **認知負荷**: 読み手が保持すべき未回収要素（番号の対応・括弧・後で説明される語）が4つを超えていないか（Cowan 2001）。入れ子構文・文中への長い挿入はないか（Gibson 1998）。**結論より先に必要な理由が、結論の後ろの括弧に押し込まれていないか**
+7. **一文一義**: 接続の連鎖（「〜が、〜ので、〜して」が3つ以上）で1文に複数の主張が詰まっていないか（文化審議会「公用文作成の考え方」2022）
+8. **冗長**: 削れる行・同じ内容の言い換え重複はないか。並列の列挙が地の文のままになっていないか（箇条書きにすべき）。30秒で読み切れるか
+9. **時制**: 「〜しました」が反映済みの報告か、これからやる提案かが一意か
+10. **クローズ分離**: 閉じてよい範囲と、まだ判断待ち・確認中の事項が文で分離されているか（混ざると相手はクローズしてよいか判断できず、往復が1回増える）
+
+判断カードでは、観点3の「次の行動」が OK/NG の裁定にあたる——上の合格条件「この文面だけで OK/NG が出せるか」そのものだ。
 
 指摘を潰してから届ける。**このゲートが拾うのは、たとえばこの4類型だ**:
 
@@ -78,7 +93,26 @@
 - **タイミング未記載** — いつ出すのか・いつまでに答えが要るのか。
 - **内輪語** — 自分のループの中でしか通じない略語や機構名。
 
-3と4は逆を向いている——ゲートは「足せ」とも「削れ」とも言う。**直すときは、削るほうが先だ**（30秒と枚数の予算が先にあり、前提はその中に収める）。費用は生成側にかかり、消えるのは承認者の往復だ——冒頭の非対称が、ここでも効いている。
+観点3と観点8は逆を向いている——ゲートは「足せ」とも「削れ」とも言う。**直すときは、削るほうが先だ**（30秒と枚数の予算が先にあり、前提はその中に収める）。費用は生成側にかかり、消えるのは承認者の往復だ——冒頭の非対称が、ここでも効いている。
+
+### 運用で見つかった系統的な穴（実測）
+
+初回のバッチ運用で不合格になった文面は、ほぼ次の3パターンに収束した。個別の表現の問題ではなく**書き手の構造的な盲点**なので、検査側で明示的に狙う。
+
+1. **時制の曖昧さ** — 「直します/追記済み」が反映済みの報告なのか提案なのか、読み手が確定できない（観点9）
+2. **クローズ範囲と未決事項の混載** — 「解決してよい」と「まだ確認中」が同じ段落に同居し、相手が動けない（観点10）
+3. **依頼のすり替え** — 依頼された内容の近くにある「別の対応」を実施して完了報告する。書き手は対応した気になっているため、セルフチェックでは構造的に検出できない（観点1）
+
+### 出典
+
+- Nielsen, J. (2008). How Little Do Users Read? / Nielsen Norman Group eye-tracking studies
+- Cowan, N. (2001). The magical number 4 in short-term memory. *Behavioral and Brain Sciences*
+- Miller, G. A. (1956). The magical number seven, plus or minus two. *Psychological Review*
+- Sweller, J. (1988). Cognitive load during problem solving. *Cognitive Science*
+- Clark, H. H., & Haviland, S. E. (1977). Comprehension and the given-new contract
+- Gibson, E. (1998). Linguistic complexity: locality of syntactic dependencies. *Cognition*
+- Kieras, D. E. (1978). Good and bad structure in simple paragraphs. *Journal of Verbal Learning and Verbal Behavior*
+- 文化審議会 (2022). 公用文作成の考え方
 
 ## どの面に差すか
 
@@ -104,6 +138,6 @@ The approval queue decides *what* goes to the human; decision cards decide *how 
 
 The first four share one root — one unit of agent effort saves ten units of approver effort, and only one side of that loop gets tired. **The fifth has a different root: not an asymmetry of fatigue but of context.** The point of this loop is that the human does not have to read the correspondence, so an approver who has not followed the thread is not an accident, it is the specification. Ask them to remember and you have handed the reading back at the one point the loop was supposed to cover. So every card **carries its own premise**: two or three lines of *when · to whom · what was done*, ahead of the artifact. More than three lines is history, not premise, and history belongs below with the evidence. The pass condition is a single question — **can this text alone produce an OK or a NO?** If it cannot, what is missing is not the approver's memory, it is two or three lines of the card. Writing them presupposes that somebody is tracking what was promised to whom and when: that ledger belongs to the agent, not the human — see [`operations.md`](operations.md).
 
-And because a writer cannot see the premises they omitted — the curse of knowledge is precisely the inability to re-read yourself without your own knowledge — **the author's self-check does not count as review.** Before delivery, hand the card text *alone* (no task description, no diagnosis of your own) to an agent with zero context on the matter, and ask five questions: can you rule on this alone; list every phrase that assumes prior knowledge; what is missing that a ruling needs; which lines do not bear on the decision; does it read in thirty seconds. Four kinds of defect are what the gate is there to catch — lines that do not bear on the decision, a check you actually ran but did not state (indistinguishable from an unverified claim on the reader's side), missing timing, and in-house jargon. Cut before you add: the thirty-second budget comes first.
+And because a writer cannot see the premises they omitted — the curse of knowledge is precisely the inability to re-read yourself without your own knowledge — **the author's self-check does not count as review.** Before delivery, hand the card text *alone* (no task description, no diagnosis of your own) to an agent with zero context on the matter. The inspection covers more than omitted premises: it checks the text against the **reader's cognitive limits**, on three empirical findings — readers take in only 20–30% of the text on a screen (Nielsen Norman Group eye-tracking; Nielsen 2008), so a message that does not answer up front gets discarded unread even when it is right; working memory holds about four chunks at once (Cowan 2001, revising Miller's 7±2), so a text that makes the reader carry more than four unresolved elements collapses before it is understood; and poor structure is cognitive load in its own right (Sweller), separate from the difficulty of the content and entirely removable on the writer's side. Ten questions: (1) **direct answer** — does the first sentence directly answer the predicate of the reader's question (yes/no/fact), applied to their specific situation rather than as a generality they must translate, and does it show the requested thing itself was done, not a nearby substitute reported as complete; (2) **front-loading** (inverted pyramid) — conclusion and the reader's action within the first 30% of the text, each paragraph opening with its topic sentence (Kieras 1978); (3) **completeness** — can the reader take the next action (close, reply, rule) on this text alone, with nothing a ruling needs missing (for a decision card this is the pass condition itself: can this text alone produce an OK or a NO); (4) **zero premises** — no phrase, demonstrative, noun treated as known, or in-house shorthand that demands prior knowledge; (5) **given–new contract** — new information attached to something the reader already holds (their own words, what the document under discussion states), no claims out of nowhere (Clark & Haviland 1977); (6) **cognitive load** — no more than four unresolved elements held open (numbered cross-references, parentheses, terms explained later; Cowan 2001), no nested syntax or long mid-sentence insertions (Gibson 1998), no reason the conclusion depends on shoved into a parenthesis after it; (7) **one sentence, one claim** — no chains of three or more connectives packing several claims into one sentence (Council for Cultural Affairs, *Kōyōbun sakusei no kangaekata*, 2022); (8) **redundancy** — no deletable lines or restated content, parallel enumerations as bullets rather than prose, readable in thirty seconds; (9) **tense** — is "done" unambiguously a report of something already applied, or a proposal of what will be done; (10) **close separation** — is what may be closed kept in separate sentences from what is still pending or under confirmation, because when they mix the reader cannot tell whether to close, and the exchange grows by one round trip. Four kinds of defect are what the gate is there to catch — lines that do not bear on the decision, a check you actually ran but did not state (indistinguishable from an unverified claim on the reader's side), missing timing, and in-house jargon. And the first batch run of the gate found its failures collapsing into three systematic holes — structural blind spots of the writer, not local wording, so the inspection targets them by name: **tense ambiguity** (question 9), **closable scope mixed with open items** in the same paragraph (question 10), and **request substitution** — doing something *near* what was asked and reporting completion, which a self-check is structurally unable to detect (question 1). Sources are listed once, in the Japanese section above. Cut before you add: the thirty-second budget comes first.
 
 Each card also declares its no-answer default (proceed / hold / drop), carries a two-level weight in the heading (🔴 blocking / 🟡 preference), and batches are capped at three cards — working memory holds about three or four items, and a queue of ten cards is just "please read everything" in disguise. Rejections of a card feed the same weekly distillation as everything else — this document itself was distilled from the feedback "your asks are hard to read."
