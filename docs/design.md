@@ -1,6 +1,6 @@
 # 設計解説 — 実装の手引き
 
-記事の要約ではなく、**このキットで実際にループを組むときの対応表と手順**。4部品＋マンデートが、どのファイル・どのスクリプトに落ちているかを示す。
+記事の要約ではなく、**このキットで実際にループを組むときの対応表と手順**。4部品＋マンデートが、どのファイル・どのスクリプトに落ちているかを示す。この文書の一段下——そもそも「仕事」とは何をする操作の連なりか——は [`context-editing.md`](context-editing.md)（入手→編集→出力・案件の3台帳・コンテキストの4属性）。
 
 *日本語が本文。全景図・4層の等式・依存校正は末尾に英語版がある（English versions of the loop diagram, the four-layer equation, and calibrated reliance are at the bottom of this document）。*
 
