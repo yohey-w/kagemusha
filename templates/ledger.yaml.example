@@ -1,0 +1,101 @@
+# Context ledgers — minimal example ／ 3台帳の最小例
+# Fictional case. Copy to projects/<name>/ledgers/ledger.yaml and replace everything.
+# 架空の案件です。projects/<name>/ledgers/ledger.yaml へコピーして中身を全部入れ替えてください。
+#
+# See templates/context_ledgers_template.md for the column meanings.
+# 列の意味は templates/context_ledgers_template.md を参照。
+
+meta:
+  project: example-co
+  updated: 2026-01-15
+  next_meeting: "2026-01-20 (Tue) 15:00"
+
+facts:
+  - id: F-001
+    title: 発注は保守フェーズのみ（新規開発は含まない）
+    status: confirmed
+    kind: 合意済み
+    source: "contract.md:42"
+    fresh: 2026-01-08
+
+  - id: F-002
+    title: 相手先の在庫管理は今も表計算ソフトで、担当者1名に集中している
+    status: confirmed
+    kind: 相手の現状
+    source: "talk:14:12:30"
+    fresh: 2026-01-15
+    note: 属人化の当事者が窓口本人なので、変更への抵抗は低い。
+
+holes:
+  - id: H-001
+    title: 現行データの保存期間（何年分を移行対象にするか）
+    status: open
+    why: 移行スクリプトの対象範囲が決まらず、見積りが出せない
+    fills_by: counterpart
+    due: 2026-01-20
+    how: 次回の打ち合わせで聞く
+    priority: must_0120
+    blocks: [K-001]
+    source: "talk:14:31:00（こちらが聞き逃した）"
+
+  - id: H-002
+    title: 連携先APIのレート制限
+    status: open
+    why: 一括移行が1日で終わるかが決まる
+    fills_by: research
+    due: 2026-01-22
+    how: 班が公式ドキュメントを読む（相手に聞く話ではない）
+    priority: later
+    blocks: []
+    source: "要件メモ（方式の記載なし）"
+
+forks:
+  - id: K-001
+    title: 過去データの移行を今回の範囲に入れるか
+    status: open
+    decides_by: owner
+    due: 2026-01-19
+    depends_on: [H-001]
+    options:
+      - label: A. 範囲外（次の契約でお見積り）
+        consequence: 金額は据え置き。相手は当面2画面を見比べることになる
+      - label: B. 直近1年分だけ範囲に入れる
+        consequence: 実装は2日。相手の不便がほぼ消える。以後「これくらいなら」の前例になる
+    recommend: A
+    why: 相手が期間を答えていない（H-001）うちは見積れない。まず穴を埋める
+
+  - id: K-002
+    title: 通知の送信先（担当者のみ / 部署メーリングリスト）
+    status: open
+    decides_by: counterpart
+    due: 2026-01-20
+    depends_on: []
+    options:
+      - label: A. 担当者のみ
+        consequence: 静かだが、担当者が不在の日は誰も気づかない
+      - label: B. 部署メーリングリスト
+        consequence: 取りこぼしは減るが、通知疲れが起きやすい
+    recommend: B
+    why: 属人化の解消が目的（F-002）なので、宛先も1人に寄せない
+
+  - id: K-003
+    title: 失敗時の再試行回数の既定値
+    status: open
+    decides_by: agent
+    due: 2026-01-22
+    depends_on: [H-002]
+    options:
+      - label: A. 3回・指数バックオフ
+        consequence: 一時的な障害はほぼ吸収できる
+      - label: B. 再試行なし
+        consequence: 実装は単純だが、相手が手で流し直すことになる
+    recommend: A
+    why: 設定値なので後から変えられる。既定値を置いて事後報告する
+
+  - id: K-004
+    title: 保守の連絡窓口をメールに一本化するか
+    status: decided
+    decides_by: owner
+    decision: 一本化する（緊急時のみ電話）
+    source: "decisions_journal.md D-2026-01-10-03"
+    fresh: 2026-01-10

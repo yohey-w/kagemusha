@@ -32,6 +32,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | **`templates/judgment_model.md`** | **Value-judgment model (L1)** — the thin canon (≤160 lines) the agent reads each session. |
 | **`templates/system_map.md`** | **System map** — the one-screen board (standing mechanisms + one card per project + roadmap). Scaffolds to the instance root. |
 | **`templates/charter.md`** | **Project charter** — per-project *deltas* only (≤60 lines); the judgment model itself never splits. Copy into `projects/<name>/charter.md`. |
+| **`templates/context_ledgers_template.md`** / **`templates/ledger.yaml.example`** | **Context ledgers** — three per case (**facts** / **holes**, each with *who can fill it* / **forks**, each with *who decides*), so the human's turn narrows to the forks a human must decide. An extension of `ssot/` (current state); history still goes to the journal. Start with `cp templates/ledger.yaml.example projects/<name>/ledgers/ledger.yaml`. |
 | **`templates/agent_instructions.md`** | **The instance constitution** — saved as `CLAUDE.md` (Claude Code) / `AGENTS.md` (Codex) / your tool's rules file. |
 | **[`cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md)** | **Starter disciplines** — on the **sample shelf**, a *menu, not a template* (deliberately **not** scaffolded by `setup.sh`): disciplines burned in the author's live instance, each with the burn it came from, a portability label, and a paste target. Take only the ones whose hole you've already fallen into. |
 | **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | The audit's two halves: the catalog of disciplines you want watched (with the regex that catches each one), and the weekly prompt that turns candidates into a ≤30-line finding. |
@@ -117,6 +118,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | **`templates/judgment_model.md`** | **価値判断モデル（L1）**——エージェントが毎セッション読む薄い正本（≤160行）。 |
 | **`templates/system_map.md`** | **システム地図**——1画面の盤面（恒久機構＋案件カード＋ロードマップ）。実走 dir の直下に展開。 |
 | **`templates/charter.md`** | **プロジェクト憲章**——案件ごとの*差分*だけ（≤60行）。価値判断モデル自体は割らない。`projects/<案件>/charter.md` へコピーして使う。 |
+| **`templates/context_ledgers_template.md`** / **`templates/ledger.yaml.example`** | **コンテキスト台帳**——案件がもつ3台帳（**事実**／**穴**＝誰が埋められるか付き／**分岐**＝誰が決めるか付き）。人の出番が「人が決める分岐」だけに絞られる。`ssot/`（いまの状態）の拡張で、履歴は従来どおり台帳へ。`cp templates/ledger.yaml.example projects/<案件>/ledgers/ledger.yaml` から始める。 |
 | **`templates/agent_instructions.md`** | **実走環境の憲法**——`CLAUDE.md`（Claude Code）/ `AGENTS.md`（Codex）/ 使うツールのルールファイルとして保存。 |
 | **[`cookbook/author/starter-disciplines.md`](../cookbook/author/starter-disciplines.md)** | **スターター規律集**——**標本棚**にある*雛形ではなくメニュー*（`setup.sh` は意図的に展開しない）: 作者の実走で焼けた規律集。各本に「焼けた出自」・可搬性ラベル・貼り先が付く。**自分が踏んだ穴のものだけ**持ち帰る。 |
 | **`templates/discipline_catalog.example.yaml`** / **`templates/discipline-audit-prompt.md`** | 規律監査の両輪——監査したい規律のカタログ（規律ごとの検出パターン付き）と、候補を30行以内の所見に変える週次プロンプト雛形。 |
