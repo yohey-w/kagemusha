@@ -11,7 +11,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | Try it without installing, then install it | [`getting-started.md`](getting-started.md) — the 10-minute demo, the prerequisite table, the copy-paste steps |
 | Run it day to day and week to week | [`operations.md`](operations.md) — the morning pass, the weekly ruling, multiple projects, counting your own work |
 | Understand the whole design | [`design.md`](design.md) — the loop diagram, the four-layer equation, calibrated reliance |
-| See the layer under the design (what "work" itself is) | [`context-editing.md`](context-editing.md) — get→edit→generate, the three case ledgers, context's four attributes, the four loops |
+| See the layer under the design (what "work" itself is) | [`context-editing.md`](context-editing.md) — get→edit→generate, the three case ledgers, context's four attributes, the four loops, goal commands |
 | Know what is yours and what is the kit's | [`layers.md`](layers.md) — the core / cookbook boundary and the data boundaries |
 | Turn rejections into rules | [`judgment-distillation.md`](judgment-distillation.md) · the light daily lane: [`distillation-loop.md`](distillation-loop.md) · after promotion: [`discipline-audit.md`](discipline-audit.md) · back into the generator: [`norms-loop.md`](norms-loop.md) |
 | Catch what the world sends you | [`inbound-loop.md`](inbound-loop.md) · the watcher pattern behind it: [`fixed-point-sweep.md`](fixed-point-sweep.md) |
@@ -51,7 +51,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | **`scripts/inbound_watch.sh.example`** | The inbox trigger, Tier 2 — inward-only inbound watch for unattended scheduler runs (Slack / Gmail-IMAP / RSS lanes; immutable ledger; quiet-hours roll-up). |
 | `scripts/test.sh` | The kit's own acceptance gate — run `./scripts/test.sh` (needs `shellcheck`); CI runs this exact command. It really executes `setup.sh` in a throwaway clone, proves the allowlist `.gitignore` makes instance data uncommittable, and drives `morning_brief.sh` with a fake CLI. No skips: a missing tool is a failure. |
 | `docs/design.md` | Implementation guide: the four parts + mandate, mapped to files. |
-| **`docs/context-editing.md`** | The layer under `design.md`: work as get→edit→generate, the three case ledgers (facts/holes/forks), context's four attributes (location/freshness/ownership/destination), the four meeting loops, and the meeting design template. |
+| **`docs/context-editing.md`** | The layer under `design.md`: work as get→edit→generate, the three case ledgers (facts/holes/forks), context's four attributes (location/freshness/ownership/destination), the four meeting loops, the meeting design template, and goal commands. |
 | **`docs/judgment-distillation.md`** | The feedback side in full: 4 layers, 8 triggers, event sourcing, the weekly 7-step, three-layer change governance. |
 | **`docs/inbound-loop.md`** | The inbound-watch loop: lanes & cadences, quiet hours, the immutable ledger, injection defense, the batch-level baseline lesson, Tier 1 / Tier 2. |
 | `docs/fixed-point-sweep.md` | Fixed-point sweep — the diff-shaped watcher pattern: a baseline of the known, the three states NEW / NOCHANGE / FAILED kept apart, an append-only baseline advanced on success only, and why a silent run still has to be logged. |
@@ -99,7 +99,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | 入れずに試す→入れる | [`getting-started.md`](getting-started.md)——10分デモ・前提表・コピペ手順 |
 | 毎日と毎週まわす | [`operations.md`](operations.md)——朝の一周・週次の裁定・複数案件・自分の仕事の数え方 |
 | 設計の全体を掴む | [`design.md`](design.md)——ループ全景・4層の等式・依存校正 |
-| 設計の一段下（「仕事」そのものの定義）を掴む | [`context-editing.md`](context-editing.md)——入手→編集→出力・案件が持つ3台帳・コンテキストの4属性・4ループ |
+| 設計の一段下（「仕事」そのものの定義）を掴む | [`context-editing.md`](context-editing.md)——入手→編集→出力・案件が持つ3台帳・コンテキストの4属性・4ループ・ゴールコマンド |
 | どこまでが自分の物か知る | [`layers.md`](layers.md)——core と cookbook の境界・データ境界 |
 | 却下を規律に変える | [`judgment-distillation.md`](judgment-distillation.md)・軽い日次レーン: [`distillation-loop.md`](distillation-loop.md)・昇格した後: [`discipline-audit.md`](discipline-audit.md)・生成側への還流: [`norms-loop.md`](norms-loop.md) |
 | 世界からの入力を捕まえる | [`inbound-loop.md`](inbound-loop.md)・その背後の監視パターン: [`fixed-point-sweep.md`](fixed-point-sweep.md) |
@@ -139,7 +139,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |
-| **`docs/context-editing.md`** | `design.md` の一段下: 仕事＝入手→編集→出力・案件が持つ3台帳（事実／穴／分岐）・コンテキストの4属性（位置／鮮度／所有／配送先）・会議の4ループ・会議設計テンプレ。 |
+| **`docs/context-editing.md`** | `design.md` の一段下: 仕事＝入手→編集→出力・案件が持つ3台帳（事実／穴／分岐）・コンテキストの4属性（位置／鮮度／所有／配送先）・会議の4ループ・会議設計テンプレ・ゴールコマンド。 |
 | **`docs/judgment-distillation.md`** | フィードバック側の全体: 4層・8トリガー・イベントソーシング・週次7段・三層の変更ガバナンス。 |
 | **`docs/inbound-loop.md`** | inbound watch の全体: レーンと周期・quiet hours・不変台帳・インジェクション防御・バッチ単位ベースラインの教訓・Tier 1 / Tier 2。 |
 | `docs/fixed-point-sweep.md` | 定点掃引——差分型監視の設計パターン: 既知の基線・3状態（NEW / NOCHANGE / FAILED）を潰さない・基線は成功時のみの一方向ラチェット・沈黙した回もログに残す。 |

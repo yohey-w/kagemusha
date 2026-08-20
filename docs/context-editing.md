@@ -76,6 +76,33 @@
 
 3台帳・4ループの中身が要件かコードか議事録かは案件次第。**むしろ営業・交渉では「中」ループ（前提ズレの即時検知）の優先度が最も高い**——開発には検収というやり直しの関門があるが、営業の認識違いはそのまま契約・失注に直結し、やり直しが利かない。
 
+## 9. ゴールコマンド — 自律の単位はタスクではない
+
+8/20夜、ある受託案件の実走で確定した1段。出所は `judgment/decisions_journal.md` の D-2026-08-20-03 / 04。
+
+**自律の単位はタスクではなくゴールコマンドである。** タスクを渡す限り、タスクとタスクの間を埋める仕事——段取り——は人の頭に残る。ゴールを渡した瞬間、段取りそのものがエージェントの仕事になる。両者は指示の粒度ではなく、**誰が段取りを持つか**で分かれる。
+
+### 9.1 ゴールコマンドの中身
+
+1. **ゴール状態** — 日付つき・検証可能な1文（「◯月◯日までに、Aが完了していること」）
+2. **成立条件表** — 行＝真であるべきこと／いま真か／真にする手／期限。**未充足の行が仕事のキューになる**。§2の3台帳（事実・穴・分岐）を駆動する上位構造がこの表であり、台帳自体は状態、成立条件表はゴールを起点にしたキュー生成規則を持つ
+3. **人に戻す条件** — `decides_by: owner` の分岐（§2）と、外向きの承認が要る操作
+
+### 9.2 発行トリガー（4つ）
+
+- 日付つきの約束が生まれた瞬間
+- 不可逆イベントの予定が確定した瞬間
+- 相手のボールが返ってきて着工可能になった瞬間
+- 同種の指摘が2回目に入った瞬間
+
+### 9.3 検知はハーネス、注意は保険
+
+**トリガーの検知を人（モデル）の注意に置くと、確率的に蒸発する。** 指示ファイルに「気づいたら発行せよ」と書いても、それは注意という不安定な層に依存する規律であり、繰り返し漏れる。**主たる検知はハーネス（機械）に置く**——約束の発生源（送信メール・台帳追記・議事録）にトリガー検知のフックを仕込み、朝の定期走査で漏れを拾う。モデル側に残す規律は「鳴ったら発行する」の1行だけでよい。注意は保険であって主経路ではない。
+
+### 9.4 反例（匿名・ある受託案件）
+
+本番日が確定してから2日間、案件はゴール化されなかった。渡された材料（実データ）は本番の2週間半前から手元にあり、通し検証は工程として置けば実施可能だったが、置いていなかった。その結果、通しリハーサル未実施・接続方式未決・当日項目の未確認が本番9日前に露呈した。**指標は「オーナー（本人）が初出しした成立条件の行数」**——ゼロに近いほど、成立条件表が先に埋まっていたことを意味する。
+
 ---
 
 ## English
@@ -83,3 +110,5 @@
 **Under construction — Japanese section above is canonical; this is a working translation, kept short.**
 
 Knowledge work reduces to **get → edit → generate** context. Tools have made *get* cheap and LLMs have made *generate* fast; **edit — fetch, confirm, reconcile, find gaps, fill gaps (by whom), prioritize, decide, put into words, route to the right recipient — is the layer that stayed empty.** A case carries three overwritable ledgers — **facts** (confirmed, sourced), **holes** (unconfirmed, tagged with who can fill them: counterpart / material / research / owner), **forks** (a pending decision, tagged with who decides: owner / counterpart / contract_change / agent) — see [`templates/context_ledgers_template.md`](../templates/context_ledgers_template.md). Context itself is tracked on four axes — **location, freshness, ownership, and destination**; context with no destination is as good as absent. Meeting support runs as four loops in plain, non-technical language: **before** (know the counterpart's current state before meeting), **during** (catch drift between assumption and their words live — contradiction / known / new), **after** (audit whether their words made it into promises/todos/decisions — captured / missed-delivery / missed-entirely / first-seen), **cross-cutting** (check new commitments against existing rulings for conflict). A human is needed only at the forks tagged `decides_by: owner`; the metric is the count of interventions the owner volunteered unprompted, driving toward zero as forks are delivered as pre-formed questions. None of this is development-specific — in sales and negotiation the "during" loop (catching assumption drift live) matters most, because there is no code-review-style redo gate once a misunderstanding ships.
+
+**The unit of autonomy is not the task — it's the goal command.** Hand an agent a task and the scheduling between tasks stays in the human's head; hand it a goal and that scheduling becomes the agent's job. A goal command carries three parts: a dated, verifiable goal state; a conditions-of-satisfaction table (row = something that must be true / is it true now / the move that makes it true / deadline — unmet rows are the work queue, and this table is the upstream structure that drives the three ledgers in §2); and the conditions for handing back to the human (`decides_by: owner` forks plus anything needing outward approval). Issue a goal command on four triggers: a dated commitment, a scheduled irreversible event, the counterpart's ball coming back (work becomes startable), or a second occurrence of the same gap. Detection of these triggers belongs in the harness, not in the model's attention — human/model attentiveness is a fallback, not the primary path, because instruction-file discipline evaporates probabilistically; wire the trigger detection into the source of the commitment (a sent email, a ledger entry, meeting minutes) and sweep for misses on a routine schedule. In one anonymized case, a delivery case went two days without being turned into a goal command after its delivery date was fixed, even though the data needed for an end-to-end rehearsal had been on hand for two and a half weeks — the rehearsal, connection method, and on-day checklist all surfaced unresolved nine days out. The metric: the count of conditions-of-satisfaction rows the owner had to surface first — the closer to zero, the more the table was already filled in before they had to ask.
