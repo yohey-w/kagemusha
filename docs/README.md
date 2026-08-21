@@ -51,6 +51,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | The distillation prompt (one rule line plus eight fields per candidate; conflicts with your existing principles are *held*, not resolved) and the queue you empty by hand — the promotion step that stays a person. |
 | **`scripts/inbound_watch.sh.example`** | The inbox trigger, Tier 2 — inward-only inbound watch for unattended scheduler runs (Slack / Gmail-IMAP / RSS lanes; immutable ledger; quiet-hours roll-up). |
 | `scripts/test.sh` | The kit's own acceptance gate — run `./scripts/test.sh` (needs `shellcheck`); CI runs this exact command. It really executes `setup.sh` in a throwaway clone, proves the allowlist `.gitignore` makes instance data uncommittable, and drives `morning_brief.sh` with a fake CLI. No skips: a missing tool is a failure. |
+| **`scripts/gsheet_tabs.py`** | Full-tab inspector for a Google Sheet — plain Drive reads/exports of a spreadsheet often surface only one tab, and an investigating agent then falsely reports "not found" for data that's sitting on another tab. Use it as the first move of any spreadsheet investigation. Default path is Drive MCP `download_file_content` (xlsx) + stdlib `zipfile`/`xml`, no extra auth; this script is the standalone fallback for environments without Drive MCP (cron, bare shell). |
 | `docs/design.md` | Implementation guide: the four parts + mandate, mapped to files. |
 | **`docs/context-editing.md`** | The layer under `design.md`: work as get→edit→generate, the three case ledgers (facts/holes/forks), context's four attributes (location/freshness/ownership/destination), the four meeting loops, the meeting design template, and goal commands. |
 | **`docs/judgment-distillation.md`** | The feedback side in full: 4 layers, 8 triggers, event sourcing, the weekly 7-step, three-layer change governance. |
@@ -140,6 +141,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | **`templates/distill-prompt.md`** / **`templates/promotion_queue.md`** | 蒸留プロンプト（規律案1行＋8欄の審査書式・既存原則との競合は**解決せず保留枠へ**）と、人が手で空にする審査キュー——昇格だけは人間に残る工程。 |
 | **`scripts/inbound_watch.sh.example`** | 受信箱トリガー Tier 2——無人スケジューラ実行用の内向き専用 inbound watch（Slack / Gmail-IMAP / RSS レーン・不変台帳・quiet hours ロールアップ）。 |
 | `scripts/test.sh` | キット自身の検収ゲート。`./scripts/test.sh` で実行（`shellcheck` が必要）、CIも同じコマンドを回す。使い捨てクローンで `setup.sh` を実地実行し、allowlist `.gitignore` が instance データを構造的にコミット不能にしていることを証明し、偽のCLIで `morning_brief.sh` を走らせる。skipは無い——ツールが無ければ失敗として数える。 |
+| **`scripts/gsheet_tabs.py`** | Google Sheets の全タブ実査ツール——Drive経由の平文読取(export/download)はタブ構造を落とし1タブ分しか見せないことが多く、それが「見つからない」誤報告の温床になる。調査の最初の1手として使う。既定の方法はDrive MCPの `download_file_content`(xlsx指定)+標準ライブラリ `zipfile`/`xml`(追加認証ゼロ)——このスクリプトは Drive MCP が無い環境(cron・素のシェル)向けの単独動作フォールバック。 |
 | `docs/design.md` | 実装の手引き: 4部品＋マンデートのファイル対応表。 |
 | **`docs/context-editing.md`** | `design.md` の一段下: 仕事＝入手→編集→出力・案件が持つ3台帳（事実／穴／分岐）・コンテキストの4属性（位置／鮮度／所有／配送先）・会議の4ループ・会議設計テンプレ・ゴールコマンド。 |
 | **`docs/judgment-distillation.md`** | フィードバック側の全体: 4層・8トリガー・イベントソーシング・週次7段・三層の変更ガバナンス。 |
