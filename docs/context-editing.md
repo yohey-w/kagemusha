@@ -26,6 +26,8 @@
 | **穴** | 未確認の1件＋**誰が埋められるか**（`fills_by`: `counterpart` 相手／`material` 資料／`research` 調査／`owner` 本人） | 埋め手のない穴は願望であって穴ではない |
 | **分岐** | 決めるべき1件＋**誰が決めるか**（`decides_by`: `owner` 本人／`counterpart` 相手／`contract_change` 契約変更／`agent` エージェント） | 選択肢と結果のない分岐は決めようがない |
 
+**穴の属性は2軸に分ける**——`fills_by`（誰が埋められるか＝情報源）と**行動可能性**（`ready` 着手可／`blocked` 依存待ち／`waiting_external` 相手待ち／`needs_judgment` 判断要／`scheduled` 予定済／`unknown` 未確認）は別軸であり、1つのフィールドに両方の意味を持たせない（8/21改訂・D-2026-08-21-06）。
+
 これは `ssot/`（いまの状態・上書き可）の拡張であり、`judgment/decisions_journal.md`（履歴・追記専用）とは分離を保つ。書式とひな型は [`templates/context_ledgers_template.md`](../templates/context_ledgers_template.md) / [`templates/ledger.yaml.example`](../templates/ledger.yaml.example)。
 
 ## 3. コンテキストの4属性
@@ -76,11 +78,13 @@
 
 3台帳・4ループの中身が要件かコードか議事録かは案件次第。**むしろ営業・交渉では「中」ループ（前提ズレの即時検知）の優先度が最も高い**——開発には検収というやり直しの関門があるが、営業の認識違いはそのまま契約・失注に直結し、やり直しが利かない。
 
-## 9. ゴールコマンド — 委任の制御単位（v0.2・条件付き採用）
+## 9. ゴールコマンド — 委任の制御単位（v0.3・条件付き採用）
 
-8/20夜、ある受託案件の実走で立てた1段。出所は `judgment/decisions_journal.md` の D-2026-08-20-03 / 04。**この節は確定原理ではなく条件付き採用の v0.2** ——外部レビューで「9.1〜9.3の当初仕様は未完成、そのまま固定するのは早い」と判定されたため、以下は指摘を反映した改訂版である（出典noteは §9.7）。
+8/20夜、ある受託案件の実走で立てた1段。出所は `judgment/decisions_journal.md` の D-2026-08-20-03 / 04。**この節は確定原理ではなく条件付き採用**——8/21の外部レビュー2本を反映した改訂版である（出典noteは §9.7）。
 
 **多段・跨セッション・外部依存を持つ仕事では、委任の制御単位をゴールコマンドに置く。** タスクは、成立条件の未充足から生成される実行単位にすぎない。一方、**原子的・可逆・低リスクな仕事は直接タスクのままでよい** ——ゴール化はコストを伴うので、全部に被せるものではない。タスクだけを渡す限り、タスクとタスクの間を埋める仕事——段取り——は人の頭に残る。ゴールを渡した瞬間、段取りそのものがエージェントの仕事になる。両者は指示の粒度ではなく、**誰が段取りを持つか**で分かれる。
+
+**構造は4層に分かれる。** ①**事実・穴・分岐**（§2の3台帳。認識と判断の単位）②**ゴールコマンド**（本節。成果契約の単位）③**派生アクション／ワークキュー**（実行単位。新設——本節v0.3の主眼）④**イベント受領・処理記録**（何が入ってきて、何に化けたかの記録）。委任の粒度は**直接タスク／軽量ゴール／完全なゴールコマンド**の三段階を持つが、**その一番下に④から生まれる派生アクションを正式な単位として置く**。小作業（共有シートを開いて値を抜く、1件確認する、等）は軽量ゴールへ昇格させない——**成果契約と実行単位の型を混ぜると、親ゴールの成立判定と子作業の完了判定が同じ機構で処理され、区別できなくなる**（詳細はD-2026-08-21-06）。
 
 ### 9.1 ゴールコマンドの中身（4項目）
 
@@ -117,6 +121,10 @@
 
 さらに逆向きの不変条件を1本置く——**不在照合**。確定済みの不可逆イベント（本番日・締切・送信済みの約束）に対して、有効なゴールが1つも紐づいていない状態を**異常として検知する**。トリガーの取りこぼしは「鳴らなかった」ので気づけないが、不在照合はイベント側から見るので取りこぼしを拾える。
 
+**イベント処理の完了不変条件**——これは③派生アクション層の検査であり、プロンプト規律（「発注し尽くせ」と書く）ではなく状態遷移の検査として持つ。**イベント処理は、派生結果が「作業投入」「明示的保留（期限つき）」「人への返却」「作業なし（理由コード）」のいずれかに記録されるまで完了扱いにしない。** 旧い言い方「全部発注し尽くす」は撃ち切りの基準として曖昧なので、次に差し替える——**全部を作業レコードへ変換し、即時発注（読取・可逆・低コストなもの）／期限つき待機／依存待ち／人戻し／不要のいずれかに確定するまで完了にしない**。
+
+検知は3本立てで持つ——**イベント完全性**（入ってきたイベントを取りこぼしていないか）／**状態遷移完全性**（各イベントが上記4終端のいずれかに落ちたか）／**実行健全性**（投入した作業が実際に進んでいるか）。このとき**ゼロ件と検査不能（`coverage_unknown`）を区別する**。「対象イベントが0件だった」と「そもそも走査できていない」は別の状態であり、後者をゼロ件に丸めると欠落が消える。
+
 ### 9.4 成立条件表の完全性ゲート
 
 **表を作ったことは、条件が揃っていることを意味しない。** 埋めた行がすべて真になっても、書かれなかった行があれば本番は落ちる。したがって表それ自体の完全性を、表の外から検査する。
@@ -146,6 +154,8 @@
 
 GPT-5.6 SOL Pro の外部レビュー（2026-08-21）を受けた改訂。逐語は `local/state/gpt_gate_answers/gpt_gate_1_goal_command_answer_20260821.md`。**先行手法との関係**——プロジェクト管理のマイルストーンと DoD、SRE のアラート運用、軍事の Mission Command（意図を渡して手段を委ねる）、Magentic-One 等のエージェント動的計画。**部品の新規性は主張しない。** ここが提案しているのは、それらを「外部の約束 → ゴール → 成立条件 → 3台帳 → キュー → 人の判断」として、一人の実務で継続的に閉じる統合実装パターンである。
 
+**第2回外部レビュー（2026-08-21・小作業のゴール化は不適との裁定）**を追記反映。真因診断＝実行モデル55％／台帳規律40％／ゴール粒度5％。逐語は `local/state/gpt_gate_answers/gpt_gate_3_micro_goals_answer_20260821.md`（D-2026-08-21-06）。
+
 ---
 
 ## English
@@ -154,9 +164,11 @@ GPT-5.6 SOL Pro の外部レビュー（2026-08-21）を受けた改訂。逐語
 
 Knowledge work reduces to **get → edit → generate** context. Tools have made *get* cheap and LLMs have made *generate* fast; **edit — fetch, confirm, reconcile, find gaps, fill gaps (by whom), prioritize, decide, put into words, route to the right recipient — is the layer that stayed empty.** A case carries three overwritable ledgers — **facts** (confirmed, sourced), **holes** (unconfirmed, tagged with who can fill them: counterpart / material / research / owner), **forks** (a pending decision, tagged with who decides: owner / counterpart / contract_change / agent) — see [`templates/context_ledgers_template.md`](../templates/context_ledgers_template.md). Context itself is tracked on four axes — **location, freshness, ownership, and destination**; context with no destination is as good as absent. Meeting support runs as four loops in plain, non-technical language: **before** (know the counterpart's current state before meeting), **during** (catch drift between assumption and their words live — contradiction / known / new), **after** (audit whether their words made it into promises/todos/decisions — captured / missed-delivery / missed-entirely / first-seen), **cross-cutting** (check new commitments against existing rulings for conflict). A human is needed only at the forks tagged `decides_by: owner`; the metric is the count of interventions the owner volunteered unprompted, driving toward zero as forks are delivered as pre-formed questions. None of this is development-specific — in sales and negotiation the "during" loop (catching assumption drift live) matters most, because there is no code-review-style redo gate once a misunderstanding ships.
 
-**§9 — goal commands (v0.2, conditionally adopted, not settled doctrine).** **For work that is multi-step, spans sessions, and depends on outside parties, put the unit of delegation at the goal command**; a task is just an execution unit generated by an unmet condition, and **atomic, reversible, low-risk work stays a plain task**. Hand an agent a task and the scheduling between tasks stays in the human's head; hand it a goal and that scheduling becomes the agent's job. A goal command carries four parts: (1) a dated, verifiable goal state; (2) a conditions-of-satisfaction table (row = what must be true / current state / the move that makes it true / deadline / evidence / who judges — unmet rows are the work queue, and this table is the upstream structure driving the three ledgers in §2); (3) hand-back conditions (`decides_by: owner` forks plus anything needing outward approval); and (4) **authority bounds** — permitted and forbidden means, caps on budget/time/attempts, gates on outward actions, what information may be touched, **stop conditions**, plus the goal's own version and change history. A goal without authority bounds is a blank cheque, not a delegation.
+**§9 — goal commands (v0.3, conditionally adopted, not settled doctrine).** **For work that is multi-step, spans sessions, and depends on outside parties, put the unit of delegation at the goal command**; a task is just an execution unit generated by an unmet condition, and **atomic, reversible, low-risk work stays a plain task**. Hand an agent a task and the scheduling between tasks stays in the human's head; hand it a goal and that scheduling becomes the agent's job. **The structure has four layers**: (1) facts/holes/forks (§2, cognition and judgment), (2) goal command (this section, the outcome contract), (3) **derived actions / work queue** (the execution unit — new in v0.3), (4) event intake and disposition record. Delegation granularity has three tiers — plain task / lightweight goal / full goal command — and **derived actions from layer 4 now sit formally at the bottom tier; small chores are not promoted into lightweight goals**, because mixing the outcome-contract type with the execution-unit type collapses the distinction between a parent goal's completion and a child chore's completion. A goal command carries four parts: (1) a dated, verifiable goal state; (2) a conditions-of-satisfaction table (row = what must be true / current state / the move that makes it true / deadline / evidence / who judges — unmet rows are the work queue, and this table is the upstream structure driving the three ledgers in §2); (3) hand-back conditions (`decides_by: owner` forks plus anything needing outward approval); and (4) **authority bounds** — permitted and forbidden means, caps on budget/time/attempts, gates on outward actions, what information may be touched, **stop conditions**, plus the goal's own version and change history. A goal without authority bounds is a blank cheque, not a delegation.
 
 Triggers sort into three kinds by what they feed, not by how they fire: **goal_birth** (a dated commitment, a scheduled irreversible event) → mint a new goal shell; **goal_transition** (the counterpart's ball comes back, premises change, a promise is withdrawn) → find the existing goal and move its state (resume / revise / supersede / cancel) — never route these into new-goal creation; **corrective_action** (a second occurrence of the same gap) → a rule or check, not a goal. Detection belongs in the harness rather than the model's attention, but **detect-and-notify is not enough**: the harness owns the **closure** — candidate creation, auto-minting the goal shell, dedupe against existing goals, holding every candidate open until it lands in `issued` / `merged` / `rejected` (reason required) / `superseded`, and escalating candidates that sit too long. **"It fired and the model did nothing" must not count as a normal exit.** Add the inverse invariant — **absence checking**: a confirmed irreversible event with no live goal attached is itself an anomaly, because a trigger that never fired cannot be noticed from the trigger side.
+
+**Completion invariant for event processing** (layer 3, a state-transition check, not a prompt rule): an event is not done until its derived outcome lands in one of **work dispatched / explicit hold (dated) / handed back to a person / no action (reason code)**. Detection runs three checks — event completeness, state-transition completeness, execution health — and **distinguishes zero matches from unknown coverage**: "nothing to do" and "we couldn't scan it" are different states, and collapsing the latter into the former hides the gap.
 
 **A table's existence does not prove its conditions are complete.** Gate completeness from outside the table: per-case-type templates (for a production event: end-to-end rehearsal, connection method, item-by-item mapping, on-day roles, approvals, fallback, rollback, evidence) plus an **independent** gap review by someone other than the table's author. Row state is not a boolean — `satisfied` / `unsatisfied` / `unknown` / `blocked` / `stale` / `waived` / `not_applicable`; collapsing to two values silently rounds `unknown` into one of them and destroys the distinction.
 
