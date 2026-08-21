@@ -55,6 +55,10 @@ Case data lives under `projects/`, which the allowlist `.gitignore` makes struct
 | `blocks` | IDs of the facts/forks that stall |
 | `status` | `open` ／ `filled` ／ `dropped` |
 
+**EN.** When research comes back "not found," always record two things together: the **scope actually covered** (where you looked, how far) and the **next move to widen that scope**. A hole stays `open` as long as a next move exists — that is what keeps it detectable as workable, instead of silently read as "checked, nothing there."
+
+**JA.** 調査の結果が「見つからない」のときは、**射程(どこをどう見たか)**と、**射程を広げる次の一手**を必ず併記する。次の一手が存在する限り穴は `open` のまま(＝着工可能として検知され続ける)。
+
 **forks**
 
 | field | meaning |
