@@ -59,6 +59,10 @@ Case data lives under `projects/`, which the allowlist `.gitignore` makes struct
 
 **JA.** 調査の結果が「見つからない」のときは、**射程(どこをどう見たか)**と、**射程を広げる次の一手**を必ず併記する。次の一手が存在する限り穴は `open` のまま(＝着工可能として検知され続ける)。
 
+**EN.** The next move must always be searched in this order: **① other methods/parameters of the same tool (inventory the tool's own menu) ② a different tool ③ build it yourself.** Never skip ① and jump to ③. Do not compress "this method can't do it" into "this goal can't be done with tools" — record the constraint at the method level, not the goal level. Example (anonymized): reading a spreadsheet as plain text collapsed the tab names — the same connection had an xlsx download available all along, unused because nobody checked the tool's own method list first.
+
+**JA.** 次の一手は必ずこの順で探す——**①同じツールの別メソッド・別パラメータ(ツール一覧の棚卸し) ②別のツール ③自作**。①を飛ばして③へ行かない。「このメソッドはできない」を「この目的はツールでできない」へ圧縮しない(制約はメソッド単位で記録する)。実例(匿名化): 平文読取でスプレッドシートのタブ名が潰れた——同じ接続にxlsxダウンロードが最初から存在していたが、ツール自身のメソッド一覧を先に棚卸ししなかったため未使用のままだった。
+
 **forks**
 
 | field | meaning |
