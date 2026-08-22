@@ -1,0 +1,26 @@
+# meetlive 子機の設定。
+# このファイルを config.txt という名前でコピーしてから中身を書き換えること。
+# 書き換えたら START.bat を叩き直す(起動時に1回だけ読む)。
+#
+# ⚠ config.txt は「親機のアドレス」と「合言葉」が平文で入るファイル。
+#   git へコミットしない・他人へ渡さない。配布するのはこの .example の方だけ。
+
+# 親機(受信サーバ receiver.py が動いている機体)のアドレス。
+# プライベート網(tailscale 等)で割り当てられたアドレスを推奨。LAN内なら LAN のIPでもよい。
+host=CHANGE_ME_PARENT_HOST
+
+# 親機の receiver.py が待っているポート (receiver.py --port の既定は 47311)
+port=47311
+
+# 音質。16000 なら 2ch あわせて約512kbps。回線が細ければ触らない。
+rate=16000
+
+# 親機と合わせる合言葉 (receiver.py の --token / MEETLIVE_TOKEN と同じ値にする)。
+# 空にすると親機側が合言葉検査をしない設定のときだけ通る。必ず設定すること。
+token=CHANGE_ME_SHARED_SECRET
+
+# (任意) マイクの選び方。既定のマイクが Bluetooth 機器だと、取得時にネイティブ層ごと
+# 落ちることがある。その場合は内蔵マイクの名前の一部をここへ書くと、それを優先して開く。
+# 例: mic_match=Realtek
+# 空なら OS の「既定のマイク」を使う。
+mic_match=

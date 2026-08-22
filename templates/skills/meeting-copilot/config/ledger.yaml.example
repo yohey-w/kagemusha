@@ -1,0 +1,53 @@
+# meeting-copilot — 前提監視が読む事実台帳の最小例
+# Fictional case. 架空の案件です。自分の案件用にコピーして中身を全部入れ替えてください。
+#
+# premise_watch.py が読むのは facts の id と title だけ。他の列は人間の管理用。
+# (このスキルは templates/ledger.yaml.example と同じ facts スキーマを使う。
+#  既に3台帳を運用しているなら、その ledger.yaml をそのまま MEETLIVE_LEDGER に指せる)
+#
+# 選び方: 全部入れない。**今日の会議で、覆されたら困る事実**を10〜20件に絞る。
+#   - 契約・約束の範囲境界（何が入っていて、何が入っていないか）
+#   - 相手の現状についてこちらが握っている認識
+#   - 前回の会議で決まったこと
+# 多すぎるとプロンプトが膨らみ、「矛盾」の判定がぼやけて鳴らなくなる。
+
+meta:
+  project: example-co
+  updated: 2026-01-19
+  next_meeting: "2026-01-20 (Tue) 15:00"
+
+facts:
+  - id: F-001
+    title: 発注は保守フェーズのみ。新規開発は今回の範囲に含まない
+    status: confirmed
+    kind: 合意済み
+    source: "contract.md:42"
+    fresh: 2026-01-08
+
+  - id: F-002
+    title: 相手先の在庫管理は今も表計算ソフトで、担当者1名に集中している
+    status: confirmed
+    kind: 相手の現状
+    source: "talk:14:12:30"
+    fresh: 2026-01-15
+
+  - id: F-003
+    title: 移行対象は現行システムの本番データのみ。検証環境のデータは移さない
+    status: confirmed
+    kind: 合意済み
+    source: "minutes_20260115.md"
+    fresh: 2026-01-15
+
+  - id: F-004
+    title: 相手先の窓口担当者に決裁権はなく、承認は部門長が出す
+    status: confirmed
+    kind: 相手の体制
+    source: "talk:14:31:00"
+    fresh: 2026-01-15
+
+  - id: F-005
+    title: 画面のデザイン変更は今回の範囲外（次の契約で見積もる、で合意済み）
+    status: confirmed
+    kind: 範囲境界
+    source: "minutes_20260115.md"
+    fresh: 2026-01-15

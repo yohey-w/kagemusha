@@ -53,6 +53,12 @@
 scripts/weekly_distill.sh
 # ...and your live inbound watcher (same pattern: the .example is the kit)
 scripts/inbound_watch.sh
+# ...and your live meeting-copilot child config (holds the parent host + shared token;
+# the .example is the kit)
+templates/skills/meeting-copilot/scripts/portable/config.txt
+# meeting-copilot writes its state next to wherever you run it (MEETLIVE_DIR default).
+# transcript.jsonl / cards.jsonl are the other party's verbatim -- never commit them.
+meetlive_state/
 
 # Python / OS / editor cruft (applies inside tracked dirs too)
 __pycache__/
