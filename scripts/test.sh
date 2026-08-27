@@ -23,6 +23,13 @@
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
+# 非ASCIIのファイル名（例: templates/.../portable/手順.txt）を git ls-files が
+# 8進エスケープで出すと、find の素の名前との突き合わせ（B/H4/D）で
+# 「追跡済みのファイルが余計に作られたもの」に化ける。listingは常に素の名前で。
+# （env経由なので、フィクスチャ内で作る隔離gitリポにも一律に効く）
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=core.quotepath GIT_CONFIG_VALUE_0=false
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
