@@ -1786,7 +1786,13 @@ def render_img_page(src: str, title: str) -> bytes:
 
 
 def make_handler(outdir, agenda, blocks, start_epoch, total_min=None):
-    """この会議1回ぶんの設定を閉じ込めた HTTPRequestHandler を返す。"""
+    """この会議1回ぶんの設定を閉じ込めた HTTPRequestHandler を返す。
+
+    状態Dirは stage_urls.json の読み書きにも要るので、ここで OUTDIR も合わせる
+    (テストから直接この工場を呼んでも、本番と同じ置き場を見るようにするため)。
+    """
+    global OUTDIR
+    OUTDIR = outdir
 
     class H(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
