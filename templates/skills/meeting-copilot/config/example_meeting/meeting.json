@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "デモ会議フォルダ。全部架空です（実在の顧客名・URL・機体のパスは1つも入っていません）。",
+    "  MEETLIVE_MEETING=templates/skills/meeting-copilot/config/example_meeting \\",
+    "  MEETLIVE_DIR=/tmp/meetlive_demo python3 .../scripts/viewer2.py --port 47398",
+    "で、この道具がひととおり動く。自分の案件用にはこのフォルダを丸ごとコピーして中身を",
+    "入れ替えるのがいちばん早い。キーの意味は config/meeting.example.json を見ること。"
+  ],
+
+  "title": "Acme社 移行の打合せ（デモ・架空）",
+  "start": "15:00",
+  "total_min": 30,
+
+  "host_label": "進行役",
+  "counterpart": "Acmeさん",
+  "share": "host",
+  "layout": "columns",
+
+  "features": {
+    "copilot": true,
+    "responder": false,
+    "premise_watch": true,
+    "stage": true
+  },
+
+  "stage": {
+    "set_label": "デモ（架空）",
+    "order": ["blank", "agenda", "slides", "free"]
+  },
+
+  "card_policy": {
+    "auto_dismiss_kinds": ["warn", "premise_warn"]
+  },
+
+  "call_words": ["コパイロット", "こぱいろっと", "秘書", "ひしょ"],
+  "start_homophones": ["透析", "同時"],
+  "creds_label": "🔑 合言葉"
+}

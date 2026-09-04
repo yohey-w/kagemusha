@@ -1,0 +1,46 @@
+{
+  "_comment": [
+    "デモ会議フォルダの舞台資源（架空のURLだけ）。書式の正本は config/stage_resources.example.json。",
+    "出すボタンと順番は meeting.json の stage.order が決める。URLの走行中差し替えは <state>/stage_urls.json。"
+  ],
+  "resources": [
+    {
+      "res": "blank",
+      "label": "打合せ中（黒）",
+      "btn": "消す",
+      "url": "/stage/blank",
+      "match": ""
+    },
+    {
+      "res": "agenda",
+      "label": "アジェンダ",
+      "btn": "アジェンダ",
+      "url": "https://example.com/agenda",
+      "match": "(アジェンダ|議題)"
+    },
+    {
+      "res": "slides",
+      "label": "説明スライド",
+      "btn": "スライド",
+      "url": "https://example.com/slides",
+      "match": "(スライド|説明資料)"
+    },
+    {
+      "res": "demo",
+      "label": "デモ（管理画面）",
+      "btn": "デモ",
+      "url": "https://example.com/admin",
+      "match": "(デモ|管理画面)"
+    },
+    {
+      "res": "free",
+      "label": "予備枠",
+      "btn": "予備枠",
+      "url": "",
+      "match": ""
+    }
+  ],
+  "auto": {
+    "2": "slides"
+  }
+}

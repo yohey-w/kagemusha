@@ -49,11 +49,24 @@ import sys
 import threading
 import time
 
-import numpy as np
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import meetlive_config as cfgmod  # noqa: E402
-import stt as stt_mod  # noqa: E402
+import mode_signal  # noqa: E402
+
+# numpy と stt(websockets) は**音を受けるときにだけ**要る。ここで import すると、
+# 逐語を書く側 (Writer) の回帰テストが「音声の依存が入っていない機体では走らない」に
+# なってしまう。書く側と読む側が同じ合図を受理するかは、毎回機械で確かめたい所なので、
+# 重いものは使う直前に読む。
+np = None
+
+
+def _np():
+    """numpy を使う直前に読む(未インストールなら、ここで初めて分かるように止める)。"""
+    global np
+    if np is None:
+        import numpy as _numpy
+        np = _numpy
+    return np
 
 SRC_SR = 48000
 HDR = struct.Struct("<dI")
@@ -70,6 +83,7 @@ class Resampler:
         if src % dst:
             raise SystemExit(f"resample {src}->{dst} は整数比ではない")
         self.factor = src // dst
+        _np()
         n = 64 * self.factor + 1
         cutoff = 0.5 / self.factor
         m = np.arange(n) - (n - 1) / 2
@@ -108,7 +122,10 @@ class Writer:
         self._off = None
         # 会議中プロトコル: 呼びかけ語と同席の開始/終了の合図
         self.call_words = cfgmod.call_words()
-        self.mode_start, self.mode_end, _homophones = cfgmod.mode_words()
+        self.mode_start, self.mode_end, self.start_homophones = cfgmod.mode_words()
+        # あいまい判定(mode_signal)は「開始合図」より前に1回だけ許す。開始後も許したままだと、
+        # 普通の会話(「同時に…」等)で誤爆しうる。ボタンが主・音声の吸収は従なので狭くしておく。
+        self._mode_started = False
 
     def sync_wall(self, audio_now):
         off = time.time() - audio_now
@@ -144,8 +161,22 @@ class Writer:
                 # --- 会議中プロトコル: こちら側の発話だけを見る ---
                 call = False
                 if speaker == "host":
-                    if self.mode_start in text:
+                    # 🔴 書く側(ここ)と読む側(viewer2.build_nav)は**同じ述語**を使う。
+                    #    かつて書く側だけが完全一致で、読む側だけが聞き取り揺れを吸収して
+                    #    いたため、実際の会議で画面が自動で切り替わらなかった (T-0019)。
+                    #    完全一致は常時発火(言い直せば何度でも効く)・あいまい判定は開始前の
+                    #    1回きり、という非対称は**呼び出し側のガード**として残す。
+                    if self.mode_start in text or (
+                        not self._mode_started
+                        and mode_signal.is_start_signal(
+                            text,
+                            call_words=self.call_words,
+                            start_word=self.mode_start,
+                            homophones=self.start_homophones,
+                        )
+                    ):
                         self._mode_line("start", capture_ts)
+                        self._mode_started = True
                     if self.mode_end in text:
                         self._mode_line("end", capture_ts)
                     call = any(w in text for w in self.call_words)
@@ -240,6 +271,7 @@ class Handler(socketserver.BaseRequestHandler):
             kw["prompt"] = cfg.prompt
         if cfg.keywords:
             kw["keywords"] = [k.strip() for k in cfg.keywords.split(",") if k.strip()]
+        import stt as stt_mod  # 遅延読み込み (上の import 注記を見よ)
         sess = stt_mod.make_session(
             cfg.backend,
             speaker,
@@ -282,7 +314,7 @@ class Handler(socketserver.BaseRequestHandler):
                 self.server.pos[speaker] = t0 + nsamp / src_sr
 
                 self.server.level[speaker] = float(
-                    np.sqrt(np.mean((np.frombuffer(pcm, "<i2").astype(np.float32) / 32768.0) ** 2))
+                    _np().sqrt(np.mean((np.frombuffer(pcm, "<i2").astype(np.float32) / 32768.0) ** 2))
                 )
                 if cfg.xtalk_gate and speaker == "host":
                     # スピーカー再生時にマイクが相手の声を拾う「回り込み」対策 (任意)。
@@ -311,6 +343,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=47311)
+    import stt as stt_mod  # 音を受けるときだけ要る (websockets 等)
     ap.add_argument("--backend", default="stub", choices=list(stt_mod.BACKENDS))
     ap.add_argument("--rate", type=int, default=0, help="STT へ送るサンプルレート (0=バックエンド既定)")
     ap.add_argument("--language", default="ja")
@@ -318,7 +351,7 @@ def main():
     ap.add_argument("--prompt", default="", help="会議の状況説明 (固有名詞の認識精度が上がる)")
     ap.add_argument("--keywords", default="", help="固有名詞をカンマ区切りで")
     ap.add_argument("--vad-threshold", type=float, default=0.012)
-    ap.add_argument("--token", default=os.environ.get("MEETLIVE_TOKEN", ""),
+    ap.add_argument("--token", default=cfgmod.token(),
                     help="子機との合言葉 (0.0.0.0 で待つので設定推奨)")
     ap.add_argument("--xtalk-gate", action="store_true",
                     help="回り込み抑制 (イヤホン無しのときの保険。解決ではない)")

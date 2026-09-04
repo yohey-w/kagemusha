@@ -79,6 +79,7 @@ STT の話者分離(diarization)には一切頼っていない。安いし速い
 | 番人(第1層) | `copilot.py` | **使わない** | 逐語1行ごと。ルールと文字列照合だけ |
 | 前提監視 | `premise_watch.py` | 量産呼び出し | **相手の発話ごとに毎回** |
 | 回答(第2層) | `answerer.py` | 一発呼び出し | 台本外の質問のときだけ(30秒に1回まで) |
+| 返し役 | `responder.py` | 一発呼び出し | 相手の発話がひと区切りするたび |
 | 表示 | `viewer2.py` | 使わない | 長ポーリングで配信 |
 | 事後検証 | `action_log.py` | 使わない | 会議のあと |
 
@@ -86,14 +87,119 @@ STT の話者分離(diarization)には一切頼っていない。安いし速い
 何より効く。段の進行と約束の境界(金額・期限・責任)の検知は、キーワード照合で足りる。
 LLM を挟むと、その分だけ遅れ、その分だけ落ちる。
 
+**`answerer.py` と `responder.py` の違いは構え**。answerer は「答えを作る」、responder は
+**「台本のどこを読み上げればよいかを指す」**。だから responder の出力は毎回 ①該当する節
+②そのまま言える返し ③言ってよい数字 ④🚫言ってはいけないこと1つ、の4点に固定してあり、
+材料(`kb/`)は**全文**を渡す(切り詰めが何を起こすかは §5.8)。台本があって「その通り話したい」
+会議は responder、台本が薄く「その場で答える」会議は answerer。**同時には使わない**。
+
 ---
 
-## 2. 環境変数リファレンス
+## 1.5 会議フォルダ — 案件固有はここにしか無い
+
+**コードは1本。案件ごとに変わるのは「会議フォルダ」の中身だけ**、という形にしてある。
+会議のたびにフォルダを1つ作り、`MEETLIVE_MEETING` でそれを指す。それ以外の環境変数は、
+古い運用のための後方互換として残してあるだけで、ふだんは触らない。
+
+```
+<会議フォルダ>/                  例: ~/meetings/2026-01-20-acme/ (git に載せない場所)
+  meeting.json                  今日の構え(下の表)。この1枚が入口
+  agenda_steps.json             段と必須取得物
+  talk_script.md                台本(テレプロンプターの中身)
+  phrasebook.json               定型回答・約束の境界の文言
+  stage_resources.json          舞台に出せるもの(URL・画像・声で呼ぶ語)
+  ledger.yaml                   事実台帳(前提監視の基準・任意)
+  bank.json                     先読み回答(任意)
+  kb/                           台本外の回答の材料。🔴 置いたものはそのままLLMへ送られる
+  docs/                         資料棚。会議中に画面のボタンで開く手元資料(.md/.txt/.html)
+```
+
+```bash
+export MEETLIVE_MEETING=~/meetings/2026-01-20-acme
+export MEETLIVE_DIR=~/meetlive_state/2026-01-20-acme      # 省略時は ./meetlive_state/<フォルダ名>
+export MEETLIVE_CREDS_FILE=~/secrets/acme_logins.md       # 🔴 会議フォルダの外
+python3 scripts/viewer2.py --port 47328
+```
+
+### 解決の順番（キー単位・迷ったらこの順）
+
+1. **会議フォルダの中のファイル** … あればこれが勝つ
+2. **個別の環境変数**（`MEETLIVE_AGENDA` 等）… 会議フォルダに無いときだけ
+3. **同梱の `config/*.example`** … どちらも無いとき。必須の入力は stderr に警告を出す
+
+前の案件の `MEETLIVE_AGENDA` がシェルに残っていても、会議フォルダが勝つので事故らない。
+逆に、**環境変数が指すファイルが存在しないときは例へ落ちずに止まる**(黙って別の案件の
+台帳を読んでいた、が起きないように)。会議フォルダ自体が無いときも同じく止まる。
+
+### `meeting.json` の各キー
+
+| キー | 既定 | 意味 |
+|---|---|---|
+| `title` | (空) | 会議の名前(ログ・画面用) |
+| `start` | (空) | 開始予定 `"HH:MM"`。`--start` を渡さないときの既定(その日の時刻) |
+| `total_min` | `0` | 会議の長さ(分)。0 なら `agenda_steps.json` の「会議分」 |
+| `host_label` | `進行役` | こちら側の呼び方(プロンプト内) |
+| `counterpart` | `相手` | 相手の呼び方(プロンプト内) |
+| `share` | `host` | 画面共有の構え `host` / `guest` / `none` |
+| `layout` | `auto` | 画面の並べ方 `columns`(左右2列) / `rows`(上下) / `auto`(向きで切替) |
+| `features` | 全部 `true` | 起動する層の ON/OFF (`copilot` / `responder` / `premise_watch` / `stage`) |
+| `stage.set_label` | (空) | 今回の舞台セットの呼び名 |
+| `stage.order` | (空=全部) | 出す舞台ボタンだけを順に並べる |
+| `card_policy.auto_dismiss_kinds` | `["warn","premise_warn"]` | **自動で消える種別**。ここに無いカードは「済」を押すまで残る |
+| `card_policy.ttl_sec` / `max_turns` / `min_show_sec` | `120` / `8` / `40` | 自動で消える種別の引っ込み方 |
+| `card_policy.stack_max` / `history_max` | `60` / `30` | カード列と履歴の上限 |
+| `call_words` | `コパイロット,…` | 呼びかけ語。🔴 STT の誤変換の綴りも並べる |
+| `start_homophones` | (空) | 開始合図が音声認識で化けた綴り。**実際に化けたものだけ**足す |
+| `creds_label` | `🔑 合言葉` | 鍵パネルのボタン名 |
+
+**優先順位はキー単位**で決めてある。舞台の `order` / `set_label` は「今日の構え」なので
+`meeting.json` が正。個々の **URL は走行中に差し替えたい**ので `<状態Dir>/stage_urls.json`
+が勝つ(会議直前にURLが変わっても、プロセスを止めずに直せる)。
+
+### 稼働ライン — 沈黙と故障の区別
+
+画面の上段に「受信 08:12:33 ・ 逐語 08:12:30 ・ 心拍 08:12:31」の1行が出る。
+「起動したのに何も出ない」ときに、**材料が来ていない**のか**機構が落ちている**のかを、
+ここだけで見分けるためのもの。
+
+- **受信** … 最後に音が届いた時刻(`partial.json` / `latency.jsonl` の更新)
+- **逐語** … 最後に確定発話が書かれた時刻(`transcript.jsonl`)
+- **心拍** … 返し役・番人が `<状態Dir>/heartbeat.json` に書く
+  `{"ts": ISO8601, "role": "responder"|"copilot", "model": ..., "note": ...}`。
+  **ファイルが無い / 60秒より古いときは「心拍なし」と表示する**(そこで落ちたりはしない)
+
+3つとも「—」でも異常とは限らない。**まだ誰も喋っていないだけ**のことがあるので、
+画面には「材料が無ければカードは出ません（それは設計どおり）」と常に添えてある。
+
+### 秘密の置き場 — 会議フォルダには置かない
+
+合言葉・管理画面のログインは `MEETLIVE_CREDS_FILE` で**会議フォルダの外**を指す。
+会議フォルダは資料置き場なので、うっかりリポジトリに載る事故が起きうるため。
+
+書式は md の表。`| 用途 | URL | 合言葉 |` の行だけを拾う:
+
+```markdown
+| 用途 | URL | 合言葉 |
+|---|---|---|
+| 管理画面 | https://example.com/admin | `xxxxxxxx` |
+```
+
+この中身は**HTMLに一切埋め込まない**。手元の画面が `/creds` を叩いた瞬間にだけ読む。
+共有する別窓(`/stage/*`)はこの経路に触れないので、画面共有に合言葉は映らない
+(この不変条件は `tests/test_viewer_state.py` が毎回確かめている)。
+
+---
+
+## 2. 環境変数リファレンス（後方互換）
+
+**ふだんは `MEETLIVE_MEETING` 1本でよい**(§1.5)。以下は、会議フォルダを使わない場合と、
+会議フォルダに置けないもの(状態Dir・秘密・モデル)のための一覧。
 
 未設定でも**顧客データへは絶対に落ちない**。落ちる先は次の2つだけ:
 状態ディレクトリ = `./meetlive_state`(カレント直下)、入力ファイル = 同梱の `config/*.example`。
 環境変数が指すファイルが**存在しない**ときは、例へ落ちずに `SystemExit` で止まる
-(解決は `scripts/meetlive_config.py` の1箇所に集約してある)。
+(解決は `scripts/meetlive_config.py` の1箇所に集約してある。各スクリプトは
+環境変数を直接読まない ── その規律は `tests/test_l_meeting_copilot.sh` が見張っている)。
 
 ### 置き場
 
@@ -107,6 +213,12 @@ LLM を挟むと、その分だけ遅れ、その分だけ落ちる。
 | `MEETLIVE_STAGE` | `config/stage_resources.example.json` | 舞台に出せるもの(URL・画像・声で呼ぶ語) |
 | `MEETLIVE_KNOWLEDGE_DIR` | `config/` | answerer の接地資料ディレクトリ。🔴**この直下の `.md`/`.txt` を名前順に全部読み、そのままLLMへ送る**(§2.1) |
 | `MEETLIVE_SCRIPT_NAME` | `talk_script.example.md` | 接地資料のうち先頭に置く台本のファイル名 |
+| `MEETLIVE_MEETING` | (空) | **会議フォルダ**(§1.5)。これ1本で上の入力が全部決まる |
+| `MEETLIVE_CREDS_FILE` | (空) | 合言葉の md(§1.5)。未設定なら鍵パネルは中身なし |
+| `MEETLIVE_DOCS` | `<会議フォルダ>/docs` | 資料棚。会議フォルダが無ければ `<状態Dir>/docs` |
+| `MEETLIVE_BANK` | `<会議フォルダ>/bank.json` | 先読み回答バンク(任意) |
+| `MEETLIVE_LAYOUT` | `auto` | 画面の並べ方。`meeting.json` の `layout` が優先 |
+| `MEETLIVE_HEARTBEAT_STALE_SEC` | `60` | これより古い心拍は「心拍なし」と出す |
 
 ### 2.1 🔴 `MEETLIVE_KNOWLEDGE_DIR` に何を置くかは、そのまま「LLMへ送るもの」を決める
 
@@ -243,6 +355,51 @@ export DEEPGRAM_API_KEY=...
      (ここだけ読み直すと、番人が持つ古いキーワードと段の判定がズレるため)
 
    片方だけ上げ直すと、下段のカードに書かれた段番号と上段の段番号がズレる。
+
+### 3.2.5 起動と停止 — `run.sh` / `stop.sh`
+
+上の4行を毎回手で並べるかわりに、**会議フォルダ1つを渡して必要な層だけ起こす**口がある。
+起こす層は `meeting.json` の `features` が決める。
+
+```bash
+export MEETLIVE_MEETING=~/meetings/2026-01-20-acme
+export MEETLIVE_DIR=~/meetlive_state/2026-01-20-acme
+export MEETLIVE_CREDS_FILE=~/secrets/acme_logins.md   # 🔴 会議フォルダの外
+export MEETLIVE_PYTHON=$PWD/venv/bin/python            # 省略時は python3
+
+./run.sh --dry-run                       # 何をどう起こすかを見るだけ（前夜にこれを見る）
+./run.sh --port 47323 --backend deepgram --keywords "固有名詞,を,カンマ区切り"
+./stop.sh --port 47323
+```
+
+ログは状態ディレクトリの `logs/<層>.log`、pid は `logs/<層>.pid`。
+
+| 層 | `features` のキー | 備考 |
+|---|---|---|
+| `receiver.py` | `receiver`(既定 true) | 子機が繋ぐ先。**先に上げる** |
+| `viewer2.py` | (常に起こす) | これが無いと何も見えない |
+| `copilot.py` | `copilot` | 進行の番人。ルールだけ |
+| `responder.py` | `responder` | そのまま言える返し。材料は `kb/` 全量 |
+| `premise_watch.py` | `premise_watch` | **常駐ではない**。copilot が発話ごとに起こす子プロセス |
+
+🔴 **`copilot` と `responder` を両方 true にはできない**（同じ `cards.jsonl` に書くので、
+片方のカードがもう片方を押し出す）。`run.sh` は両方 true なら起動せずに止まる。
+🔴 **`premise_watch: true` でも `copilot: false` なら前提監視は動かない**（起こす親がいない）。
+`run.sh` はその組み合わせのとき警告を出す。**8時に画面を見てから気づく類の穴なので、前夜の
+`--dry-run` で読むこと。**
+
+#### 停止 — 層ごとに口が違う。`kill` は使わない
+
+| 層 | 停止の口 |
+|---|---|
+| `viewer2.py` | HTTP `GET /quit`（localhost からのみ・自分で降板する） |
+| `responder.py` | 停止ファイル `touch <状態Dir>/responder.stop`（次の周回で終わる） |
+| `receiver.py` / `copilot.py` | **停止の口が無い**。起動した端末で Ctrl-C ＝ **手動** |
+
+`stop.sh` は前の2つを叩き、後の2つについては「手で畳むもの」として pid を表示するだけで、
+**自分では止めない**。`kill` / `pkill` は会議中に走っている別の python を巻き込み、
+書きかけの逐語やカードを壊すので使わない（§7.1 も同じ理由）。receiver と copilot を
+nohup で後ろに回したなら、畳むのは人の判断で行うこと。
 
 ### 3.3 子機(Windows)のセットアップ
 
@@ -455,6 +612,29 @@ MEETLIVE_DIR=$PWD/meetlive_state/2026-01-20-acme     # 会議1回 = 1ディレ�
 「矛盾」の判定がぼやけて鳴らなくなる。**今日の会議で覆されたら困る事実**だけを選ぶ:
 契約・約束の範囲境界、相手の現状についてこちらが握っている認識、前回決まったこと。
 
+### 5.8 🔴 材料の切り詰めは「沈黙」ではなく「捏造」を生む
+
+2026-09-03 の実測。返し役の材料(台本)を 9,000字に切ったところ、**答えが後半にある問いで
+「手元にありません」ではなく、台本と逆の答えを自信をもって返した**（台本が禁じている
+「はい、ぜひお願いします」を、そのまま言える返しとして出した）。
+
+切り詰めは「知らないことを知らないと言う」方向には働かない。**材料の一部だけを見た
+モデルは、見えている範囲でいちばんもっともらしい話を作る**。だから `responder.py` は
+`MEETLIVE_KNOWLEDGE_PER_FILE` / `_TOTAL` に**従わない**（`answerer.py` は従う。あちらは
+台本外の質問に一発で答える構えなので、材料が広いほど的が散る）。
+🔴 **`kb/` に置くものは、そのまま送られる分量として選ぶ**。切るなら棚から抜くのであって、
+コードに切らせない。
+
+同じ実測から、機械の関門を2つ入れてある。**どちらかに落ちたら「材料になし」に降格する**:
+
+1. **接地** — 返しの中に台本の30字以上の連続片が無ければ、それは台本の文言ではない
+   （捏造答えは台本と17字しか一致せず、本番で通った15本は64〜142字一致していた）
+2. **節の語** — 節の見出し語が相手の発話に1つも出てこないなら、話題の違う節へ吸い寄せられた形
+
+そして**「材料になし」はカードにしない**（議題外の雑談のたびに画面が「手元にありません」で
+塗り替わり、直前の使える返しを押し出すため）。ただし**声で呼ばれたときだけは必ず出す** ——
+呼んだのに何も出ないと、壊れたのか材料が無いのかが手元から区別できない。
+
 ---
 
 ## 6. 自分の案件に合わせる — 書くのは3ファイル
@@ -626,13 +806,19 @@ python3 premise_watch.py "テストの発話です"   # LLM経路と台帳が生
 meeting-copilot/
 ├── SKILL.md
 ├── config/                          … 全部「架空の案件」の例。中身を入れ替えて使う
+│   ├── meeting.example.json         … 会議1回ぶんの構え(会議フォルダの入口・§1.5)
 │   ├── ledger.yaml.example          … 事実台帳(前提監視の基準)
 │   ├── agenda_steps.example.json    … 段と必須取得物
 │   ├── talk_script.example.md       … 台本(テレプロンプターの中身)
 │   ├── phrasebook.example.json      … 定型回答・約束の境界の文言
-│   └── stage_resources.example.json … 舞台に出せるもの
+│   ├── stage_resources.example.json … 舞台に出せるもの
+│   └── example_meeting/             … そのまま起動できるデモ会議フォルダ(全部架空)
+├── tests/                           … 標準ライブラリだけの回帰テスト(CIのグループL)
+│   ├── test_viewer_state.py         … 済の永続化/カード列/資料棚/合言葉/舞台/レイアウト
+│   └── test_mode_signal.py          … 開始合図(書く側と読む側が同じ入力を受理するか)
 └── scripts/
     ├── meetlive_config.py           … 置き場と設定の解決(既定の一元管理)
+    ├── mode_signal.py               … 「同席開始」の判定(書く側・読む側で共有する1本)
     ├── receiver.py                  … 音を受けて逐語へ
     ├── stt.py                       … STTアダプタ(stub / OpenAI / Deepgram)
     ├── copilot.py                   … 番人(第1層・LLM無し)

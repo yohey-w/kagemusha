@@ -46,3 +46,20 @@ claude\.ai/code/artifac[t]/
 
 # the author's personal mail address (any local-part containing it)
 yoheinab[e]
+
+# client identifiers that ride along when the meeting-copilot skill is edited
+# inside a live meeting folder (romanized client name, product/system names).
+sugawar[a]
+dono[w]
+sokute[i]
+
+# the author's tailscale address (shows up in meeting-monitor start commands)
+100\.92\.11[7]
+
+# a client deployment and the pages/links it hands out — the share token in a
+# player URL is a bearer credential: anyone with the link reads the data.
+# (the bracket sits on the name, not the TLD, so the line above's own pattern
+#  does not match this line — every pattern file line must stay clean itself)
+sokute[i]-platform\.vercel\.app
+3bfae6e[4]
+eC8k_LSy[6]

@@ -1,0 +1,65 @@
+{
+  "_comment": [
+    "meeting-copilot — 会議1回ぶんの『構え』。架空の例です。",
+    "",
+    "この1ファイルが会議フォルダの入口。MEETLIVE_MEETING=<会議フォルダ> を渡すと、",
+    "同じフォルダの agenda_steps.json / talk_script.md / phrasebook.json /",
+    "stage_resources.json / ledger.yaml / bank.json / kb/ / docs/ が自動で入力になる。",
+    "解決順は 会議フォルダ → 個別env(MEETLIVE_AGENDA 等・後方互換) → 同梱の config/*.example。",
+    "",
+    "🔴 秘密(合言葉・管理画面のログイン)はここに書かない。会議フォルダは案件の資料置き場で、",
+    "   誤ってリポジトリへ載る事故が起きる。鍵パネルは MEETLIVE_CREDS_FILE で外を指す。",
+    "",
+    "各キー:",
+    "  title        … 画面やログに出る会議の名前",
+    "  start        … 開始予定 'HH:MM'(その日の時刻)。--start を渡さないときの既定",
+    "  total_min    … 会議の長さ(分)。0 なら agenda_steps.json の『会議分』",
+    "  host_label   … こちら側の呼び方(プロンプト内)",
+    "  counterpart  … 相手の呼び方(プロンプト内)",
+    "  share        … 画面共有の構え host=こちらが共有 / guest=相手が共有 / none=共有なし",
+    "  layout       … カンペ画面 columns=左右2列 / rows=上下 / auto=画面の向きで切替",
+    "  features     … 起動する層の ON/OFF (run.sh が読む)",
+    "  stage        … 舞台セット。set_label=今回の呼び名 / order=出すボタンだけを順に",
+    "                  (個々のURLは走行中に <state>/stage_urls.json で差し替えられる。",
+    "                   URLは stage_urls.json が勝ち、order/set_label はこの meeting.json が勝つ)",
+    "  card_policy  … カードの消え方。auto_dismiss_kinds に挙げた種別だけが自動で消え、",
+    "                  それ以外は『済』を押すまで残る(2026-09-04 実機確認の既定)",
+    "  call_words   … 進行役がモニタを呼ぶ語。🔴 STTの誤変換の綴りも並べる",
+    "  start_homophones … 『同席開始』が音声認識で化けた綴り(実際に化けたものだけ)",
+    "  creds_label  … 鍵パネルのボタン名(既定『🔑 合言葉』)"
+  ],
+
+  "title": "Acme社 定例（架空）",
+  "start": "15:00",
+  "total_min": 45,
+
+  "host_label": "進行役",
+  "counterpart": "Acmeさん",
+  "share": "host",
+  "layout": "columns",
+
+  "features": {
+    "copilot": true,
+    "responder": true,
+    "premise_watch": true,
+    "stage": true
+  },
+
+  "stage": {
+    "set_label": "定例（架空）",
+    "order": ["blank", "agenda", "slides", "free"]
+  },
+
+  "card_policy": {
+    "auto_dismiss_kinds": ["warn", "premise_warn"],
+    "ttl_sec": 120,
+    "max_turns": 8,
+    "min_show_sec": 40,
+    "stack_max": 60,
+    "history_max": 30
+  },
+
+  "call_words": ["コパイロット", "こぱいろっと", "秘書", "ひしょ"],
+  "start_homophones": [],
+  "creds_label": "🔑 合言葉"
+}

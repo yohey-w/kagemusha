@@ -40,15 +40,16 @@ LOG = STATE / "premise_watch.jsonl"
 CARDS = STATE / "cards.jsonl"
 LEDGER = cfgmod.input_path("MEETLIVE_LEDGER", "ledger.yaml.example", required=True)
 
-SAME_TYPE_COOLDOWN = float(os.environ.get("MEETLIVE_PREMISE_COOLDOWN", "45"))
+SAME_TYPE_COOLDOWN = cfgmod.premise_cooldown()
 # 同種(矛盾/既知/新規)の連発はカードとしては既定45秒に1回まで。
 # 判定とログは毎回行う(スキップするのはカード表示だけ)。
 
 # 前提リストは10〜20件に絞る。全部入れるとプロンプトが膨らみ、判定がぼやける。
 # 絞り方は「今日の会議で、覆されたら困る事実」。契約の範囲境界と、相手の現状認識が核。
-PREMISE_MAX = int(os.environ.get("MEETLIVE_PREMISE_MAX", "16"))
-_env_ids = os.environ.get("MEETLIVE_PREMISE_IDS")
-PREMISE_IDS = [x.strip() for x in _env_ids.split(",") if x.strip()] if _env_ids else None
+# 値の解決は meetlive_config が正本(各スクリプトで生の環境変数を読まない)。
+PREMISE_MAX = cfgmod.premise_max()
+_ids = cfgmod.premise_ids()
+PREMISE_IDS = list(_ids) if _ids else None
 
 
 def _load_premises() -> list[dict]:

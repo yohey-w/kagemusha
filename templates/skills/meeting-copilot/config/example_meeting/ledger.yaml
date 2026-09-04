@@ -1,0 +1,20 @@
+# デモ会議フォルダの事実台帳（架空）。書式の正本は config/ledger.yaml.example。
+# 前提監視が読むのは facts の id と title だけ。今日の会議で覆されたら困る事実に絞る。
+
+meta:
+  project: example-co
+  updated: 2026-01-19
+
+facts:
+  - id: D-001
+    title: 今回の範囲は本番データの移行のみ。検証環境は含まない
+    status: confirmed
+    kind: 合意済み
+  - id: D-002
+    title: 相手の在庫管理は表計算ソフトで、担当者1名に集中している
+    status: confirmed
+    kind: 相手の現状
+  - id: D-003
+    title: 金額と切替日はまだ決まっていない（この場では約束しない）
+    status: open
+    kind: 未決
