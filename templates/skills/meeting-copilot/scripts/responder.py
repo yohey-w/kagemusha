@@ -195,14 +195,20 @@ def check_numbers(out_text: str, corpus: str) -> list:
 
 
 def parse_out(raw: str) -> dict:
-    d = {"sec": "", "reply": "", "nums": "", "forbid": ""}
-    key = {"節": "sec", "返し": "reply", "数字": "nums", "禁": "forbid"}
+    """4行＋根拠語を拾う。
+
+    🔴 ``根拠語`` もラベルとして受ける。受けないと、その行が直前の ``禁`` の続きとして
+    連結され、画面の「🚫 …」に「根拠語: 比較レポート」がぶら下がる(9/4 実測の見た目の傷)。
+    根拠語は画面には出さない ── 読み上げる文ではないので。
+    """
+    d = {"sec": "", "reply": "", "nums": "", "forbid": "", "why": ""}
+    key = {"節": "sec", "返し": "reply", "数字": "nums", "禁": "forbid", "根拠語": "why"}
     cur = None
     for line in raw.splitlines():
         line = line.strip()
         if not line:
             continue
-        m = re.match(r"^(節|返し|数字|禁)\s*[:：]\s*(.*)$", line)
+        m = re.match(r"^(節|返し|数字|禁|根拠語)\s*[:：]\s*(.*)$", line)
         if m:
             cur = key[m.group(1)]
             d[cur] = m.group(2).strip()
@@ -258,6 +264,7 @@ def gate(rec: dict, corpus: str, utterance: str, recent: str = "") -> dict:
         rec["gated"] = reasons
         rec["sec_raw"], rec["reply_raw"] = rec["sec"], rec["reply"]
         rec.update(FALLBACK)
+        rec["why"] = ""
         rec["bad_numbers"] = []
     return rec
 
@@ -359,6 +366,7 @@ def answer(text: str, recent: str = "", pack=None, bank=None, use_bank: bool = T
         "kind": "reply", "q": text[:80], "src": src,
         "latency_s": round(time.time() - t0, 1),
         "sec": d["sec"], "reply": d["reply"], "nums": d["nums"], "forbid": d["forbid"],
+        "why": d.get("why", ""),
         "bad_numbers": check_numbers(" ".join([d["reply"], d["nums"]]), corpus),
         "gated": [],
     }

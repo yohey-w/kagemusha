@@ -34,6 +34,9 @@ KEYWORDS=""
 START=""
 TOTAL_MIN=""
 FRESH=0
+RECV_PORT=""
+NO_RECEIVER=0
+MIN_CHARS=""
 
 usage() {
   sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -48,6 +51,9 @@ usage() {
   --start ISO8601     会議開始時刻 (省略時は meeting.json の start)
   --total-min N       会議の長さ（分・省略時は meeting.json / 段取りJSON）
   --fresh             receiver の逐語を作り直す
+  --recv-port N       receiver が子機を待ち受けるポート (既定 47311)
+  --no-receiver       receiver を起こさない（画面だけ立てて確かめるとき）
+  --min-chars N       返し役がこれより短い相手の発話を撃たない (既定 18)
   --python PATH       使う python (既定 $MEETLIVE_PYTHON / python3)
 EOF
 }
@@ -62,6 +68,9 @@ while [[ $# -gt 0 ]]; do
     --start) START="$2"; shift ;;
     --total-min) TOTAL_MIN="$2"; shift ;;
     --fresh) FRESH=1 ;;
+    --recv-port) RECV_PORT="$2"; shift ;;
+    --no-receiver) NO_RECEIVER=1 ;;
+    --min-chars) MIN_CHARS="$2"; shift ;;
     --python) PY="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'run.sh: 知らないオプション: %s\n' "$1" >&2; usage >&2; exit 2 ;;
@@ -128,8 +137,9 @@ add() {   # add <名前> <コマンド…>
   CMDS+=("$(printf '%q ' "$@")")
 }
 
-if [[ "$FEAT_RECEIVER" == "yes" ]]; then
+if [[ "$FEAT_RECEIVER" == "yes" && "$NO_RECEIVER" -eq 0 ]]; then
   RECV=("$PY" "$HERE/receiver.py" --backend "$BACKEND" --host 0.0.0.0)
+  [[ -n "$RECV_PORT" ]] && RECV+=(--port "$RECV_PORT")
   [[ -n "$KEYWORDS" ]] && RECV+=(--keywords "$KEYWORDS")
   [[ "$FRESH" -eq 1 ]] && RECV+=(--fresh)
   add receiver "${RECV[@]}"
@@ -141,7 +151,9 @@ VIEW=("$PY" "$HERE/viewer2.py" --host "$HOST" --port "$PORT")
 add viewer2 "${VIEW[@]}"
 
 if [[ "$FEAT_RESPONDER" == "yes" ]]; then
-  add responder "$PY" "$HERE/responder.py" --watch
+  RESP=("$PY" "$HERE/responder.py" --watch)
+  [[ -n "$MIN_CHARS" ]] && RESP+=(--min-chars "$MIN_CHARS")
+  add responder "${RESP[@]}"
 fi
 if [[ "$FEAT_COPILOT" == "yes" ]]; then
   COP=("$PY" "$HERE/copilot.py")

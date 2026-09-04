@@ -240,6 +240,22 @@ class ResponderCase(unittest.TestCase):
         self.assertIsNone(self.r.bank_hit("費用のことはまた今度で", bank)[0])
         self.assertIsNotNone(self.r.bank_hit("費用はいくらですか", bank)[0])
 
+    # ── 出力の読み取り ─────────────────────────────────────────────────
+    def test_reason_words_do_not_contaminate_the_forbid_line(self):
+        """根拠語はラベルとして受ける。受けないと「🚫 …」の末尾にぶら下がる（9/4 実測）。"""
+        d = self.r.parse_out("節: 【2】費用の話\n返し: あああ\n数字: なし\n"
+                             "禁: 値引きを約束しない\n根拠語: 比較レポート")
+        self.assertEqual(d["forbid"], "値引きを約束しない")
+        self.assertEqual(d["why"], "比較レポート")
+
+    def test_reason_words_never_reach_the_card(self):
+        """根拠語は判断の跡であって、読み上げる文ではないので画面には出さない。"""
+        rec = {"ts": datetime.now().strftime(self.r.TS_FMT), "kind": "reply", "q": "q",
+               "src": "llm", "latency_s": 0.1, "sec": "【2】費用の話", "reply": "あああ",
+               "nums": "なし", "forbid": "値引きを約束しない", "why": "比較レポート",
+               "bad_numbers": [], "gated": []}
+        self.assertNotIn("比較レポート", " ".join(self.r.to_card(rec)["lines"]))
+
     # ── ついで: カードの書式（viewer2 が読む形） ────────────────────────
     def test_emitted_card_has_the_fields_the_viewer_reads(self):
         rec = {"ts": datetime.now().strftime(self.r.TS_FMT), "kind": "reply",
