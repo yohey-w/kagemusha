@@ -146,7 +146,7 @@ STAGE = {"res": "blank", "ts": time.time(), "src": "init", "text": "",
 MODE_LOCK = threading.Lock()
 
 # URL だけは状態ディレクトリの stage_urls.json で差し替えられる (再起動不要)。
-#   例: {"notion": "https://www.notion.so/xxxx", "player": "https://..."}
+#   例: {"agenda": "https://example.com/agenda-2026-01-20", "slides": "https://example.com/..."}
 # 会議直前にURLが変わったとき、走行中のプロセスを止めずに直すための逃げ道。
 STAGE_URLS_FILE = "stage_urls.json"
 OUTDIR = STATE_DIR
@@ -658,7 +658,7 @@ def render_doc(fp: pathlib.Path) -> bytes:
 
 def read_creds() -> dict:
     """合言葉の md 表 (用途 | URL | 合言葉) をリクエストのたびに読む。"""
-    out = {"ok": False, "rows": [], "src": str(SECRETS_PATH or ""), "note": ""}
+    out = {"ok": False, "rows": [], "src": str(SECRETS_PATH or ""), "id": "", "note": ""}
     if SECRETS_PATH is None:
         out["error"] = "MEETLIVE_CREDS_FILE が未設定です"
         return out
@@ -684,6 +684,10 @@ def read_creds() -> dict:
             "url": (re.search(r"https?://\S+", url).group(0)).rstrip("|` "),
             "secret": sec.strip("` "),
         })
+    # 表とは別に「ID: xxxx」の1行があれば拾う(ログイン名が表に入らない書き方への対応)。
+    m = re.search(r"^[-*]?\s*ID\s*[:：]\s*(\S+)", text, re.M)
+    if m:
+        out["id"] = m.group(1).strip("`")
     out["ok"] = bool(out["rows"])
     if not out["ok"] and "error" not in out:
         out["error"] = "表 (| 用途 | URL | 合言葉 |) の行が見つかりません"
@@ -1027,7 +1031,7 @@ def build_health(outdir: pathlib.Path, lines: list) -> dict:
         if r.get("text"):
             last_line = _ts(r.get("ts", ""))
             break
-    hb = read_heartbeat()
+    hb = read_heartbeat(outdir / "heartbeat.json")
     if hb["ok"]:
         hb_txt = f"心拍 {hb['at']}" + (f"（{hb['role']}）" if hb["role"] else "")
     elif hb["age_s"] is not None:
@@ -1701,6 +1705,7 @@ $('#credbtn').addEventListener('click',function(){
         +'<a class="op" href="'+esc(r.url)+'" target="_blank" rel="noopener">開く</a>'
         +'<span class="sec" data-v="'+esc(r.secret)+'">••••</span></div>';
     }).join('')
+    + (j.id ? '<div class="row"><span class="use">ID</span><span>'+esc(j.id)+'</span></div>' : '')
     + '<div class="nt">合言葉はクリックで表示・もう一度で隠す。この列は共有窓には出ません。</div>';
     $('#creds').querySelectorAll('.sec').forEach(function(el){
       el.addEventListener('click',function(){

@@ -502,5 +502,35 @@ class TestHealthLine(ViewerCase):
         self.assertIn("受信", st["health"]["text"])
 
 
+
+
+# ---------------------------------------------------------------- 追補
+
+
+class TestCredsIdRow(ViewerCase):
+    def test_id_line_is_picked_up(self):
+        """表とは別に「ID: xxxx」の行があれば拾う(ログイン名が表に入らない書き方)。"""
+        self.creds.write_text(CREDS_MD + "\n- ID: acme-admin\n", encoding="utf-8")
+        v = self.viewer()
+        s = self.serve(v)
+        creds = s.json("/creds")
+        self.assertEqual(creds["id"], "acme-admin")
+        self.assertNotIn("acme-admin", s.get("/")[1], "ID も HTML には埋め込まない")
+
+
+class TestHeartbeatFollowsOutdir(ViewerCase):
+    def test_heartbeat_is_read_from_the_served_outdir(self):
+        """--outdir が MEETLIVE_DIR と違っても、心拍はそのDirから読む。"""
+        other = self.tmp / "other_state"
+        other.mkdir()
+        (other / "heartbeat.json").write_text(
+            json.dumps({"ts": iso(datetime.now()), "role": "copilot"}, ensure_ascii=False),
+            encoding="utf-8")
+        v = self.viewer()
+        st = v.build_state(other, v.load_agenda(v.AGENDA_PATH), self.start_epoch)
+        self.assertTrue(st["health"]["heartbeat"]["ok"])
+        self.assertEqual(st["health"]["heartbeat"]["role"], "copilot")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

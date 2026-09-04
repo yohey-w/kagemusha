@@ -66,9 +66,17 @@ assert_ge "L2: skill python files found" "${#L_CODE[@]}" 6
 
 assert_empty_str "L2: no absolute home path in the scripts" \
   "$(grep -nE '/(home|Users)/[a-z]' "${L_CODE[@]}" 2>/dev/null)"
+# plain ERE on purpose: -E together with -P is a matcher conflict on some greps,
+# and a check that errors out reads as "clean" once stderr is discarded. The
+# probe below proves this one still detects.
 assert_empty_str "L2: no hard-coded http(s) host in the scripts" \
-  "$(grep -nE 'https?://(?!example\.com)[A-Za-z0-9.]' -P "${L_CODE[@]}" 2>/dev/null \
+  "$(grep -nE 'https?://[A-Za-z0-9.-]+' "${L_CODE[@]}" 2>/dev/null \
      | grep -v 'example\.com')"
+# ...and the detector is shown detecting (a guard nobody has watched fire is not evidence)
+L_PROBE="$TEST_TMP/l_probe.py"
+printf 'BASE = "https://%s.example.net/admin"\n' "internal-host" > "$L_PROBE"
+assert_nonempty_str "L2: the host detector actually detects" \
+  "$(grep -nE 'https?://[A-Za-z0-9.-]+' "$L_PROBE" | grep -v 'example\.com')"
 assert_empty_str "L2: no bare IPv4 address in the scripts" \
   "$(grep -nE '[0-9]{1,3}(\.[0-9]{1,3}){3}' "${L_CODE[@]}" 2>/dev/null \
      | grep -vE '127\.0\.0\.1|0\.0\.0\.0')"   # loopback and bind-all are not a case
