@@ -328,16 +328,31 @@ def bank_hit(text: str, bank: list):
 
 
 def call_llm(text: str, recent: str, pack: str, timeout: float = 90.0) -> str:
-    """材料+直近の会話+相手の発話を渡して4行を得る。落ちたら空を返す(黙って続行)。"""
+    """材料+直近の会話+相手の発話を渡して4行を得る。落ちても止まらない(空を返す)。
+
+    🔴 **空で返るときは必ず理由をログに出す。** 出さないと、混雑(429)も文脈あふれも
+    タイムアウトも、画面の上では「材料になし＝台本に無い話」と**見分けがつかない**
+    (「カードが出ない」は設計どおりの沈黙でもあるため)。
+    """
     model, effort, _, _ = cfgmod.model("answer")
     prompt = (f"{system_prompt()}\n\n{pack}\n\n# 直近の会話(文字起こし・参考)\n{recent[-1200:]}\n\n"
               f"# 相手の発話\n{text}\n\n# 出力(4行)")
     try:
         r = subprocess.run(["claude", "-p", "--model", model, "--effort", effort],
                            input=prompt, capture_output=True, text=True, timeout=timeout)
-        return (r.stdout or "").strip()
-    except (subprocess.TimeoutExpired, OSError, ValueError):
+    except subprocess.TimeoutExpired:
+        print(f"[responder] ⚠ 生成が {timeout:.0f}秒で返りませんでした"
+              f"（材料 {len(pack)}字・model={model}）", flush=True)
         return ""
+    except (OSError, ValueError) as e:
+        print(f"[responder] ⚠ 生成を起動できません: {e!r}", flush=True)
+        return ""
+    out = (r.stdout or "").strip()
+    if not out:
+        err = (r.stderr or "").strip().replace("\n", " ")[:200]
+        print(f"[responder] ⚠ 生成が空で返りました rc={r.returncode} "
+              f"材料={len(pack)}字 stderr={err or '(なし)'}", flush=True)
+    return out
 
 
 # ---------------------------------------------------------------- 1件を答える
@@ -490,6 +505,10 @@ def watch(min_chars: int = 18, quiet: float = 2.0, timeout: float = 90.0) -> Non
             recent = recent[-12:]
             # 声で呼ばれた照会は相手の発話より優先し、溜めずに即答する。
             if is_call(r):
+                # 生成は数秒〜数十秒かかる。その間も心拍を新しくしておかないと、
+                # 画面には「心拍なし」と出る（生きているのに故障に見える）。
+                write_heartbeat("呼出に生成中")
+                last_hb = time.time()
                 rec = answer(txt, "\n".join(recent), pack, bank,
                              gate_context=txt, timeout=timeout)
                 rec["kind"] = "call"
@@ -511,6 +530,8 @@ def watch(min_chars: int = 18, quiet: float = 2.0, timeout: float = 90.0) -> Non
             if len(text) < min_chars:
                 continue
             ctx = gbuf[:-n_buf] if len(gbuf) > n_buf else []
+            write_heartbeat("生成中")          # 上と同じ理由（生成の間の無心拍を防ぐ）
+            last_hb = time.time()
             rec = answer(text, "\n".join(recent), pack, bank,
                          gate_context="\n".join(ctx), timeout=timeout)
             emit(rec)

@@ -161,6 +161,42 @@ if [[ "$FEAT_COPILOT" == "yes" ]]; then
   add copilot "${COP[@]}"
 fi
 
+# ─── ポートの先客 ───────────────────────────────────────────────────────
+# 前の会議のプロセスが同じポートに残っていると、**画面は上がるのに音が来ない**
+# （子機は先客に繋がり、逐語は先客の状態Dirへ行く）。稼働ラインは「受信 —」のまま、
+# 心拍だけ緑になるので、**沈黙と故障がいちばん見分けにくい形**で壊れる。だから先に見る。
+port_busy() {   # port_busy <ポート> … 誰かが待ち受けていれば 0
+  "$PY" - "$1" <<'PYEOF'
+import socket
+import sys
+s = socket.socket()
+s.settimeout(0.5)
+try:
+    s.connect(("127.0.0.1", int(sys.argv[1])))
+except OSError:
+    sys.exit(1)
+finally:
+    s.close()
+sys.exit(0)
+PYEOF
+}
+
+BUSY=""
+for pair in "画面:$PORT" "受信:${RECV_PORT:-47311}"; do
+  what="${pair%%:*}"; num="${pair##*:}"
+  case "$what" in 受信) [[ " ${NAMES[*]} " == *" receiver "* ]] || continue ;; esac
+  if port_busy "$num"; then
+    BUSY+="  $what $num に先客がいます"$'\n'
+  fi
+done
+if [[ -n "$BUSY" ]]; then
+  printf '\n🔴 ポートに先客がいます（前の会議のプロセスが残っている形）:\n%s' "$BUSY" >&2
+  printf '   誰がいるかを見る:  ss -ltnp | grep -E ":(%s|%s) "\n' "$PORT" "${RECV_PORT:-47311}" >&2
+  printf '   畳んでから出直すか、--port / --recv-port で別のポートを指してください。\n' >&2
+  printf '   （強制終了は使わない。stop.sh か、起動した端末の Ctrl-C で畳む）\n' >&2
+  [[ "$DRY" -eq 1 ]] || exit 3
+fi
+
 # ─── 表示 or 起動 ───────────────────────────────────────────────────────
 printf '会議: %s\n' "${TITLE//_/ }"
 printf '会議フォルダ: %s\n' "$MEETLIVE_MEETING"

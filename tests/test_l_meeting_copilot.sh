@@ -192,3 +192,43 @@ assert_grep "L6: responder reads the material shelf through the config" \
   "knowledge_dir" "$L_SCRIPTS/responder.py"
 assert_grep "L6: responder writes the heartbeat the viewer reads" \
   '"role": "responder"' "$L_SCRIPTS/responder.py"
+
+# ── L7. the launcher refuses a port that already has a tenant ──────────────
+# The failure this prevents is the quietest one in the whole kit: the previous
+# meeting's receiver is still bound, the child machine connects to IT, the
+# transcript lands in the OLD state directory — and the screen comes up fine,
+# heartbeat green, "受信 —" forever. So run.sh must look before it leaps, and
+# the guard has to be watched firing, not merely present in the source.
+L_HOLD="$TEST_TMP/l_hold.py"
+cat > "$L_HOLD" <<'PYEOF'
+import socket
+import sys
+import time
+
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+s.listen(1)
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    f.write(str(s.getsockname()[1]))
+time.sleep(20)          # 自分で終わる（後片付けに kill を要らなくするため）
+PYEOF
+python3 "$L_HOLD" "$TEST_TMP/l_port" &
+for _ in $(seq 1 50); do [[ -s "$TEST_TMP/l_port" ]] && break; sleep 0.1; done
+
+if [[ -s "$TEST_TMP/l_port" ]]; then
+  l_taken="$(cat "$TEST_TMP/l_port")"
+  assert_exit "L7: run.sh refuses a viewer port that is already listening (exit 3)" 3 \
+    env -u MEETLIVE_CREDS_FILE \
+        MEETLIVE_MEETING="$L_FX/templates/skills/meeting-copilot/config/example_meeting" \
+        MEETLIVE_DIR="$TEST_TMP/l_busy_state" \
+    bash "$L_RUN" --port "$l_taken" --no-receiver
+  # ...and a free port is not refused (the guard must not block every start)
+  assert_ok "L7: a free port still starts (dry-run)" \
+    env -u MEETLIVE_CREDS_FILE \
+        MEETLIVE_MEETING="$L_FX/templates/skills/meeting-copilot/config/example_meeting" \
+        MEETLIVE_DIR="$TEST_TMP/l_free_state" \
+    bash "$L_RUN" --dry-run --port "$((l_taken + 1))" --no-receiver
+else
+  fail "L7: could not hold a port to test the guard with" \
+    "the helper never wrote its port number"
+fi
