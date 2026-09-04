@@ -36,6 +36,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import meetlive_config as cfgmod  # noqa: E402
+import mode_signal  # noqa: E402
 
 # ------------------------------------------------------------------ パス
 STATE_DIR = cfgmod.state_dir()
@@ -487,11 +488,14 @@ class Copilot:
         if not text:
             return
         speaker = rec.get("speaker", "guest")
-        # 合図の聞き取り揺れ対策。開始合図は STT に化けることがある(実測あり)ので、
-        # 「呼びかけ語 or 開始合図 or その誤変換」+「開始/スタート」の形でも開始として扱う。
+        # 合図の聞き取り揺れ対策。判定は mode_signal.py に1本化してある
+        # (書く側 receiver.py / 読む側 viewer2.py と同じ述語。ここだけ独自に持つと、
+        #  かつてのように「片方は拾い、片方は拾わない」非対称が復活する)。
         if speaker == "host" and not self.started:
-            marks = tuple(CALL_WORDS) + (MODE_START_WORD,) + tuple(START_HOMOPHONES)
-            if ("開始" in text or "スタート" in text) and any(w and w in text for w in marks):
+            if mode_signal.is_start_signal(
+                text, call_words=CALL_WORDS, start_word=MODE_START_WORD,
+                homophones=START_HOMOPHONES,
+            ):
                 self.reset_state("同席開始(音声揺れ吸収)")
                 self.started = True
                 self.emit("topic", ["同席、始めます。"], "high", f"開始合図 in={text[:20]}")

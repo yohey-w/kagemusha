@@ -341,7 +341,7 @@ def mode_words() -> tuple[str, str, tuple[str, ...]]:
 
 def layout() -> str:
     """カンペ画面の並べ方。columns=左右2列 / rows=上下 / auto=画面の向きで切替。"""
-    v = (os.environ.get("MEETLIVE_LAYOUT") or _meeting_str("layout") or "auto").lower()
+    v = (_meeting_str("layout") or os.environ.get("MEETLIVE_LAYOUT") or "auto").lower()
     return v if v in ("columns", "rows", "auto") else "auto"
 
 

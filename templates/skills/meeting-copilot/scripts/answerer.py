@@ -23,21 +23,18 @@ import meetlive_config as cfgmod  # noqa: E402
 STATE = cfgmod.state_dir()
 LOG = STATE / "answerer_log.jsonl"
 
-# 接地資料の置き場。未設定なら同梱の config/(架空の例)。
-_kd = os.environ.get("MEETLIVE_KNOWLEDGE_DIR")
-if _kd:
-    K = pathlib.Path(_kd).expanduser()
-    if not K.is_dir():
-        raise SystemExit(f"[answerer] MEETLIVE_KNOWLEDGE_DIR={_kd} がディレクトリではありません")
-else:
-    K = cfgmod.CONFIG_DIR
-    print(f"[answerer] ⚠ MEETLIVE_KNOWLEDGE_DIR 未設定。同梱の例 {K} を材料にします",
-          file=sys.stderr, flush=True)
+# 接地資料の置き場。会議フォルダの kb/ → MEETLIVE_KNOWLEDGE_DIR → 同梱の config/(架空の例)。
+# 解決は meetlive_config が正本(各スクリプトで生の環境変数を読まない)。
+K = cfgmod.knowledge_dir()
+if not K.is_dir():
+    raise SystemExit(f"[answerer] 接地資料の置き場がディレクトリではありません: {K}")
+if K == cfgmod.CONFIG_DIR:
+    print(f"[answerer] ⚠ 会議フォルダの kb/ も MEETLIVE_KNOWLEDGE_DIR も無し。"
+          f"同梱の例 {K} を材料にします", file=sys.stderr, flush=True)
 
-SCRIPT_NAME = os.environ.get("MEETLIVE_SCRIPT_NAME", "talk_script.example.md")
+SCRIPT_NAME = cfgmod.knowledge_script_name()
 # 材料の総量の上限(文字)。ここを大きくすると質は上がるが、レイテンシとクォータが伸びる。
-PER_FILE = int(os.environ.get("MEETLIVE_KNOWLEDGE_PER_FILE", "9000"))
-TOTAL = int(os.environ.get("MEETLIVE_KNOWLEDGE_TOTAL", "40000"))
+PER_FILE, TOTAL = cfgmod.knowledge_limits()
 
 
 def load(p, n):

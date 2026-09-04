@@ -93,6 +93,7 @@ HEARTBEAT_PATH = cfgmod.heartbeat_path()
 HEARTBEAT_STALE = cfgmod.heartbeat_stale_sec()
 
 CALL_WORDS = cfgmod.call_words()
+MODE_START_WORD, _MODE_END_WORD, START_HOMOPHONES = cfgmod.mode_words()
 
 _KW_RE_CACHE: dict[str, "re.Pattern | None"] = {}
 
@@ -878,8 +879,10 @@ def build_nav(agenda, lines, mode, start_epoch, total_min_override=None):
     steps = agenda["steps"]
 
     # 同席開始からの発話だけを見る (番人の reset_state と同じ考え方)。
-    # 「同席開始」の聞き取り揺れ (透析開始 等) も番人と同じく吸収する。
-    # 判定そのものは mode_signal.py に1本化 (receiver.py と共有 — 2026-08-22)。
+    # 開始合図の聞き取り揺れも番人と同じく吸収する。判定そのものは mode_signal.py に
+    # 1本化してあり、**書く側 (receiver.py) とまったく同じ語彙・同じ述語**で当てる
+    # (かつてここだけが揺れを吸収し、書く側が完全一致だったせいで、実際の会議で
+    #  画面が自動で切り替わらなかった。tests/test_mode_signal.py が対称性を毎回見る)。
     anchor = None
     for r in lines:
         if r.get("type") == "mode" and r.get("mode") == "start":
@@ -887,7 +890,10 @@ def build_nav(agenda, lines, mode, start_epoch, total_min_override=None):
     if anchor is None:
         for r in lines:
             t = r.get("text") or ""
-            if r.get("speaker") == "host" and mode_signal.is_start_signal(t):
+            if r.get("speaker") == "host" and mode_signal.is_start_signal(
+                t, call_words=CALL_WORDS, start_word=MODE_START_WORD,
+                homophones=START_HOMOPHONES,
+            ):
                 anchor = _ts(r.get("ts", ""))
                 break
 
