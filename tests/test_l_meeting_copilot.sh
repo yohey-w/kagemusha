@@ -36,6 +36,10 @@ assert_file "L1: receiver.py ships"                "$L_SCRIPTS/receiver.py"
 assert_file "L1: meeting.example.json ships"       "$L_CONFIG/meeting.example.json"
 assert_file "L1: unit tests ship (viewer state)"   "$L_TESTS/test_viewer_state.py"
 assert_file "L1: unit tests ship (mode signal)"    "$L_TESTS/test_mode_signal.py"
+assert_file "L1: responder.py ships"               "$L_SCRIPTS/responder.py"
+assert_file "L1: unit tests ship (responder)"      "$L_TESTS/test_responder.py"
+assert_file "L1: run.sh ships"                     "$L_SCRIPTS/run.sh"
+assert_file "L1: stop.sh ships"                    "$L_SCRIPTS/stop.sh"
 
 # the demo meeting folder is the "does it run at all" answer for a new user
 for f in meeting.json agenda_steps.json talk_script.md phrasebook.json \
@@ -134,3 +138,57 @@ assert c.input_path("MEETLIVE_AGENDA", "agenda_steps.example.json").name \
     == "agenda_steps.json"
 assert c.creds_file() is None, "secrets must not live in the meeting folder"
 ' "$L_FX/templates/skills/meeting-copilot/scripts"
+
+# ── L5. run.sh — the launcher a stranger actually types ────────────────────
+# A launcher is trustworthy only if you can see what it will do BEFORE the
+# meeting starts, and if it stops each daemon the way that daemon says it stops.
+L_RUN="$L_FX/templates/skills/meeting-copilot/scripts/run.sh"
+L_DRY_STATE="$TEST_TMP/l_dry_state"
+L_DRY_OUT="$TEST_TMP/l_dry.txt"
+
+env -u MEETLIVE_CREDS_FILE \
+  MEETLIVE_MEETING="$L_FX/templates/skills/meeting-copilot/config/example_meeting" \
+  MEETLIVE_DIR="$L_DRY_STATE" \
+  bash "$L_RUN" --dry-run --port 47399 > "$L_DRY_OUT" 2>&1
+assert_grep "L5: --dry-run names the meeting from meeting.json" "Acme" "$L_DRY_OUT"
+assert_grep "L5: --dry-run shows the viewer command"            "viewer2.py" "$L_DRY_OUT"
+assert_grep "L5: --dry-run honours features (demo runs copilot)" "copilot.py" "$L_DRY_OUT"
+assert_no_grep "L5: --dry-run omits the layer features turned off" \
+  "responder.py" "$L_DRY_OUT"
+# premise_watch is NOT a daemon (copilot spawns it per utterance). Saying so out
+# loud is the point: premise_watch=true in a folder with copilot=false means no
+# premise watching at all, and that must not be discovered at 8 in the morning.
+assert_grep "L5: --dry-run explains that premise_watch is not a daemon" \
+  "常駐しない" "$L_DRY_OUT"
+# and it really is dry — nothing launched, no log directory made
+assert_absent "L5: --dry-run creates no log directory" "$L_DRY_STATE/logs"
+
+assert_exit "L5: run.sh without MEETLIVE_MEETING refuses (exit 2)" 2 \
+  env -u MEETLIVE_MEETING -u MEETLIVE_DIR bash "$L_RUN" --dry-run
+
+# the stop discipline: every stop path belongs to the daemon itself. kill/pkill
+# would take out whatever else is running on the machine, mid-meeting.
+# (the comment lines that SAY "kill is not used" are dropped first, so the
+#  guard reads the code and not the promise about the code)
+assert_empty_str "L5: run.sh / stop.sh never reach for kill or pkill" \
+  "$(grep -vE '^[[:space:]]*#' "$L_SCRIPTS/run.sh" "$L_SCRIPTS/stop.sh" 2>/dev/null \
+     | grep -nE '(^|[^a-z_])p?kill([^a-z_]|$)')"
+assert_grep "L5: stop.sh uses the viewer's own /quit"        "/quit"          "$L_SCRIPTS/stop.sh"
+assert_grep "L5: stop.sh uses the responder's own stop file" "responder.stop" "$L_SCRIPTS/stop.sh"
+# the two layers with no stop path of their own are named as manual, in the kit
+assert_grep "L5: SKILL.md says which layers have no stop path" \
+  "停止の口が無い" "$L_SKILL/SKILL.md"
+
+# ── L6. the responder feeds the model EVERYTHING ───────────────────────────
+# 2026-09-03, measured: truncating the material does not make the answer say
+# "I don't have that" — it makes it confidently say the OPPOSITE of the script.
+# So the responder must not go near the character limits the (differently
+# shaped) answerer obeys.
+assert_no_grep "L6: responder does not apply the truncation limits" \
+  "cfgmod.knowledge_limits" "$L_SCRIPTS/responder.py"
+assert_no_grep "L6: responder does not read the per-file limit either" \
+  "MEETLIVE_KNOWLEDGE_PER_FILE" "$L_SCRIPTS/responder.py"
+assert_grep "L6: responder reads the material shelf through the config" \
+  "knowledge_dir" "$L_SCRIPTS/responder.py"
+assert_grep "L6: responder writes the heartbeat the viewer reads" \
+  '"role": "responder"' "$L_SCRIPTS/responder.py"
