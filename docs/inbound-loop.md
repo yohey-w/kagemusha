@@ -149,7 +149,7 @@ claude -p "mcp__claude_ai_Gmail__search_threads で直近1件の件名だけ返�
 
 ### Codex CLI で同じことをするなら（実測 2026-09-06・codex-cli 0.149.0）
 
-**通った。** curated plugin の Gmail は、無人の `codex exec` から**追加の許可フラグなしで**呼べた。認証プロンプトも出ない（OAuth は `~/.codex/auth.json` と plugin 側が持っている）。
+**通った。** curated plugin の Gmail は、無人の `codex exec` から**追加の許可フラグなしで**呼べた。認証プロンプトは出ず、ローカルにトークンの配管も要らなかった（書き起こしに出るサーバ名は `codex_apps`＝OpenAI 側のコネクタ）。〔未確認〕Gmail 側の OAuth を実際にどこが保持しているかまでは確かめていない。
 
 ```bash
 timeout 120 codex exec -s read-only --ephemeral -C "$PROJECT_ROOT" \
