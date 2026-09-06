@@ -1,0 +1,6 @@
+{"timestamp": "2026-09-01T10:10:00.000Z", "type": "session_meta", "payload": {"session_id": "00000000-0000-4000-8000-000000000003", "id": "00000000-0000-4000-8000-000000000003", "timestamp": "2026-09-01T10:10:00.000Z", "cwd": "/home/example/demo", "originator": "codex-tui", "cli_version": "0.149.0", "source": "cli", "thread_source": "user", "model_provider": "openai", "base_instructions": {"text": "SYNTHETIC base instructions."}, "history_mode": "paginated", "git": {"branch": "main", "commit_hash": "0000000000000000000000000000000000000000", "repository_url": "https://example.invalid/demo.git"}}}
+
+this line is not JSON at all
+{"timestamp": "2026-09-01T10:10:01.000Z", "type": "response_item"}
+{"timestamp": "2026-09-01T10:10:02.000Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "やめて、その方針は違う。"}], "id": "msg_:02.000Z"}}
+{"timestamp": "2026-09-01T10:10:03.000Z", "type": "response_i

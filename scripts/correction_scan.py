@@ -31,9 +31,11 @@ become one event, and one event straddling a bucket edge becomes two. It is a
 damper on volume, not a semantic parser — see --cluster-window.
 
 Three things it deliberately does NOT collect:
-  · subagent turns (`isSidechain`). In a sidechain the "user" role is another
-    agent's prompt, not you. Harvesting those would fill the material file with
-    the agent correcting itself and pass it off as your judgment.
+  · subagent turns. In a sidechain the "user" role is another agent's prompt,
+    not you. Harvesting those would fill the material file with the agent
+    correcting itself and pass it off as your judgment. (Claude Code flags them
+    inline as `isSidechain`; Codex gives a sub-agent its own rollout file whose
+    header says `thread_source: "subagent"`. Either way they are dropped.)
   · tool results and harness plumbing (they carry the `user` role too).
   · anything older than the window, or already harvested (dedup by content
     hash, so running it twice a day is harmless).
@@ -74,7 +76,8 @@ text), and `--mark-distilled --batch` retires only the ids in that manifest.
 
 Usage:
   scripts/correction_scan.py --patterns FILE --material FILE --state FILE
-                             [--since 1d] [--dir DIR ...]
+                             [--since 1d] [--dir DIR ...] [--source CLI]
+                             [--codex-dir DIR ...] [--codex-cwd PATH ...]
                              [--snippet 300] [--lead 160] [--cluster-window 20]
   scripts/correction_scan.py --state FILE --status
   scripts/correction_scan.py --state FILE --material FILE --emit-batch
@@ -91,13 +94,24 @@ Usage:
               vocabulary shipped in the script would quietly become everyone's.
   --material  the append-only material file candidates are added to
   --state     small JSON file: events harvested, events distilled, when
-  --dir       a directory of *.jsonl session logs; repeatable.
+  --dir       a directory of Claude Code *.jsonl session logs; repeatable.
               If omitted, DISTILL_LOG_DIRS (from config.env, whitespace- or
               colon-separated) is used. Only if that is unset too does the
               path get GUESSED from the current directory — which under cron
               is $HOME, i.e. the wrong project. That guess now says so, loudly,
               on stderr: a scheduler running with the wrong CWD used to harvest
               a different project's logs, or nothing at all, in silence.
+  --source    which CLI's logs to read: claude | codex | auto. Default:
+              $LOG_SOURCE, else `auto` = every CLI whose logs exist here —
+              EXCEPT that naming --dir (or DISTILL_LOG_DIRS) without naming a
+              Codex directory means Claude Code only. A caller who said where
+              the transcripts are drew a boundary; auto does not walk around it.
+  --codex-dir a Codex sessions root; repeatable. Default: $CODEX_SESSIONS_DIR,
+              else ~/.codex/sessions.
+  --codex-cwd keep only Codex sessions whose working directory is this path or
+              below it; repeatable. Codex files every project into one tree, so
+              this is how you get back the per-project scope that Claude Code
+              gives you by directory.
   --status    print pending / harvested / days-since-distill and exit
   --emit-batch  freeze the next batch: write <batch-dir>/<id>.txt (the exact
               material the model will see, whole events only, oldest first, up
@@ -122,12 +136,15 @@ and "the harvester has been pointed at nothing for a month" must not look alike.
 Stdlib only. Reads logs; writes the two files you name. Nothing leaves the machine.
 """
 import datetime
-import glob
 import hashlib
 import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import log_sources  # noqa: E402
+from log_sources import CLAUDE, CODEX  # noqa: E402
 
 # Deliberately duplicated from discipline_scan.py rather than shared: every
 # script in scripts/ has to stay runnable on its own, copied anywhere, stdlib only.
@@ -201,6 +218,54 @@ def default_dirs():
 
 
 # ── state ──────────────────────────────────────────────────────────────────
+def resolve_sources(argv):
+    """(sources, display_dirs) for this invocation.
+
+    --source picks the CLI: claude | codex | auto (default, or $LOG_SOURCE).
+    Under `auto` a CLI is read only if its logs exist, so nothing has to be
+    configured on a one-CLI machine — but naming --dir (or DISTILL_LOG_DIRS)
+    without naming --codex-dir means Claude Code only, because a caller who
+    drew a boundary meant it.
+
+    A directory named by the caller that does not exist is fatal even when the
+    other CLI has logs. A mistyped --dir must not quietly become "we scanned
+    the other one instead".
+    """
+    named = [os.path.expanduser(p) for p in opts(argv, "--dir", multi=True)]
+    env_dirs = log_sources.split_dirs(os.environ.get("DISTILL_LOG_DIRS", ""))
+    codex_dirs = [os.path.expanduser(p) for p in opts(argv, "--codex-dir", multi=True)]
+    codex_cwd = [os.path.expanduser(p) for p in opts(argv, "--codex-cwd", multi=True)]
+    source = log_sources.resolve_source_name(
+        opts(argv, "--source"),
+        claude_named=bool(named or env_dirs),
+        codex_named=bool(codex_dirs or codex_cwd))
+
+    claude_dirs = named or (default_dirs() if source != CODEX else None)
+    try:
+        sources = log_sources.build_sources(
+            source, claude_dirs=claude_dirs,
+            codex_dirs=codex_dirs or None, codex_cwd=codex_cwd or None)
+    except ValueError as e:
+        die(str(e))
+
+    dirs = []
+    for src in sources:
+        dirs.extend(src.dirs)
+    for label, asked in (("--dir/DISTILL_LOG_DIRS", named or env_dirs),
+                         ("--codex-dir", codex_dirs)):
+        if asked and not [d for d in asked if os.path.isdir(d)]:
+            die("no session-log directory found (%s): %s\n"
+                "  Pass it explicitly. (The default is derived from the current\n"
+                "  directory; it only exists if this project has transcripts.)"
+                % (label, ", ".join(asked)))
+    if not any(src.existing_dirs() for src in sources):
+        die("no session-log directory found: %s\n"
+            "  Pass --dir explicitly. (The default is derived from the current\n"
+            "  directory; it only exists if this project has transcripts.)"
+            % ", ".join(dirs))
+    return sources, dirs
+
+
 def load_state(path):
     try:
         with open(path, encoding="utf-8") as fh:
@@ -300,33 +365,24 @@ def load_patterns(path):
 
 
 # ── log walk ───────────────────────────────────────────────────────────────
-def text_of(content):
-    """Message text, whichever shape the transcript uses. A user turn's
-    `content` is often a BARE STRING while an assistant turn is a list of typed
-    blocks; handling only the list shape silently drops every human turn."""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for c in content:
-            if isinstance(c, dict) and c.get("type") == "text" and c.get("text"):
-                parts.append(c["text"])
-            elif isinstance(c, str):
-                parts.append(c)
-        return "\n".join(parts)
-    return ""
+# The file formats live in scripts/lib/log_sources.py, which yields one record
+# shape for every supported CLI. What stays here is the judgment: which of
+# those records is a turn worth looking at.
+text_of = log_sources.text_of
 
 
-def usable(obj):
+def usable(rec):
     """(role, text) for a turn worth looking at, else None."""
-    kind = obj.get("type")
+    if rec is None:
+        return None
+    kind = rec["kind"]
     if kind not in ("assistant", "user"):
         return None
-    if obj.get("isSidechain"):
+    if rec["is_sidechain"]:
         return None                      # a subagent's prompt is not your voice
-    if obj.get("toolUseResult") is not None:
+    if rec["is_tool_result"]:
         return None                      # tool output wearing the user role
-    txt = text_of((obj.get("message") or {}).get("content")).strip()
+    txt = rec["text"].strip()
     if not txt or txt.startswith(SKIP_PREFIX):
         return None
     if "<system-reminder>" in txt[:80]:
@@ -334,79 +390,64 @@ def usable(obj):
     return kind, txt
 
 
-def harvest(dirs, patterns, cutoff, snippet, lead):
+def harvest(sources, patterns, cutoff, snippet, lead):
     """Return (candidates, files_seen). Each candidate is a dict."""
     found = []
     files = 0
     cut_s = cutoff.isoformat()
 
-    for d in dirs:
-        if not os.path.isdir(d):
-            continue
-        for path in sorted(glob.glob(os.path.join(d, "*.jsonl"))):
-            try:
-                if os.path.getmtime(path) < cutoff.timestamp():
-                    continue
-            except OSError:
-                continue
+    for src in sources:
+        for sf in src.iter_files(cutoff):
             files += 1
             # The FULL session id, not a prefix. A prefix is fine for display and
             # fatal for identity: it is half of the dedup key, and two sessions
             # sharing eight hex characters would silently share a namespace.
-            session = os.path.basename(path)
-            if session.endswith(".jsonl"):
-                session = session[:-len(".jsonl")]
+            session = sf.session_id
+            path = sf.path
             prior = ""                     # last assistant turn seen in this file
-            lineno = 0
-            with open(path, errors="replace") as fh:
-                for line in fh:
-                    lineno += 1
-                    if '"assistant"' not in line and '"user"' not in line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except ValueError:
-                        continue
-                    got = usable(obj)
-                    if not got:
-                        continue
-                    role, txt = got
-                    if role == "assistant":
-                        prior = txt
-                        continue
-                    ts = obj.get("timestamp", "")
-                    if not ts or ts < cut_s:
-                        continue
-                    hit = None
-                    for src_pat, rex in patterns:
-                        if rex.search(txt):
-                            hit = src_pat
-                            break
-                    if hit is None:
-                        continue
-                    body = " ".join(txt.split())[:snippet]
-                    ctx = " ".join(prior.split())
-                    ctx = ctx[-lead:] if len(ctx) > lead else ctx
-                    # Identity is the LOG RECORD, not the words in it. Keying on
-                    # the text would make "違う", said twice in one long session
-                    # on different days, one event — the second one dropped as
-                    # already seen. Two identical sentences are two corrections
-                    # when they sit on two different lines of the transcript.
-                    sha = hashlib.sha256(txt.encode("utf-8")).hexdigest()
-                    ident = "%s|%d|%s|%s" % (session, lineno, ts, sha)
-                    found.append({
-                        "ts": ts[:16].replace("T", " "),
-                        "raw_ts": ts,
-                        "session": session,
-                        "src": session[:8],          # display only
-                        "file": os.path.abspath(path),
-                        "line": lineno,
-                        "sha256": sha,
-                        "pat": hit[:24],
-                        "text": body,
-                        "prior": ctx,
-                        "key": hashlib.sha256(ident.encode("utf-8")).hexdigest()[:32],
-                    })
+            for rec in sf.records():
+                lineno = rec["line"]
+                got = usable(rec)
+                if not got:
+                    continue
+                role, txt = got
+                if role == "assistant":
+                    prior = txt
+                    continue
+                ts = rec["ts"]
+                if not ts or ts < cut_s:
+                    continue
+                hit = None
+                for src_pat, rex in patterns:
+                    if rex.search(txt):
+                        hit = src_pat
+                        break
+                if hit is None:
+                    continue
+                body = " ".join(txt.split())[:snippet]
+                ctx = " ".join(prior.split())
+                ctx = ctx[-lead:] if len(ctx) > lead else ctx
+                # Identity is the LOG RECORD, not the words in it. Keying on
+                # the text would make "違う", said twice in one long session
+                # on different days, one event — the second one dropped as
+                # already seen. Two identical sentences are two corrections
+                # when they sit on two different lines of the transcript.
+                sha = hashlib.sha256(txt.encode("utf-8")).hexdigest()
+                ident = "%s|%d|%s|%s" % (session, lineno, ts, sha)
+                found.append({
+                    "ts": ts[:16].replace("T", " "),
+                    "raw_ts": ts,
+                    "session": session,
+                    "src": session[:8],          # display only
+                    "file": os.path.abspath(path),
+                    "line": lineno,
+                    "log_source": src.name,
+                    "sha256": sha,
+                    "pat": hit[:24],
+                    "text": body,
+                    "prior": ctx,
+                    "key": hashlib.sha256(ident.encode("utf-8")).hexdigest()[:32],
+                })
     found.sort(key=lambda c: (c["raw_ts"], c["session"], c["line"]))
     return found, files
 
@@ -497,6 +538,7 @@ def index_append(material, events):
                 fh.write(json.dumps({
                     "event": ckey, "key": m["key"], "session": m["session"],
                     "file": m["file"], "line": m["line"], "ts": m["raw_ts"],
+                    "log_source": m.get("log_source", ""),
                     "sha256": m["sha256"], "pat": m["pat"],
                     "text": m["text"], "prior": m["prior"],
                 }, ensure_ascii=False) + "\n")
@@ -764,12 +806,17 @@ def do_show_event(material, event_id, context):
             if not (0 <= idx < len(lines)):
                 out.write("  [line %d no longer exists in this file]\n" % rec["line"])
                 continue
-            obj = None
-            try:
-                obj = json.loads(lines[idx])
-            except ValueError:
-                pass
-            got = usable(obj) if isinstance(obj, dict) else None
+            # Which CLI wrote this file. The index records it; entries written
+            # before it did fall back to the filename, which is unambiguous
+            # (only Codex names a transcript rollout-*).
+            log_src = rec.get("log_source") or log_sources.source_of_path(rec["file"])
+            hdr = log_sources.header_for(rec["file"], log_src)
+
+            def reread(i):
+                return log_sources.record_from_line(lines[i], rec["file"], i + 1,
+                                                    log_src, hdr)
+
+            got = usable(reread(idx))
             if not got:
                 out.write("  [line %d is no longer the record it was]\n" % rec["line"])
                 continue
@@ -786,23 +833,13 @@ def do_show_event(material, event_id, context):
             before, after = [], []
             i = idx - 1
             while i >= 0 and len(before) < context:
-                try:
-                    o = json.loads(lines[i])
-                except ValueError:
-                    i -= 1
-                    continue
-                g = usable(o)
+                g = usable(reread(i))
                 if g:
                     before.append((i + 1, g))
                 i -= 1
             i = idx + 1
             while i < len(lines) and len(after) < context:
-                try:
-                    o = json.loads(lines[i])
-                except ValueError:
-                    i += 1
-                    continue
-                g = usable(o)
+                g = usable(reread(i))
                 if g:
                     after.append((i + 1, g))
                 i += 1
@@ -898,15 +935,10 @@ def main():
         die("--snippet / --lead want integers; --cluster-window wants a positive integer")
 
     patterns = load_patterns(os.path.expanduser(pat_file))
-    dirs = [os.path.expanduser(p) for p in opts(argv, "--dir", multi=True)] or default_dirs()
-    if not [d for d in dirs if os.path.isdir(d)]:
-        die("no session-log directory found: %s\n"
-            "  Pass --dir explicitly. (The default is derived from the current\n"
-            "  directory; it only exists if this project has transcripts.)"
-            % ", ".join(dirs))
+    sources, dirs = resolve_sources(argv)
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
-    cands, files = harvest(dirs, patterns, cutoff, snippet, lead)
+    cands, files = harvest(sources, patterns, cutoff, snippet, lead)
 
     st = load_state(state_path)
     seen = set(st["seen"])

@@ -8,7 +8,15 @@
 > macOS 純正の launchd でも可）から食わせる。
 > **③はヘッドレス実行なので、コネクタのツールに `--allowedTools` の明示許可が要る場合がある**
 > ——無人化の前に1回手で検証すること（[`../docs/inbound-loop.md`](../docs/inbound-loop.md) の
-> 「全自動（モード3）で MCP を使うなら」）。無人スケジューラ専用のフォールバックは
+> 「全自動（モード3）で MCP を使うなら」）。
+> **Codex CLI でも③は成立する**（実測 2026-09-06・codex-cli 0.149.0。curated plugin の Gmail が
+> `codex exec -s read-only --ephemeral ... < /dev/null` から無人で呼べた）。ただし
+> **ツール単位の許可リストは Codex には無い**——`-s read-only` が縛るのはファイルシステムであって
+> コネクタではないので、「書き込み系のツールを呼ばない」を守っているのは**この手順書の文言だけ**だ。
+> 機構で切りたいなら `~/.codex/config.toml` で使わない plugin を無効にしておく。詳細と地雷
+> （`< /dev/null` 必須・`--ephemeral` は蒸留便から見えなくなる）は
+> [`../docs/inbound-loop.md`](../docs/inbound-loop.md) の「Codex CLI で同じことをするなら」。
+> 無人スケジューラ専用のフォールバックは
 > [`../scripts/inbound_watch.sh.example`](../scripts/inbound_watch.sh.example)（→ [`../docs/inbound-loop.md`](../docs/inbound-loop.md)）。
 > `<...>` を自分の環境に合わせて埋めてから使う。
 > 来歴: 手順の設計原則は実運転済みだが、この成文化テンプレート自体は著者の実運転より新しい
