@@ -112,9 +112,11 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 | 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提） | `AGENTS.md` に「日付は必ず検算」と書く |
 | メモリ | 自動メモリ | memories | **どちらも正本ではない。** 正本はプレーンファイル（[`ssot/README.md`](ssot/README.md)） |
 | ヘッドレス起動 | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | argv でプロンプトを取る CLI なら何でも |
-| 無人での接続子 | `--allowedTools mcp__…` | curated plugin（ツール単位の許可リストは無い） | *(実測結果は保留 — [`docs/inbound-loop.md`](docs/inbound-loop.md))* |
-| 会話ログの採取 | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | *(アダプタは保留 — [`docs/distillation-loop.md`](docs/distillation-loop.md))* |
+| 無人での接続子 | 動く（`--allowedTools mcp__…` で絞れる） | 動くが、**ツール単位の許可リストが無い**——入切はプラグイン単位（[`docs/inbound-loop.md`](docs/inbound-loop.md)） | 読み取り専用に保つのは「何を頼むか」ではなく「何を有効にするか」で |
+| 会話ログの採取 | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | アダプタ1本が両方を読む。`LOG_SOURCE=auto` で有る方 |
 | スケジューラ | cron / タスクスケジューラ——両方同じ。CLI 固有のスケジューラは使わないし、要らない |||
+
+このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。
 
 **Claude Code・5行。** ① `./scripts/setup.sh` ② `AGENTS.md` の委任境界を埋める ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
 

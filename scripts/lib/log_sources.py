@@ -71,6 +71,10 @@ them:
      are dropped per part, not per message; dropping the message would delete
      the prompt bundled with it. `developer` turns (the base instructions) are
      dropped whole.
+  2b. **Another agent's session is not yours either.** Codex records who opened
+     the session in `originator`; when that is another agent (`"Claude Code"`),
+     the "user" turns in it were written by a machine. Same treatment as a
+     sub-agent: `is_sidechain`, harvested by nobody.
   3. **Sub-agents get their own files.** Where Claude Code flags a sidechain
      line inside the parent's transcript, Codex writes the sub-agent a separate
      rollout whose header says `thread_source: "subagent"`. Every record from
@@ -334,11 +338,22 @@ def _codex_header(path):
                 if not isinstance(pl, dict):
                     continue
                 src = pl.get("source")
+                originator = pl.get("originator") or ""
                 # A sub-agent says so three ways; any one of them is enough,
                 # because which ones a given build writes has changed before.
+                #
+                # The FOURTH way is the originator, and it is the one that
+                # matters most here: a session Codex opened because another
+                # agent asked it to (`originator: "Claude Code"` — 53 such
+                # lines in this machine's own tree) is not you talking. Harvest
+                # it as yours and the distillation lane learns from an agent's
+                # instructions to an agent, which is exactly the corruption
+                # `is_sidechain` exists to prevent. Whoever wrote that prompt,
+                # it was not a human overruling anybody.
                 sidechain = (pl.get("thread_source") == "subagent"
                              or bool(pl.get("parent_thread_id"))
-                             or (isinstance(src, dict) and "subagent" in src))
+                             or (isinstance(src, dict) and "subagent" in src)
+                             or originator.startswith("Claude Code"))
                 head.update({
                     "session_id": pl.get("id") or pl.get("session_id") or head["session_id"],
                     "parent_id": pl.get("parent_thread_id") or "",
@@ -347,7 +362,7 @@ def _codex_header(path):
                     # `source` is a plain string on a user session and a nested
                     # object on a sub-agent's; only the string is a source name.
                     "prompt_source": src if isinstance(src, str) else "subagent",
-                    "originator": pl.get("originator") or "",
+                    "originator": originator,
                 })
                 break
     except OSError:

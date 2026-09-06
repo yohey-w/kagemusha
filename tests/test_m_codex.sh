@@ -131,6 +131,9 @@ cat > "$M_BIN/codex" <<'SHIM'
 out=""; prev=""; last=""
 for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; last="$a"; done
 printf '%s' "$last" > "$SHIM_ARGS.prompt"
+# whatever arrives on stdin, recorded — `codex exec` treats stdin as EXTRA
+# input, so the caller has to close it or a cron run waits for a terminal
+head -c 200 > "$SHIM_ARGS.stdin"
 [[ -n "$out" ]] && printf 'CODEX-ANSWER\n' > "$out"
 printf 'banner: this is the session log, not the answer\n'
 SHIM
@@ -172,6 +175,28 @@ assert_no_grep "M3: …and without it the run cannot write" "workspace-write" "$
 # the working root is named, because cron's working directory is $HOME
 assert_grep "M3: codex is given an explicit working root (cron's cwd is \$HOME)" \
   "$TEST_TMP/m_root" "$M_ARGS"
+
+# stdin is closed. Under cron there is no terminal, and `codex exec` reads
+# stdin as additional input: leave it open and the run waits, then dies on the
+# timeout with nothing in the log that says why.
+env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI=codex AGENT_CMD="" \
+  bash -c 'source "$1/scripts/lib/agent_cli.sh"; agent_run --no-preamble -- P' _ "$M_KIT" \
+  <<< "STDIN-MUST-NOT-REACH-THE-CLI" > /dev/null 2>&1
+assert_file "M3: the codex shim recorded what arrived on stdin" "$M_ARGS.stdin"
+assert_eq "M3: …and nothing did — stdin is closed for the CLI" \
+  "" "$(cat "$M_ARGS.stdin")"
+
+# --ephemeral by default: ~/.codex/sessions is the corpus the distillation lane
+# mines, and the machinery's own prompts are not the operator's judgment.
+m_run codex --no-preamble -- "E" > /dev/null
+assert_grep "M3: codex runs are ephemeral by default (not harvested as yours)" \
+  "--ephemeral" "$M_ARGS"
+env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI=codex AGENT_CMD="" \
+  AGENT_CLI_RECORD=1 \
+  bash -c 'source "$1/scripts/lib/agent_cli.sh"; agent_run --no-preamble -- P' _ "$M_KIT" \
+  > /dev/null 2>&1
+assert_no_grep "M3: …and AGENT_CLI_RECORD=1 is the way back for debugging" \
+  "--ephemeral" "$M_ARGS"
 
 # the read-only preamble: codex exec is agentic unless told otherwise
 m_run codex -- "ASK" > /dev/null
@@ -323,9 +348,6 @@ assert_grep "M6: …and names git as what arbitrates two live CLIs" \
 # ─── M7. the Codex conversation-log adapter's own tests ────────────────────
 # Owned by the log-adapter lane. Run them if they are here; say plainly that
 # they are not, rather than reporting a green that covered nothing.
-if [[ -f "$REPO_ROOT/tests/unit_codex_logs.py" ]]; then
-  assert_ok "M7: the Codex log adapter's unit tests pass" \
-    env PYTHONPATH="$REPO_ROOT" python3 -m unittest discover -s "$REPO_ROOT/tests" -p 'unit_codex_logs.py'
-else
-  pass "M7: no Codex log adapter in this tree yet (tests/unit_codex_logs.py absent)"
-fi
+assert_file "M7: the Codex log adapter's tests are in the tree" "$REPO_ROOT/tests/unit_codex_logs.py"
+assert_ok "M7: the Codex log adapter's unit tests pass" \
+  env -C "$REPO_ROOT" python3 -m unittest tests.unit_codex_logs

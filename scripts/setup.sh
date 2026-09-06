@@ -288,9 +288,10 @@ Everything above is an EMPTY form: no principle, no verifier, no correction
 vocabulary, no sample judgment. That is the design — see docs/layers.md.
 
 next, in three steps:
-  1. edit  $TARGET/CLAUDE.md — the delegation boundary and your own disciplines
-           (or rename it to AGENTS.md for Codex). Nothing else runs until an
-           agent knows what it may do without asking.
+  1. edit  $TARGET/AGENTS.md — the delegation boundary and your own disciplines.
+           Nothing else runs until an agent knows what it may do without asking.
+           (Codex reads that file directly; Claude Code reads it through the
+           one-line $TARGET/CLAUDE.md. One text, two names — edit AGENTS.md.)
   2. fill  $TARGET/ssot/*.md (decisions, tasks, glossary, people) and add one
            project card in $TARGET/system_map.md, with
            $TARGET/projects/_charter_template.md copied to
@@ -321,6 +322,11 @@ next, in three steps:
       and without it the scanner guesses a log path from there — i.e. the wrong one.
       (Check the guess above matches your CLI's transcript directory; if you work in
       more than one project, repeat --dir, or set DISTILL_LOG_DIRS in config.env.)
+      The path above is Claude Code's. ON CODEX the transcripts are elsewhere and
+      shaped differently: set LOG_SOURCE (and CODEX_SESSIONS_DIR / CODEX_CWD_FILTER)
+      in config.env, or pass --source codex, and drop the --dir above. LOG_SOURCE
+      defaults to "auto" = every CLI whose logs exist here. See
+      docs/distillation-loop.md.
     cron  23 6 * * *  $SCRIPT_DIR/distill.sh   (fires only past the threshold)
       then review $TARGET/judgment/promotion_queue.md by hand: promotion is the one
       step that stays manual, because a rule nobody reviewed would govern every run

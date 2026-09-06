@@ -132,8 +132,13 @@ assert_grep "B: the run declares that nothing from the sample shelf was used" \
   "was copied or activated" "$B_LOG1"
 # and the cron line it prints must carry --dir: cron's CWD is $HOME, so a line
 # without it silently harvests the wrong project's logs (or none at all).
-assert_grep "B: the printed scanner cron line names the log directory" \
-  "--dir $HOME/.claude/projects/" "$B_LOG1"
+# CHANGED (Codex support): the ASSERTION no longer pins Claude Code's transcript
+# path. --dir is still the thing being checked — but which directory is right
+# depends on the CLI, so the run has to name the key that decides
+# (LOG_SOURCE / --source), not one vendor's layout.
+assert_grep "B: the printed scanner cron line carries --dir" "--dir " "$B_LOG1"
+assert_grep "B: …and the run says how to point it at a different CLI" \
+  "LOG_SOURCE" "$B_LOG1"
 assert_grep "B: first run reports creations" "create:" "$B_LOG1"
 
 # ── 2. idempotency: your filled-in files survive a re-run ──────────────────

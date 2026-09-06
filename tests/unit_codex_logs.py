@@ -117,6 +117,42 @@ class CodexNormalisation(unittest.TestCase):
         for rec in self.files[S2].records():
             self.assertTrue(rec["is_sidechain"])
 
+    def test_a_session_another_agent_opened_is_a_sidechain(self):
+        # 実測: このマシンの ~/.codex/sessions には originator="Claude Code" の
+        # 行が53件あった——Claude Code が codex を呼んだセッションで、その
+        # "user" 発話を書いたのは人間ではなく別のエージェント。
+        # thread_source は "user"・parent_thread_id も無い（＝既存の3つの手掛か
+        # りはどれも立たない）ので、originator を見ないと**あなたの訂正として
+        # 採取される**。蒸留が学ぶ相手が人間でなくなるのが、この行の防ぐ失敗。
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        day = os.path.join(tmp, "2026", "09", "02")
+        os.makedirs(day)
+        sid = "00000000-0000-4000-8000-0000000000aa"
+        path = os.path.join(day, "rollout-2026-09-02T10-00-00-" + sid + ".jsonl")
+        with open(path, "w") as fh:
+            fh.write(json.dumps({
+                "timestamp": "2026-09-02T10:00:00.000Z", "type": "session_meta",
+                "payload": {"session_id": sid, "id": sid, "cwd": "/home/example/demo",
+                            "originator": "Claude Code", "source": "exec",
+                            "thread_source": "user"}}) + "\n")
+            fh.write(json.dumps({
+                "timestamp": "2026-09-02T10:00:01.000Z", "type": "response_item",
+                "payload": {"type": "message", "role": "user",
+                            "content": [{"type": "input_text",
+                                         "text": "そうじゃなくて、先に射程を書いて"}]}}) + "\n")
+        files = {f.session_id: f
+                 for f in log_sources.CodexSessionsSource([tmp]).iter_files()}
+        self.assertIn(sid, files)
+        self.assertEqual([r["originator"] for r in files[sid].records()][0],
+                         "Claude Code")
+        self.assertTrue(files[sid].is_sidechain,
+                        "originator=Claude Code のセッションは自分の発話ではない")
+        recs = list(files[sid].records())
+        self.assertTrue(recs, "レコードが1件も出ていない（検査が空振りしている）")
+        for rec in recs:
+            self.assertTrue(rec["is_sidechain"])
+
     def test_prompt_source_is_the_session_origin(self):
         self.assertEqual([r["prompt_source"] for r in self.files[S1].records()][0],
                          "exec")

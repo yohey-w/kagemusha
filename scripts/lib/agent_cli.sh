@@ -52,6 +52,11 @@
 #   CODEX_FLAGS            extra flags, codex only
 #   AGENT_TIMEOUT          seconds
 #   AGENT_CLI_NO_PREAMBLE  1 = never prepend the codex preamble
+#   AGENT_CLI_RECORD       1 = drop --ephemeral, so codex records these runs in
+#                          ~/.codex/sessions. OFF by default: that tree is what
+#                          the distillation lane mines, and the machinery's own
+#                          prompts are not your judgment. Turn it on to debug a
+#                          scheduled run, then turn it off.
 #
 # ⚠️ AGENT_MODEL is a single key shared by both dialects, and a Claude model id
 # is not a Codex model id. If you switch AGENT_CLI, either change AGENT_MODEL or
@@ -179,7 +184,14 @@ agent_cli_build() {
       AGENT_CLI_ARGV=("$bin" exec)
       [[ -n "$model" ]]  && AGENT_CLI_ARGV+=(-m "$model")
       [[ -n "$effort" ]] && AGENT_CLI_ARGV+=(-c "model_reasoning_effort=$effort")
-      AGENT_CLI_ARGV+=(--ephemeral -s "$([[ -n "$write" ]] && echo workspace-write || echo read-only)")
+      # --ephemeral is the DEFAULT and deliberately so: these calls are the
+      # machinery talking to itself, and ~/.codex/sessions is the same corpus
+      # the distillation lane mines. A nightly cron recording its own prompts
+      # there would distil the kit's instructions back into your judgment model
+      # — an agent's words harvested as yours. AGENT_CLI_RECORD=1 turns the
+      # recording back on when you are debugging a scheduled run.
+      [[ "${AGENT_CLI_RECORD:-0}" == "1" ]] || AGENT_CLI_ARGV+=(--ephemeral)
+      AGENT_CLI_ARGV+=(-s "$([[ -n "$write" ]] && echo workspace-write || echo read-only)")
       # Trust and workspace-write are decided from the working root, and cron's
       # working directory is $HOME. Naming the root is not a nicety: without it a
       # scheduled workspace-write run would take $HOME as its workspace.
@@ -218,10 +230,17 @@ agent_run() {
   unset AGENT_CLI_OUT_PATH
 
   if [[ -n "$out_file" ]]; then
-    # The CLI's own banner and diagnostics go to STDERR, so a caller that
-    # captures stdout gets the answer and only the answer, while a caller that
-    # redirects 2>&1 into a log still has something to read when a cron run
-    # comes back empty at 6am.
+    # Three things about this one line:
+    #   · `< /dev/null` is REQUIRED. `codex exec` reads stdin as extra input, so
+    #     under cron — where stdin is not a terminal — it waits, and the run
+    #     dies on the timeout with nothing in the log to explain it.
+    #   · the CLI's own banner and diagnostics go to STDERR, so a caller that
+    #     captures stdout gets the answer and only the answer, while a caller
+    #     that redirects 2>&1 into a log still has something to read when a
+    #     cron run comes back empty at 6am.
+    #   · success is the EXIT STATUS, never the stderr text. codex prints a
+    #     bubblewrap warning on machines without it and still works; reading
+    #     stderr for failure would call every one of those runs broken.
     timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}" < /dev/null >&2
     rc=$?
     cat "$out_file"

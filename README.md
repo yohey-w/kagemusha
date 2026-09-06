@@ -112,9 +112,11 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 | per-turn date stamp | `.claude/settings.json` → `UserPromptSubmit` hook | `.codex/config.toml` → `[[hooks.UserPromptSubmit]]` (needs the project trusted) | state the date in `AGENTS.md` instead |
 | memory | auto-memory directory | memories | **neither is canon.** The plain files are ([`ssot/README.md`](ssot/README.md)) |
 | headless invocation | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | any CLI taking a prompt on argv works |
-| connectors, unattended | `--allowedTools mcp__…` | curated plugins, no per-tool allowlist | *(measured result pending — [`docs/inbound-loop.md`](docs/inbound-loop.md))* |
-| transcript harvest | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | *(adapter pending — [`docs/distillation-loop.md`](docs/distillation-loop.md))* |
+| connectors, unattended | works, with `--allowedTools mcp__…` | works; **no per-tool allowlist exists** — the enable switch is the plugin ([`docs/inbound-loop.md`](docs/inbound-loop.md)) | keep the sweep read-only by what you enable, not by what you ask for |
+| transcript harvest | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | one adapter reads both; `LOG_SOURCE=auto` takes whichever exists |
 | scheduling | cron / Task Scheduler — the same for both; no CLI-native scheduler is used or needed |||
+
+The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/sessions` (`--ephemeral`): that tree is what the distillation lane harvests, and the machinery's prompts are not your judgment. `AGENT_CLI_RECORD=1` turns recording on while you debug a cron run.
 
 **Claude Code, in five lines.** ① `./scripts/setup.sh` ② fill `AGENTS.md` (the delegation boundary) ③ `cp config.env.example config.env`, set `PROJECT_ROOT` and `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` by hand once ⑤ put that line on cron.
 
