@@ -68,6 +68,18 @@
 # The one sentence that turns an agentic CLI into a text generator. codex exec
 # will otherwise happily start reading the repository to answer a question that
 # was already fully specified in the prompt.
+# ⚠️ A PROMPT DOES NOT ALWAYS FIT IN AN ARGUMENT. Linux caps one argv entry at
+# 128 KB (MAX_ARG_STRLEN); past it, exec fails with "Argument list too long" —
+# measured here at 180 KB. Japanese runs 3 bytes per character, so that ceiling
+# is about 43,000 characters, and this kit routinely builds prompts out of your
+# own material (distill.sh pastes up to DISTILL_MAX_MATERIAL_LINES of it). So a
+# big prompt goes in on STDIN instead, and the switch is automatic: nothing a
+# caller has to remember, because forgetting it fails at 6am inside cron.
+#
+#   claude : claude -p --model … with no positional, prompt on stdin
+#   codex  : codex exec … -o <file> -   (`-` is the read-from-stdin marker)
+AGENT_CLI_ARGV_MAX_BYTES="${AGENT_CLI_ARGV_MAX_BYTES:-98304}"   # 96 KB, under the 128 KB cap
+
 AGENT_CLI_PREAMBLE="${AGENT_CLI_PREAMBLE:-Answer with output only. Do not use any tool: do not read or write files, do not run commands, do not search.（ツールを使わず、出力だけを返す）}"
 
 agent_cli_die() { printf 'agent_cli: %s\n' "$1" >&2; return 2; }
@@ -158,13 +170,26 @@ agent_cli_build() {
     esac
   fi
 
+  # codex gets its preamble before the size is measured, since it is part of
+  # what has to fit.
+  if [[ "$cli" == "codex" && -z "$write" && -z "$no_preamble" \
+        && "${AGENT_CLI_NO_PREAMBLE:-0}" != "1" ]]; then
+    prompt="${AGENT_CLI_PREAMBLE}"$'\n\n'"${prompt}"
+  fi
+  if [[ "$(printf '%s' "$prompt" | wc -c)" -gt "$AGENT_CLI_ARGV_MAX_BYTES" ]]; then
+    AGENT_CLI_STDIN=1
+  else
+    AGENT_CLI_STDIN=""
+  fi
+
   AGENT_CLI_ARGV=()
   case "$cli" in
     claude)
       # Claude Code reads its permissions from AGENT_FLAGS, so --write changes
       # nothing here: it is the caller's statement of intent, and the flag that
       # actually grants the write is the operator's (see config.env.example).
-      AGENT_CLI_ARGV=("$bin" -p "$prompt")
+      AGENT_CLI_ARGV=("$bin" -p)
+      [[ -n "$AGENT_CLI_STDIN" ]] || AGENT_CLI_ARGV+=("$prompt")
       [[ -n "$model" ]]  && AGENT_CLI_ARGV+=(--model "$model")
       [[ -n "$effort" ]] && AGENT_CLI_ARGV+=(--effort "$effort")
       [[ -n "$want_json" ]] && AGENT_CLI_ARGV+=(--output-format json)
@@ -178,9 +203,6 @@ agent_cli_build() {
       # these machine-driven runs OUT of ~/.codex/sessions, which is the same
       # corpus the distillation lane mines: a nightly cron writing sessions there
       # would distil the kit's own prompts back into your judgment model.
-      if [[ -z "$write" && -z "$no_preamble" && "${AGENT_CLI_NO_PREAMBLE:-0}" != "1" ]]; then
-        prompt="${AGENT_CLI_PREAMBLE}"$'\n\n'"${prompt}"
-      fi
       AGENT_CLI_ARGV=("$bin" exec)
       [[ -n "$model" ]]  && AGENT_CLI_ARGV+=(-m "$model")
       [[ -n "$effort" ]] && AGENT_CLI_ARGV+=(-c "model_reasoning_effort=$effort")
@@ -202,7 +224,8 @@ agent_cli_build() {
       AGENT_CLI_ARGV+=(-o "${AGENT_CLI_OUT_PATH:-<outfile>}")
       # shellcheck disable=SC2206
       [[ -n "$extra_flags" ]] && AGENT_CLI_ARGV+=($extra_flags)
-      AGENT_CLI_ARGV+=("$prompt")
+      # the positional goes LAST, and is `-` when the prompt rides on stdin
+      AGENT_CLI_ARGV+=("$([[ -n "$AGENT_CLI_STDIN" ]] && printf -- '-' || printf '%s' "$prompt")")
       ;;
   esac
   # shellcheck disable=SC2034  # read by callers and by tests/test_m_codex.sh
@@ -222,6 +245,7 @@ agent_cli_show() {
 # return: the CLI's exit status (124 = the timeout fired).
 agent_run() {
   local out_file="" rc
+  AGENT_CLI_STDIN=""
   if [[ "$(agent_cli_which)" == "codex" ]]; then
     out_file="$(mktemp "${TMPDIR:-/tmp}/agent_cli_codex.XXXXXX")" || return 2
     AGENT_CLI_OUT_PATH="$out_file"
@@ -241,11 +265,19 @@ agent_run() {
     #   · success is the EXIT STATUS, never the stderr text. codex prints a
     #     bubblewrap warning on machines without it and still works; reading
     #     stderr for failure would call every one of those runs broken.
-    timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}" < /dev/null >&2
+    if [[ -n "$AGENT_CLI_STDIN" ]]; then
+      printf '%s' "$AGENT_CLI_PROMPT" | timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}" >&2
+    else
+      timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}" < /dev/null >&2
+    fi
     rc=$?
     cat "$out_file"
     rm -f "$out_file"
     return $rc
+  fi
+  if [[ -n "$AGENT_CLI_STDIN" ]]; then
+    printf '%s' "$AGENT_CLI_PROMPT" | timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}"
+    return $?
   fi
   timeout "$AGENT_CLI_TIMEOUT" "${AGENT_CLI_ARGV[@]}" < /dev/null
 }

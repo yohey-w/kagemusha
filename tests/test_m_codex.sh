@@ -121,6 +121,7 @@ cat > "$M_BIN/claude" <<'SHIM'
 #!/usr/bin/env bash
 : > "$SHIM_ARGS"; for a in "$@"; do printf '%s\n' "$a" >> "$SHIM_ARGS"; done
 prev=""; for a in "$@"; do [[ "$prev" == "-p" ]] && printf '%s' "$a" > "$SHIM_ARGS.prompt"; prev="$a"; done
+cat > "$SHIM_ARGS.stdin"
 printf 'CLAUDE-ANSWER\n'
 SHIM
 cat > "$M_BIN/codex" <<'SHIM'
@@ -133,7 +134,7 @@ for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; last="$a"; done
 printf '%s' "$last" > "$SHIM_ARGS.prompt"
 # whatever arrives on stdin, recorded — `codex exec` treats stdin as EXTRA
 # input, so the caller has to close it or a cron run waits for a terminal
-head -c 200 > "$SHIM_ARGS.stdin"
+cat > "$SHIM_ARGS.stdin"
 [[ -n "$out" ]] && printf 'CODEX-ANSWER\n' > "$out"
 printf 'banner: this is the session log, not the answer\n'
 SHIM
@@ -229,6 +230,49 @@ M_NOCLI="$(AGENT_CLI=auto AGENT_CMD="" bash -c \
   'export PATH=/nonexistent; source "$1/scripts/lib/agent_cli.sh"; agent_cli_which' _ "$M_KIT" 2>&1)"
 assert_nonempty_str "M3: with no CLI on PATH the failure names the keys to set" \
   "$(printf '%s' "$M_NOCLI" | grep -F 'AGENT_CLI' || true)"
+
+# ─── M3b. a prompt too big for argv goes in on stdin ───────────────────────
+# Linux caps ONE argv entry at 128 KB. Japanese is 3 bytes a character, and this
+# kit builds prompts out of your own material — a live meeting folder measured
+# 683 KB, five times the cap. Past it exec fails outright ("Argument list too
+# long"), which in a scheduled run is a silent morning with nothing in the log.
+# So the switch is automatic and asserted in both directions.
+M_BIG="$TEST_TMP/m_big.txt"
+python3 -c "import sys;sys.stdout.write('x'*200000)" > "$M_BIG"
+m_big_run() {  # m_big_run <cli> — run agent_run with a 200 KB prompt
+  env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI="$1" AGENT_CMD="" \
+      AGENT_MODEL="" AGENT_FLAGS="" CODEX_FLAGS="" \
+      bash -c 'source "$1/scripts/lib/agent_cli.sh"
+               agent_run --no-preamble -- "$(cat "$2")" >/dev/null 2>&1' _ "$M_KIT" "$M_BIG"
+}
+m_big_run claude
+assert_eq "M3b: claude — a 200 KB prompt is NOT in argv" \
+  "-p" "$(tr -d '\n' < "$M_ARGS")"
+assert_eq "M3b: …it arrived on stdin, whole" "200000" "$(wc -c < "$M_ARGS.stdin" 2>/dev/null || echo 0)"
+
+m_big_run codex
+assert_eq "M3b: codex — the positional is the read-from-stdin marker" "-" "$(tail -n 1 "$M_ARGS")"
+assert_eq "M3b: …and the prompt arrived on stdin, whole" "200000" "$(wc -c < "$M_ARGS.stdin")"
+
+# and the small case still rides on argv, so the dry runs stay readable
+m_run codex --no-preamble -- "SMALL" > /dev/null
+assert_eq "M3b: a small prompt still goes in argv" "SMALL" "$(tail -n 1 "$M_ARGS")"
+assert_eq "M3b: …with stdin closed" "" "$(cat "$M_ARGS.stdin")"
+
+# the python aggregator draws the same line, for the same reason
+M_PY_SCRIPTS="$REPO_ROOT/templates/skills/meeting-copilot/scripts"
+assert_ok "M3b: python — a prompt over the cap is routed to stdin" \
+  env PYTHONPATH="$M_PY_SCRIPTS" python3 -c "
+import sys; sys.path.insert(0, sys.argv[1])
+import agent_cli
+big = 'x' * 200000
+small = 'x' * 100
+assert agent_cli.via_stdin(big), 'a 200KB prompt must not go in argv'
+assert not agent_cli.via_stdin(small), 'a small prompt should stay in argv'
+assert big not in agent_cli.build(big, cli='claude'), 'claude argv still carries it'
+assert agent_cli.build(big, cli='codex')[-1] == '-', 'codex needs the - marker'
+assert agent_cli.build(small, cli='codex')[-1].endswith(small), 'small prompts stay positional'
+" "$M_PY_SCRIPTS"
 
 # ─── M4. the same prompt reaches both CLIs ─────────────────────────────────
 # This is the whole claim, run end to end through the shipped morning_brief.sh:

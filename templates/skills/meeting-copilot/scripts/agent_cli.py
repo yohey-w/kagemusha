@@ -41,6 +41,18 @@ import shutil
 import subprocess
 import tempfile
 
+# ⚠️ **argv には入りきらない。** Linux の1引数の上限は 128KB (MAX_ARG_STRLEN)。
+# 返し役は会議フォルダの kb/ を**全文**渡す設計で、実運用の会議フォルダ1件を
+# 実測すると **683KB**（2026-09-06）——**上限の5.3倍**。日本語は1文字3
+# バイトなので、argv に載るのは約43,000字まで。超えると
+# `OSError: [Errno 7] Argument list too long` で**会議中に沈黙する**（実測: 18万
+# バイトで発生）。だから大きいプロンプトは stdin から渡す。切り替えは自動で、
+# 呼び出し側は何も知らなくてよい——知らないと落ちる設計にはしない。
+#
+#   claude : claude -p --model … （位置引数なし）＋ stdin
+#   codex  : codex exec … -o <tmp> -  （`-` が stdin から読む合図。実測済み）
+_ARGV_SAFE_BYTES = 96 * 1024   # 128KB の手前。引数は他にもあるので余裕を取る
+
 PREAMBLE = (
     "ツールを使わず、出力だけを返してください。"
     "ファイルの読み書き・コマンド実行・検索はしないこと。\n\n"
@@ -69,27 +81,45 @@ def which() -> str:
                      "(AGENT_CLI / AGENT_CMD、または MEETLIVE_AGENT_CLI を設定してください)")
 
 
+def body_of(prompt: str, cli: str, no_preamble: bool = False) -> str:
+    """CLI へ実際に渡す本文。codex にだけ前置き文が付く。"""
+    if cli != "codex":
+        return prompt
+    quiet = no_preamble or os.environ.get("AGENT_CLI_NO_PREAMBLE") == "1"
+    return prompt if quiet else PREAMBLE + prompt
+
+
+def via_stdin(body: str) -> bool:
+    """本文が argv に入りきらない大きさか。入らないなら stdin から渡す。"""
+    return len(body.encode("utf-8", "replace")) > _ARGV_SAFE_BYTES
+
+
 def build(prompt: str, model: str = "", effort: str = "",
           cli: str = "", out_path: str = "<outfile>",
           no_preamble: bool = False) -> list[str]:
-    """実際に走る argv を組み立てる。表示・テスト・実行が同じ組み立てを通る。"""
+    """実際に走る argv を組み立てる。表示・テスト・実行が同じ組み立てを通る。
+
+    本文が大きいときは argv から外し、`-`（codex）または位置引数なし（claude）
+    にして stdin から渡す形にする。**どちらの形かは本文の大きさだけで決まる**。
+    """
     cli = cli or which()
     binary = os.environ.get("AGENT_CMD") or cli
+    body = body_of(prompt, cli, no_preamble)
+    stdin = via_stdin(body)
     if cli == "claude":
-        argv = [binary, "-p", prompt]
+        argv = [binary, "-p"] + ([] if stdin else [body])
         if model:
             argv += ["--model", model]
         if effort:
             argv += ["--effort", effort]
         return argv
-    quiet = no_preamble or os.environ.get("AGENT_CLI_NO_PREAMBLE") == "1"
-    body = prompt if quiet else PREAMBLE + prompt
     argv = [binary, "exec"]
     if model:
         argv += ["-m", model]
     if effort:
         argv += ["-c", f"model_reasoning_effort={effort}"]
-    argv += ["--ephemeral", "-s", "read-only", "-C", os.getcwd(), "-o", out_path, body]
+    argv += ["--ephemeral", "-s", "read-only", "-C", os.getcwd(), "-o", out_path]
+    argv += ["-" if stdin else body]
     return argv
 
 
@@ -100,10 +130,15 @@ def run(prompt: str, model: str = "", effort: str = "", timeout: float = 40.0,
     raises: subprocess.TimeoutExpired（呼び出し側が既に握っている）
     """
     cli = cli or which()
+    body = body_of(prompt, cli, no_preamble)
+    # stdin から渡すときだけ本文を input に置く。それ以外は**閉じる**——
+    # codex exec は stdin を「追加入力」として待つので、開けたままだと
+    # cron のように端末が無いところで固まる。
+    feed = {"input": body} if via_stdin(body) else {"stdin": subprocess.DEVNULL}
+
     if cli == "claude":
         r = subprocess.run(build(prompt, model, effort, cli=cli),
-                           capture_output=True, text=True, timeout=timeout,
-                           stdin=subprocess.DEVNULL)
+                           capture_output=True, text=True, timeout=timeout, **feed)
         return (r.stdout or "").strip()
 
     # codex: 最終回答は -o のファイルにしか無い（stdout は経過ログ）
@@ -112,8 +147,7 @@ def run(prompt: str, model: str = "", effort: str = "", timeout: float = 40.0,
     try:
         subprocess.run(build(prompt, model, effort, cli=cli, out_path=out_path,
                              no_preamble=no_preamble),
-                       capture_output=True, text=True, timeout=timeout,
-                       stdin=subprocess.DEVNULL)
+                       capture_output=True, text=True, timeout=timeout, **feed)
         with open(out_path, encoding="utf-8", errors="replace") as fh:
             return fh.read().strip()
     finally:
