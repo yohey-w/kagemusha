@@ -103,7 +103,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 
 ### Works with Claude Code and Codex CLI
 
-使う CLI は**キー1個**で決まります: `config.env` の `AGENT_CLI=claude|codex`（`auto` = PATH にある方）。プロンプトも書式も承認の境界も変わりません——**変わるのは起動行だけ**で、それは1か所（[`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)）が組み立てます。
+使う CLI は**キー1個**で決まります: `config.env` の `AGENT_CLI=claude|codex`（`auto` = PATH にある方）。**環境変数に置いた同じキーはファイルより強い**ので `AGENT_CLI=codex ./scripts/morning_brief.sh` は一回きりの切り替えになり、`AGENT_CMD` は「その CLI の実行ファイルの差し替え」だけを担います。プロンプトも書式も承認の境界も変わりません——**変わるのは起動行だけ**で、それは1か所（[`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)）が組み立てます。
 
 | | Claude Code | Codex CLI | 片方に無いときの代替 |
 |---|---|---|---|
