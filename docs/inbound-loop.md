@@ -147,6 +147,51 @@ claude -p "mcp__claude_ai_Gmail__search_threads で直近1件の件名だけ返�
 
 手で1回通す理由はもう1つある。**この失敗は fail-open で沈黙する**——権限拒否はレーン1本の down として扱われ、ログに1行残るだけで通知は来ない。スケジューラに載せた後では「静かに何も拾っていないスイープ」が回り続ける。（フラグの要否は CLI のバージョンで変わりうるので、上げたら1回引き直すこと。）
 
+### Codex CLI で同じことをするなら（実測 2026-09-06・codex-cli 0.149.0）
+
+**通った。** curated plugin の Gmail は、無人の `codex exec` から**追加の許可フラグなしで**呼べた。認証プロンプトは出ず、ローカルにトークンの配管も要らなかった（書き起こしに出るサーバ名は `codex_apps`＝OpenAI 側のコネクタ）。〔未確認〕Gmail 側の OAuth を実際にどこが保持しているかまでは確かめていない。
+
+```bash
+timeout 120 codex exec -s read-only --ephemeral -C "$PROJECT_ROOT" \
+  -o /tmp/sweep_out.txt \
+  "$(cat templates/inbound_sweep.md)" < /dev/null
+```
+
+実測した1回では、標準出力の書き起こしに
+
+```
+mcp: codex_apps/gmail.search_emails started
+mcp: codex_apps/gmail.search_emails (completed)
+```
+
+が出て件名が3件返り、終了コードは 0 だった。
+
+**`--allowedTools` に当たるものは無い。** `codex exec --help` にツール単位の許可リストは無く、`-s read-only` が縛るのは**ファイルシステムとシェル**であって**コネクタではない**。つまり `read-only` で走っていても、書き込み系のコネクタツール（メール送信・ラベル変更）は**構造的には呼べる**——止めているのはプロンプトの文言だけになる。Claude 側の `--allowedTools` が持っていた「機構としての境界」は、ここには無い。
+
+境界を機構で引きたいなら、いま確実なのは**プラグインを1つも余計に有効にしないこと**だ。有効・無効は `~/.codex/config.toml` に載る:
+
+```toml
+[plugins."gmail@openai-curated"]
+enabled = true
+```
+
+〔未確認〕**1回の起動だけ無効にする** `-c 'plugins."gmail@openai-curated".enabled=false'` が効くかは確かめられなかった。`codex plugin list` の表示は付けても付けなくても `installed, enabled` のままで、この一覧が「インストール状態」を出しているのか「その実行での有効状態」を出しているのかを区別できなかった。**確かめずに安全策として書くわけにはいかない**ので、恒久的に切るなら config.toml か `codex plugin remove` を使う。
+
+無人化の前に踏む地雷が3つある。どれも実測で踏んだ:
+
+- **`< /dev/null` は必須。** 付けないと `Reading additional input from stdin...` と出て待つ。cron でこれをやると、そのジョブは黙って止まったままになる。
+- **`--ephemeral` は rollout を書かない。** 「セッションファイルを残さず走る」オプションなので、[蒸留便](distillation-loop.md)の採取からもこの実行は見えなくなる。スイープの記録を後から採りたいなら外す。
+- **`bubblewrap` が見つからないという警告が stderr に出る**ことがある（同梱版にフォールバックして走る）。エラーではないので、stderr の有無で成否を判定しない。
+
+**判定は Claude 側と同じで「実際に1回呼ばせる」。** ただしこちらには機械的な証拠がある——`mcp: <サーバ>/<ツール> started` の行だ。プローブの出力をこの行で grep すれば、「呼べたつもり」と「呼べた」を取り違えない:
+
+```bash
+timeout 120 codex exec -s read-only --ephemeral \
+  "Gmail から直近1件の件名だけ返せ。呼べなければ ERROR: と理由だけ返せ" < /dev/null \
+  | tee /tmp/probe.txt
+grep -q '^mcp: .*started' /tmp/probe.txt && echo "コネクタは呼べた" || echo "呼べていない"
+```
+
 ---
 
 ## Tier 2（無人フォールバック）— スケジューラ・スクリプト: `scripts/inbound_watch.sh.example`

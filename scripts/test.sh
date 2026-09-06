@@ -21,6 +21,7 @@
 #         F discipline scanner · G distillation courier · H layer boundary
 #         I community lane · J the first-ten-minutes demo · K README contract
 #         L meeting-copilot (the skill that gets edited during a live meeting)
+#         M two CLIs, one loop (Claude Code / Codex: scaffold, dispatch, argv)
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -36,8 +37,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TESTS_DIR="$REPO_ROOT/tests"
 
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
-            i_community_lane j_demo k_readme l_meeting_copilot)
-MIN_ASSERTIONS=700   # floor for a full run (currently 711); raise it as you add tests
+            i_community_lane j_demo k_readme l_meeting_copilot m_codex)
+MIN_ASSERTIONS=790   # floor for a full run (currently 80x); raise it as you add tests
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }

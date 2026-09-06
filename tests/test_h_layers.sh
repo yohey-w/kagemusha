@@ -334,14 +334,16 @@ kit_copy "$H4_FX"
 assert_eq "H4: setup.sh exits 0" "0" "$?"
 
 h4_expected="$( { cut -f2 "$H_ROWS"
-                  # the two files setup.sh creates that are NOT manifest rows,
+                  # the three files setup.sh creates that are NOT manifest rows,
                   # named in the manifest's own "deliberately not" section
-                  printf 'config.env\njudgment/correction_patterns.txt\n'
+                  # (CLAUDE.md is the one-line `@AGENTS.md` import: a pointer,
+                  # with no template to copy it from)
+                  printf 'config.env\njudgment/correction_patterns.txt\nCLAUDE.md\n'
                 } | LC_ALL=C sort)"
 h4_tracked="$(git -C "$REPO_ROOT" ls-files | LC_ALL=C sort)"
 h4_now="$( (cd "$H4_FX" && find . -type f | sed 's|^\./||') | LC_ALL=C sort)"
 h4_created="$(comm -13 <(printf '%s\n' "$h4_tracked") <(printf '%s\n' "$h4_now"))"
-assert_eq "H4: the scaffolded tree is exactly the manifest (plus the two named extras)" \
+assert_eq "H4: the scaffolded tree is exactly the manifest (plus the three named extras)" \
   "$h4_expected" "$h4_created"
 
 # (b) the manifest is READ, not transcribed: add a row, and the file appears.

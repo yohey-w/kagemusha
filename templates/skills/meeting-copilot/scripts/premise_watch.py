@@ -27,13 +27,13 @@ import json
 import os
 import pathlib
 import re
-import subprocess
 import sys
 import time
 import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import meetlive_config as cfgmod  # noqa: E402
+import agent_cli                    # noqa: E402  起動口はここ1本
+import meetlive_config as cfgmod   # noqa: E402
 
 STATE = cfgmod.state_dir()
 LOG = STATE / "premise_watch.jsonl"
@@ -112,11 +112,9 @@ SYSTEM = (
 
 
 def _run(prompt: str, model: str, effort: str, timeout: float) -> str:
-    r = subprocess.run(
-        ["claude", "-p", prompt, "--model", model, "--effort", effort],
-        capture_output=True, text=True, timeout=timeout,
-    )
-    return (r.stdout or "").strip()
+    # 起動口は agent_cli 1本（claude / codex）。
+    return agent_cli.run(prompt, model=model, effort=effort, timeout=timeout,
+                         cli=cfgmod.agent_cli_name())
 
 
 def classify(utterance: str) -> dict:

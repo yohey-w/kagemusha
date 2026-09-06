@@ -9,6 +9,19 @@
 #
 #   ./scripts/setup.sh              # scaffold into the clone (recommended)
 #   ./scripts/setup.sh ~/work-loop  # …or into a separate directory
+#   ./scripts/setup.sh --codex      # …and write a starter .codex/config.toml
+#   ./scripts/setup.sh --link-skills  # symlink templates/skills/* into the CLIs
+#
+# ONE INSTRUCTIONS FILE, TWO NAMES. AGENTS.md is the file; CLAUDE.md is the
+# single line `@AGENTS.md`, which Claude Code imports (measured on Claude Code
+# 2.1.261 and codex-cli 0.149.0, not assumed). So the rule is asymmetric, and
+# deliberately so — the failure it avoids is two instruction files with
+# different contents, which is worse than either one alone:
+#   neither exists  -> AGENTS.md from the template, plus the CLAUDE.md pointer
+#   AGENTS.md only  -> add the pointer; the file itself is never touched
+#   CLAUDE.md only  -> DO NOTHING, print the one-line migration hint. Your
+#                      instructions are in there; a second file beside it,
+#                      generated from a template, would be a fork.
 #
 # WHAT IT COPIES IS DATA, NOT CODE. Every source->dest pair lives in
 # manifests/scaffold.tsv and this script only executes that list. A rule that
@@ -31,7 +44,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MANIFEST="${SCAFFOLD_MANIFEST:-$REPO_ROOT/manifests/scaffold.tsv}"
 
-TARGET="${1:-$REPO_ROOT}"
+WITH_CODEX=""
+LINK_SKILLS=""
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --codex)       WITH_CODEX=1; shift ;;
+    --link-skills) LINK_SKILLS=1; shift ;;
+    -h|--help)
+      sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    --*) printf 'setup.sh: unknown option: %s\n' "$1" >&2; exit 2 ;;
+    *)   POSITIONAL+=("$1"); shift ;;
+  esac
+done
+TARGET="${POSITIONAL[0]:-$REPO_ROOT}"
 
 # The sample-shelf directory name, spelled in two pieces on purpose — the same
 # reason manifests/scaffold.tsv spells it with a separator. This scaffolder must
@@ -96,6 +123,7 @@ mkdir -p "$TARGET/ssot" "$TARGET/briefs" "$TARGET/logs" "$TARGET/local" \
          "$TARGET/projects/_archive" \
          "$TARGET/judgment/mining" "$TARGET/judgment/reports" "$TARGET/judgment/logs"
 
+TARGET_ABS_EARLY="$(cd "$TARGET" && pwd)"
 echo "scaffolding work-loop into: $TARGET"
 
 copy() {  # copy() <src> <dst> — never clobber existing files
@@ -109,7 +137,6 @@ copy() {  # copy() <src> <dst> — never clobber existing files
   fi
 }
 
-AGENT_FILE_CREATED=""
 for row in "${ROWS[@]}"; do
   src="$(printf '%s' "$row" | cut -f1)"
   dst="$(printf '%s' "$row" | cut -f2)"
@@ -130,15 +157,25 @@ for row in "${ROWS[@]}"; do
         echo "  skip (exists): $TARGET/$blocked (agent instructions)"
       else
         copy "$REPO_ROOT/$src" "$TARGET/$dst"
-        [[ "$dst" == "CLAUDE.md" ]] && AGENT_FILE_CREATED=1
       fi
       ;;
     *) die "unknown guard '$grd' for $dst" ;;
   esac
 done
 
-if [[ -n "$AGENT_FILE_CREATED" ]]; then
-  echo "  → Codex user? rename it: mv $TARGET/CLAUDE.md $TARGET/AGENTS.md"
+# ─── the second name for the one instructions file ─────────────────────────
+# NOT a manifest row: there is no template to copy, only a one-line import. See
+# the header for why the three cases are handled differently, and the manifest's
+# "deliberately not in this manifest" list for why it cannot be a row.
+if [[ -e "$TARGET/AGENTS.md" && ! -e "$TARGET/CLAUDE.md" ]]; then
+  printf '@AGENTS.md\n' > "$TARGET/CLAUDE.md"
+  echo "  create:        $TARGET/CLAUDE.md (one line: @AGENTS.md — Claude Code imports it)"
+elif [[ -e "$TARGET/CLAUDE.md" && ! -e "$TARGET/AGENTS.md" ]]; then
+  echo "  skip (exists): $TARGET/CLAUDE.md (agent instructions)"
+  echo "  → Using Codex too? Codex reads AGENTS.md, not CLAUDE.md. Move it once:"
+  echo "      mv $TARGET/CLAUDE.md $TARGET/AGENTS.md && echo '@AGENTS.md' > $TARGET/CLAUDE.md"
+  echo "    Nothing was generated for you here on purpose: a second instructions"
+  echo "    file with different contents is worse than one under the other name."
 fi
 
 # ─── the correction vocabulary: a file, with nothing in it ─────────────────
@@ -178,6 +215,58 @@ CORRPAT
   echo "  create:        $CORR (no patterns — write your own before the scanner runs)"
 fi
 
+# ─── --codex : a starter .codex/config.toml (opt-in, never by default) ─────
+# NOT a manifest row, and behind a flag, because it is not part of the shape a
+# work-loop needs — it is one CLI's local settings, it names an absolute path
+# that only your machine knows, and it does nothing at all until you also mark
+# the project trusted in ~/.codex/config.toml. Generating it for everyone would
+# ship a file that silently does nothing, which is worse than no file.
+if [[ -n "$WITH_CODEX" ]]; then
+  CODEX_SRC="$REPO_ROOT/templates/codex/config.toml.example"
+  CODEX_DST="$TARGET/.codex/config.toml"
+  if [[ ! -f "$CODEX_SRC" ]]; then
+    die "missing template: $CODEX_SRC"
+  elif [[ -e "$CODEX_DST" ]]; then
+    echo "  skip (exists): $CODEX_DST"
+  else
+    mkdir -p "$(dirname "$CODEX_DST")"
+    cp "$CODEX_SRC" "$CODEX_DST"
+    echo "  create:        $CODEX_DST"
+    echo "  → it is INERT until you add this to ~/.codex/config.toml:"
+    echo "        [projects.\"$TARGET_ABS_EARLY\"]"
+    echo "        trust_level = \"trusted\""
+  fi
+fi
+
+# ─── --link-skills : one copy of each skill, both CLIs ─────────────────────
+# Claude Code reads ~/.claude/skills/, Codex reads ~/.codex/skills/. A skill
+# copied into both is a skill that will be edited in one of them. So: symlink,
+# into whichever of the two directories already exists, and NEVER over anything
+# that is already there — an existing entry is somebody's, not ours.
+if [[ -n "$LINK_SKILLS" ]]; then
+  SKILL_SRC="$REPO_ROOT/templates/skills"
+  if [[ ! -d "$SKILL_SRC" ]]; then
+    echo "  skills:        none to link ($SKILL_SRC is not a directory)"
+  else
+    linked_any=""
+    for skills_home in "$HOME/.claude/skills" "$HOME/.codex/skills"; do
+      [[ -d "$skills_home" ]] || { echo "  skills:        skip $skills_home (that CLI is not installed here)"; continue; }
+      linked_any=1
+      for skill in "$SKILL_SRC"/*/; do
+        [[ -d "$skill" ]] || continue
+        name="$(basename "$skill")"
+        if [[ -e "$skills_home/$name" || -L "$skills_home/$name" ]]; then
+          echo "  skip (exists): $skills_home/$name"
+        else
+          ln -s "${skill%/}" "$skills_home/$name"
+          echo "  link:          $skills_home/$name -> ${skill%/}"
+        fi
+      done
+    done
+    [[ -n "$linked_any" ]] || echo "  skills:        neither ~/.claude/skills nor ~/.codex/skills exists — nothing linked"
+  fi
+fi
+
 # a starter config next to the scripts (edit before running morning_brief.sh)
 if [[ ! -f "$REPO_ROOT/config.env" ]]; then
   copy "$REPO_ROOT/config.env.example" "$REPO_ROOT/config.env"
@@ -199,9 +288,10 @@ Everything above is an EMPTY form: no principle, no verifier, no correction
 vocabulary, no sample judgment. That is the design — see docs/layers.md.
 
 next, in three steps:
-  1. edit  $TARGET/CLAUDE.md — the delegation boundary and your own disciplines
-           (or rename it to AGENTS.md for Codex). Nothing else runs until an
-           agent knows what it may do without asking.
+  1. edit  $TARGET/AGENTS.md — the delegation boundary and your own disciplines.
+           Nothing else runs until an agent knows what it may do without asking.
+           (Codex reads that file directly; Claude Code reads it through the
+           one-line $TARGET/CLAUDE.md. One text, two names — edit AGENTS.md.)
   2. fill  $TARGET/ssot/*.md (decisions, tasks, glossary, people) and add one
            project card in $TARGET/system_map.md, with
            $TARGET/projects/_charter_template.md copied to
@@ -232,6 +322,11 @@ next, in three steps:
       and without it the scanner guesses a log path from there — i.e. the wrong one.
       (Check the guess above matches your CLI's transcript directory; if you work in
       more than one project, repeat --dir, or set DISTILL_LOG_DIRS in config.env.)
+      The path above is Claude Code's. ON CODEX the transcripts are elsewhere and
+      shaped differently: set LOG_SOURCE (and CODEX_SESSIONS_DIR / CODEX_CWD_FILTER)
+      in config.env, or pass --source codex, and drop the --dir above. LOG_SOURCE
+      defaults to "auto" = every CLI whose logs exist here. See
+      docs/distillation-loop.md.
     cron  23 6 * * *  $SCRIPT_DIR/distill.sh   (fires only past the threshold)
       then review $TARGET/judgment/promotion_queue.md by hand: promotion is the one
       step that stays manual, because a rule nobody reviewed would govern every run

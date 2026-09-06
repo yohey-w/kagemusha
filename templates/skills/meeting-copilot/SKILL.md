@@ -259,10 +259,20 @@ export MEETLIVE_KNOWLEDGE_DIR=/path/to/projects/acme/meetlive_knowledge
 
 | 変数 | 既定 | 意味 |
 |---|---|---|
-| `MEETLIVE_MODEL_PREMISE` / `_EFFORT_PREMISE` | `claude-sonnet-5` / `medium` | 前提監視(量産呼び出し) |
-| `MEETLIVE_MODEL_PREMISE_FALLBACK` / `_EFFORT_PREMISE_FALLBACK` | `claude-opus-5` / `medium` | 既定が空を返したときだけ1回 |
-| `MEETLIVE_MODEL_ANSWER` / `_EFFORT_ANSWER` | `claude-opus-5` / `low` | 台本外の回答(一発呼び出し) |
-| `MEETLIVE_MODEL_ANSWER_FALLBACK` / `_EFFORT_ANSWER_FALLBACK` | `claude-sonnet-5` / `low` | 同上のフォールバック |
+| `MEETLIVE_AGENT_CLI` | (空→PATHにある方・両方あれば `claude`) | 使う CLI: `claude` / `codex` |
+| `MEETLIVE_MODEL_PREMISE` / `_EFFORT_PREMISE` | claude: `claude-sonnet-5`/`medium`<br>codex: `gpt-5.6-sol`/`low` | 前提監視(量産呼び出し) |
+| `MEETLIVE_MODEL_PREMISE_FALLBACK` / `_EFFORT_PREMISE_FALLBACK` | claude: `claude-opus-5`/`medium`<br>codex: `gpt-5.6-sol`/`medium` | 既定が空を返したときだけ1回 |
+| `MEETLIVE_MODEL_ANSWER` / `_EFFORT_ANSWER` | claude: `claude-opus-5`/`low`<br>codex: `gpt-5.6-sol`/`xhigh` | 台本外の回答(一発呼び出し) |
+| `MEETLIVE_MODEL_ANSWER_FALLBACK` / `_EFFORT_ANSWER_FALLBACK` | claude: `claude-sonnet-5`/`low`<br>codex: `gpt-5.6-sol`/`low` | 同上のフォールバック |
+
+**既定が CLI ごとに違うのは、モデルidがCLIをまたいで通用しないから**(片方の既定を
+もう片方に渡すと、CLI 自身のエラーで空が返る＝画面の上では「材料になし」と区別が
+つかない)。`MEETLIVE_MODEL_*` を明示すれば、どちらの CLI でもそれが勝つ。
+
+⚠️ **codex の前提監視だけ effort が低いのは節約ではない。** 前提監視は発話ごとに
+叩き、呼び出し側の制限は20秒。実測(gpt-5.6-sol・短い1往復・2026-09-06)は
+**low 8.8秒 / medium 7.3秒 / xhigh 17.3秒**——xhigh は本番の長い前提リストでは
+入らず、**間に合わないと沈黙する**(空振りではなく無音になる)。
 | `MEETLIVE_KNOWLEDGE_PER_FILE` / `_TOTAL` | `9000` / `40000` | 接地資料の文字数上限 |
 | `MEETLIVE_TOKEN` | (空) | 子機との合言葉。`receiver.py --token` の既定値 |
 | `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` | — | 使う STT バックエンドに応じて必須 |
@@ -273,9 +283,13 @@ export MEETLIVE_KNOWLEDGE_DIR=/path/to/projects/acme/meetlive_knowledge
 
 ### 3.1 前提
 
-- **親機**: Linux または WSL2。Python 3.9+。`claude` CLI が PATH にあり、認証済みであること
-  (`premise_watch.py` / `answerer.py` は `claude -p <prompt> --model <m> --effort <e>` を
-  サブプロセスで叩く。CLI が無いと、この2つは黙って何も出さない)
+- **親機**: Linux または WSL2。Python 3.9+。**`claude` か `codex` のどちらかの CLI**が
+  PATH にあり、認証済みであること。`premise_watch.py` / `answerer.py` / `responder.py` は
+  `scripts/agent_cli.py` 経由でサブプロセスを起動する(claude なら
+  `claude -p <prompt> --model <m> --effort <e>`、codex なら
+  `codex exec -m <m> -c model_reasoning_effort=<e> --ephemeral -s read-only -o <tmp> <prompt>`)。
+  どちらも無いと、この3つは黙って何も出さない。使う CLI は `MEETLIVE_AGENT_CLI` で固定できる
+  (未指定なら PATH にある方・両方あれば `claude`)
 - **子機**: Windows ノートPC。Python 3.9+(`setup.cmd` が無ければ winget で入れる)
 - **2台をつなぐ網**: 子機から親機の TCP ポートへ届くこと。実運用では tailscale 等の
   プライベート網を想定。同じ LAN 内なら LAN の IP でよい
@@ -775,7 +789,9 @@ STT は呼びかけ語を高確率で化かす。**1回でも化けた綴りは�
    - `<state>/premise_watch.jsonl` を見る。**カードを出さなかった判定も全件残っている**
    - `type: なし` ばかり → 事実台帳の `title` が見出し調で、矛盾を判定できていない
    - `debounced: true` ばかり → 同種の連発を45秒で間引いている(`MEETLIVE_PREMISE_COOLDOWN`)
-   - ファイル自体が空 → `claude` CLI が PATH に無い / 認証が切れている。
+   - ファイル自体が空 → CLI が PATH に無い / 認証が切れている / モデルidが
+     いま使っている CLI のものでない。まず `python3 agent_cli.py` で、どちらの CLI が
+     選ばれて何が起動されるかを1行で見る。次に
      手で `python3 premise_watch.py "テストの発話"` を叩いて確かめる
 4. **台本外の質問に答えない**
    - 発火条件が厳しい: 「明確な疑問形の語尾 **かつ 30字以上**」または

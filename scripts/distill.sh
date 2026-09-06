@@ -51,6 +51,8 @@ export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"
 
 # ─── locate & load config ──────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/agent_cli.sh
+source "$SCRIPT_DIR/lib/agent_cli.sh"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG="${LOOP_CONFIG:-$REPO_ROOT/config.env}"
 if [[ ! -f "$CONFIG" ]]; then
@@ -61,7 +63,7 @@ fi
 # shellcheck disable=SC1090
 source "$CONFIG"
 
-: "${AGENT_CMD:?set AGENT_CMD in config.env}"
+agent_cli_which >/dev/null || exit 2
 
 MATERIAL="${DISTILL_MATERIAL_FILE:?set DISTILL_MATERIAL_FILE in config.env}"
 STATE="${DISTILL_STATE_FILE:?set DISTILL_STATE_FILE in config.env}"
@@ -84,9 +86,11 @@ MAX_MATERIAL_LINES="${DISTILL_MAX_MATERIAL_LINES:-400}"
 BATCH_DIR="${DISTILL_BATCH_DIR:-$(dirname "$MATERIAL")/batches}"
 # Deliberately NOT $AGENT_FLAGS. That key carries --dangerously-skip-permissions
 # for the scripts that need an agent with hands; this run must not have hands.
-# Empty = the CLI's own default, which in headless mode is "deny" (verified: a
-# `claude -p` asked to write a file with no flags reports the denial and exits 0
-# without creating it). Override only if your CLI needs a flag to be read-only.
+# Empty = the CLI's own default, which in headless mode is "deny" (verified on
+# Claude Code: a headless run asked to write a file with no permission flags
+# reports the denial and exits 0 without creating it. On Codex the same is
+# structural — scripts/lib/agent_cli.sh sends this call with -s read-only,
+# because --write was not asked for). Override only if your CLI needs a flag.
 DISTILL_FLAGS="${DISTILL_AGENT_FLAGS-}"
 LOGD="${LOG_DIR:-$REPO_ROOT/logs}"
 TODAY="$(date +%F)"
@@ -186,7 +190,9 @@ PROMPT="${PROMPT//\{\{MATERIAL\}\}/$MATERIAL_TEXT}"
 if [[ "${DISTILL_DRYRUN:-0}" = "1" ]]; then
   echo "=== DRY RUN: agent NOT invoked ==="
   echo "decision : FIRE — ${REASON}"
-  echo "command  : ${AGENT_CMD} -p <prompt> ${AGENT_MODEL:+--model ${AGENT_MODEL}} ${DISTILL_FLAGS}"
+  # printed by the same builder that agent_run uses, so this line cannot drift
+  # away from the call it describes
+  echo "command  : $(agent_cli_show --timeout "${AGENT_TIMEOUT:-1200}" --flags "${DISTILL_FLAGS}" -- '<prompt>')"
   echo "batch    : ${BATCH_ID} — ${BATCH_N} event(s) in, ${BATCH_DEFER} deferred to the next run"
   echo "manifest : ${BATCH_JSON}"
   echo "queue    : ${QUEUE}  (written by THIS script, not by the model)"
@@ -198,15 +204,11 @@ fi
 { echo "[$(date '+%F %T')] === distill ${TODAY} — FIRE: ${REASON} (batch ${BATCH_ID}) ==="; } >> "$LOG"
 MODEL_OUT="${BATCH_TXT%.txt}.out"
 
-# CLI-SWAP POINT ▼  (same as morning_brief.sh, minus the permissions)
-#   Claude : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+--model "$AGENT_MODEL"} $DISTILL_FLAGS
-#   Codex  : "$AGENT_CMD" exec "$PROMPT" $DISTILL_FLAGS
-#   Gemini : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+-m "$AGENT_MODEL"} $DISTILL_FLAGS
-# Whatever you put here, do NOT put the permission-skipping flag in it: this run
-# is supposed to be unable to touch a file, and the report comes back on stdout.
-# shellcheck disable=SC2086
-timeout "${AGENT_TIMEOUT:-1200}" "$AGENT_CMD" -p "$PROMPT" \
-  ${AGENT_MODEL:+--model "$AGENT_MODEL"} ${DISTILL_FLAGS} > "$MODEL_OUT" 2>>"$LOG"
+# One invocation for every CLI (scripts/lib/agent_cli.sh). No --write here, and
+# do NOT put a permission-skipping flag in DISTILL_FLAGS: this run is supposed to
+# be unable to touch a file, and the report comes back on stdout.
+agent_run --timeout "${AGENT_TIMEOUT:-1200}" --flags "${DISTILL_FLAGS}" -- "$PROMPT" \
+  > "$MODEL_OUT" 2>>"$LOG"
 RC=$?
 cat "$MODEL_OUT" >> "$LOG" 2>/dev/null || true
 

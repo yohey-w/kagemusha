@@ -438,24 +438,65 @@ def premise_cooldown() -> float:
 # ---------------------------------------------------------------- モデル
 
 
+# CLI ごとの既定モデル表。**モデルidはCLIをまたいで通用しない**ので、1つの
+# キーに両方を詰め込まず、使う CLI の側だけを既定にする。
+# MEETLIVE_MODEL_* を明示すればどちらの CLI でもそれが勝つ。
+#
+# codex の effort は**実測**で決めてある（gpt-5.6-sol・短いプロンプト1往復・
+# 2026-09-06 このマシン）: low 8.8秒 / medium 7.3秒 / xhigh 17.3秒。
+# premise は発話ごとに叩き、呼び出し側の制限が20秒なので xhigh は入らない
+# ——ここだけ低くしてあるのは節約ではなく、**間に合わないと沈黙するから**。
+_MODEL_DEFAULTS = {
+    "claude": {
+        "premise": ("claude-sonnet-5", "medium", "claude-opus-5", "medium"),
+        "answer": ("claude-opus-5", "low", "claude-sonnet-5", "low"),
+    },
+    "codex": {
+        "premise": ("gpt-5.6-sol", "low", "gpt-5.6-sol", "medium"),
+        "answer": ("gpt-5.6-sol", "xhigh", "gpt-5.6-sol", "low"),
+    },
+}
+
+
+def agent_cli_name() -> str:
+    """いま使う CLI 名: "claude" | "codex"。
+
+    ``MEETLIVE_AGENT_CLI`` を読むのはここ**だけ**（設定の解決は全部このファイル
+    の仕事）。未指定なら ``agent_cli.which()`` に PATH から選ばせ、それも決めら
+    れなければ従来どおり claude。
+    """
+    want = os.environ.get("MEETLIVE_AGENT_CLI", "").strip().lower()
+    if want in ("claude", "codex"):
+        return want
+    try:
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+        import agent_cli  # noqa: PLC0415
+        return agent_cli.which()
+    except Exception:
+        return "claude"
+
+
 def model(kind: str) -> tuple[str, str, str, str]:
     """(既定モデル, 既定effort, フォールバックモデル, フォールバックeffort)。
 
     kind="premise" … 発話ごとに毎回叩く**量産呼び出し**。安いモデルを既定に置く。
     kind="answer"  … 台本外の質問にだけ叩く**一発呼び出し**。上位モデルを置いてよい。
     """
+    d = _MODEL_DEFAULTS.get(agent_cli_name(), _MODEL_DEFAULTS["claude"])
     if kind == "premise":
+        m1, e1, m2, e2 = d["premise"]
         return (
-            os.environ.get("MEETLIVE_MODEL_PREMISE", "claude-sonnet-5"),
-            os.environ.get("MEETLIVE_EFFORT_PREMISE", "medium"),
-            os.environ.get("MEETLIVE_MODEL_PREMISE_FALLBACK", "claude-opus-5"),
-            os.environ.get("MEETLIVE_EFFORT_PREMISE_FALLBACK", "medium"),
+            os.environ.get("MEETLIVE_MODEL_PREMISE", m1),
+            os.environ.get("MEETLIVE_EFFORT_PREMISE", e1),
+            os.environ.get("MEETLIVE_MODEL_PREMISE_FALLBACK", m2),
+            os.environ.get("MEETLIVE_EFFORT_PREMISE_FALLBACK", e2),
         )
+    m1, e1, m2, e2 = d["answer"]
     return (
-        os.environ.get("MEETLIVE_MODEL_ANSWER", "claude-opus-5"),
-        os.environ.get("MEETLIVE_EFFORT_ANSWER", "low"),
-        os.environ.get("MEETLIVE_MODEL_ANSWER_FALLBACK", "claude-sonnet-5"),
-        os.environ.get("MEETLIVE_EFFORT_ANSWER_FALLBACK", "low"),
+        os.environ.get("MEETLIVE_MODEL_ANSWER", m1),
+        os.environ.get("MEETLIVE_EFFORT_ANSWER", e1),
+        os.environ.get("MEETLIVE_MODEL_ANSWER_FALLBACK", m2),
+        os.environ.get("MEETLIVE_EFFORT_ANSWER_FALLBACK", e2),
     )
 
 

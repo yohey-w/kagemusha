@@ -18,7 +18,8 @@
 import json, os, re, subprocess, sys, time, pathlib, datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import meetlive_config as cfgmod  # noqa: E402
+import agent_cli                    # noqa: E402  起動口はここ1本
+import meetlive_config as cfgmod   # noqa: E402
 
 STATE = cfgmod.state_dir()
 LOG = STATE / "answerer_log.jsonl"
@@ -97,11 +98,9 @@ def is_english_leak(line: str) -> bool:
 
 
 def _run(prompt, model, effort, timeout):
-    r = subprocess.run(
-        ["claude", "-p", prompt, "--model", model, "--effort", effort],
-        capture_output=True, text=True, timeout=timeout,
-    )
-    return (r.stdout or "").strip()
+    # 起動口は agent_cli 1本（claude / codex）。CLI ごとの引数の形はそこだけが持つ。
+    return agent_cli.run(prompt, model=model, effort=effort, timeout=timeout,
+                         cli=cfgmod.agent_cli_name())
 
 
 def answer(question, recent=""):

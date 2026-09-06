@@ -1,0 +1,42 @@
+{
+  "_comment": [
+    ".claude/settings.json — the per-repository settings Claude Code reads.",
+    "  cp templates/claude/settings.json.example .claude/settings.json",
+    "",
+    "This is the Claude Code half of the pair whose Codex half is",
+    "templates/codex/config.toml.example. The two files configure the SAME two",
+    "things — a date stamp on every turn, and where memory is kept — because",
+    "those are the two places where a CLI's own defaults quietly change what",
+    "your agent believes. Everything else about this kit is CLI-agnostic on",
+    "purpose (see AGENTS.md).",
+    "",
+    "JSON has no comments, so this key is the comment. Claude Code ignores",
+    "unknown keys; leaving it in place costs nothing.",
+    "",
+    "hooks.UserPromptSubmit: the command's stdout is prepended to your turn.",
+    "An agent that guesses today's date writes a deadline on the wrong weekday,",
+    "and a wrong '(Mon)' does not look wrong on re-reading — the only way to",
+    "catch it is to compare against a clock outside the model. So state it.",
+    "",
+    "autoMemoryDirectory: where this CLI keeps its own memory. Read AGENTS.md",
+    "on what that memory is allowed to be: a CACHE. The single source of truth",
+    "is the plain files (ssot/, judgment/, approval_queue.md, verifiers.md,",
+    "system_map.md, projects/*/charter.md) and nothing else. Delete the memory",
+    "directory and the loop must still be correct — only slower.",
+    "Replace <ABSOLUTE-PATH-TO-YOUR-WORK-LOOP> below, or drop the key entirely",
+    "to use the CLI's default location."
+  ],
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "date '+[now] %Y-%m-%d (%a) %H:%M %Z'"
+          }
+        ]
+      }
+    ]
+  },
+  "autoMemoryDirectory": "<ABSOLUTE-PATH-TO-YOUR-WORK-LOOP>/local/memory"
+}

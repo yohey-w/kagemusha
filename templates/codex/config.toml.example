@@ -1,0 +1,61 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# .codex/config.toml — the per-repository settings Codex CLI reads.
+#
+#   cp templates/codex/config.toml.example .codex/config.toml
+#   (or: ./scripts/setup.sh --codex, which also fills the path in for you)
+#
+# ⚠️ A PROJECT FILE IS ONLY READ IF THE PROJECT IS TRUSTED. Trust does not live
+# here — it lives in your USER config, ~/.codex/config.toml, keyed by the
+# absolute path. Measured on codex-cli 0.149.0: with the project untrusted, the
+# hooks below are silently ignored — no warning, no error, no hook line in the
+# transcript. Add this to ~/.codex/config.toml first:
+#
+#     [projects."/absolute/path/to/your/work-loop"]
+#     trust_level = "trusted"
+#
+# ⚠️ HOOKS ALSO NEED HOOK TRUST, which is separate again. Codex asks you to
+# review a hook the first time it sees it. An unattended run (cron) has nobody
+# to ask, so a scheduled run needs `--dangerously-bypass-hook-trust` — and that
+# flag means exactly what it says: every enabled hook runs unreviewed. Prefer
+# running the CLI by hand once so the trust is persisted.
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── model and reasoning ───────────────────────────────────────────────────
+# The kit's scripts pass these per call (scripts/lib/agent_cli.sh), so what you
+# put here is the default for the INTERACTIVE session you open in this folder.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
+
+# ─── sandbox ───────────────────────────────────────────────────────────────
+# read-only  — the agent can look but not touch (what the distillation lane uses)
+# workspace-write — it may write inside this folder (what the morning brief needs)
+# The scripts pass -s explicitly, so this is, again, your interactive default.
+sandbox_mode = "workspace-write"
+
+# ─── the date stamp: the Codex equivalent of a Claude Code hook ────────────
+# WHY IT EXISTS AT ALL. An agent that guesses today's date writes a deadline on
+# the wrong weekday and the mistake reads as correct — a wrong "(Mon)" does not
+# look wrong. So the machine states the date, once, at the top of every turn,
+# and nothing has to remember to ask.
+#
+# UserPromptSubmit fires before your message reaches the model and its stdout is
+# added to the turn. VERIFIED on codex-cli 0.149.0 (the hook ran and its output
+# arrived); the event name and this table shape are what that run used. Other
+# event names ship in the same binary — SessionStart, SessionEnd, Stop,
+# PreToolUse, PostToolUse, PermissionRequest, Compact — but only UserPromptSubmit
+# was measured here, so treat the rest as "present, unverified".
+[[hooks.UserPromptSubmit]]
+
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "date '+[now] %Y-%m-%d (%a) %H:%M %Z'"
+
+# ─── skills ────────────────────────────────────────────────────────────────
+# Codex discovers skills under ~/.codex/skills/ (and a plugin may add more).
+# `./scripts/setup.sh --link-skills` symlinks templates/skills/* into whichever
+# of ~/.claude/skills/ and ~/.codex/skills/ exists, so one copy serves both CLIs.
+# There is nothing to configure here for that; this note is the signpost.
+
+# ─── MCP servers ───────────────────────────────────────────────────────────
+# Add them with `codex mcp add`, which writes them into your USER config rather
+# than this file. The inbound lane's connector recipes are in docs/inbound-loop.md.

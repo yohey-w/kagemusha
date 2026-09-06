@@ -48,7 +48,8 @@ kagemusha/                     ← your clone = your instance
 ├── cookbook/                    ✓ tracked (the sample shelf — never scaffolded)
 │   ├── author/                  the author's burned disciplines + evidence excerpts
 │   └── community/               one directory per contributor, format-lint only
-├── CLAUDE.md (or AGENTS.md)      agent instructions — the instance constitution
+├── AGENTS.md                     agent instructions — the instance constitution
+├── CLAUDE.md                     one line: @AGENTS.md (Claude Code imports it)
 ├── system_map.md                 the one-screen board
 ├── approval_queue.md             the queue outward operations pile into
 ├── verifiers.md                  standing verifiers
@@ -129,7 +130,8 @@ kagemusha/                     ← あなたの clone ＝ あなたの実走環�
 ├── cookbook/                     ✓ 追跡（標本棚——setup.sh は決して展開しない）
 │   ├── author/                   作者が焼いた規律集＋実走の証拠抜粋
 │   └── community/                投稿者1人1ディレクトリ・形式 lint のみ
-├── CLAUDE.md (または AGENTS.md)  エージェント指示——実走環境の憲法
+├── AGENTS.md                     エージェント指示——実走環境の憲法
+├── CLAUDE.md                     1行だけ: @AGENTS.md（Claude Code が取り込む）
 ├── system_map.md                 1画面の盤面
 ├── approval_queue.md             外向き操作が積まれるキュー
 ├── verifiers.md                  常設検証器
