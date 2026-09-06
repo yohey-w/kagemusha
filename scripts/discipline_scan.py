@@ -33,13 +33,25 @@ Two kinds of discipline, and the difference decides what the numbers mean:
 
 Usage:
   scripts/discipline_scan.py --catalog judgment/discipline_catalog.yaml \\
-      [--since 7d] [--dir DIR ...] [--out FILE] [--max-samples 4] [--snippet 150]
+      [--since 7d] [--dir DIR ...] [--source CLI] [--codex-dir DIR ...] \\
+      [--codex-cwd PATH ...] [--out FILE] [--max-samples 4] [--snippet 150]
 
   --catalog   your discipline catalog (start from
               templates/discipline_catalog.example.yaml)
-  --dir       a directory of *.jsonl session logs; repeatable.
+  --dir       a directory of Claude Code *.jsonl session logs; repeatable.
               Default: ~/.claude/projects/<slug of the current directory>,
               which is where Claude Code keeps this project's transcripts.
+  --source    which CLI's logs to read: claude | codex | auto. Default:
+              $LOG_SOURCE, else `auto` = every CLI whose logs exist here —
+              EXCEPT that naming --dir without naming a Codex directory means
+              Claude Code only. A caller who said where the transcripts are
+              drew a boundary; auto does not walk around it.
+  --codex-dir a Codex sessions root; repeatable. Default: $CODEX_SESSIONS_DIR,
+              else ~/.codex/sessions.
+  --codex-cwd keep only Codex sessions whose working directory is this path or
+              below it; repeatable. Codex files every project into one tree,
+              so this is how you scope the audit to one project the way --dir
+              does for Claude Code.
   --out       write the Markdown digest here ("-" = stdout, the default)
 
 Exit codes: 0 ok · 2 bad usage / bad catalog / nothing to scan.
@@ -50,12 +62,15 @@ dead", and those two must never be confusable.
 Stdlib only. Reads logs; writes one file. Nothing leaves the machine.
 """
 import datetime
-import glob
 import hashlib
 import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+import log_sources  # noqa: E402
+from log_sources import CODEX  # noqa: E402
 
 VALID_TYPES = ("trace", "prohibition")
 VALID_ROLES = ("assistant", "user", "any")
@@ -230,90 +245,101 @@ def die(msg):
     sys.exit(2)
 
 
-# ── log walk ───────────────────────────────────────────────────────────────
-def text_of(content):
-    """Message text, whichever shape the transcript uses.
+def resolve_sources(argv):
+    """(sources, display_dirs) for this invocation.
 
-    A user turn's `content` is often a BARE STRING while an assistant turn is a
-    list of typed blocks. Handling only the list shape silently drops every
-    human turn — which is most of the breach evidence — so both shapes are
-    handled here and a regression test pins it.
+    --source picks the CLI: claude | codex | auto (default, or $LOG_SOURCE).
+    Naming --dir without naming a Codex directory means Claude Code only — the
+    caller drew a boundary and `auto` does not walk around it. Codex keeps
+    every project in one tree, so --codex-cwd is what scopes an audit there.
+
+    A directory named by the caller that does not exist is fatal even when the
+    other CLI has logs: "you did no work" and "the scanner has been pointed at
+    nothing since March" must never look alike.
     """
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = []
-        for c in content:
-            if isinstance(c, dict) and c.get("type") == "text" and c.get("text"):
-                parts.append(c["text"])
-            elif isinstance(c, str):
-                parts.append(c)
-        return "\n".join(parts)
-    return ""
+    named = [os.path.expanduser(p) for p in opts(argv, "--dir", multi=True)]
+    codex_dirs = [os.path.expanduser(p) for p in opts(argv, "--codex-dir", multi=True)]
+    codex_cwd = [os.path.expanduser(p) for p in opts(argv, "--codex-cwd", multi=True)]
+    source = log_sources.resolve_source_name(
+        opts(argv, "--source"), claude_named=bool(named),
+        codex_named=bool(codex_dirs or codex_cwd))
+
+    claude_dirs = named or (default_dirs() if source != CODEX else None)
+    try:
+        sources = log_sources.build_sources(
+            source, claude_dirs=claude_dirs,
+            codex_dirs=codex_dirs or None, codex_cwd=codex_cwd or None)
+    except ValueError as e:
+        die(str(e))
+
+    dirs = []
+    for src in sources:
+        dirs.extend(src.dirs)
+    for asked in (named, codex_dirs):
+        if asked and not [d for d in asked if os.path.isdir(d)]:
+            die("no session-log directory found: %s\n"
+                "  Pass --dir explicitly. (The default is derived from the current\n"
+                "  directory; it only exists if this project has transcripts.)"
+                % ", ".join(asked))
+    if not any(src.existing_dirs() for src in sources):
+        die("no session-log directory found: %s\n"
+            "  Pass --dir explicitly. (The default is derived from the current\n"
+            "  directory; it only exists if this project has transcripts.)"
+            % ", ".join(dirs))
+    return sources, dirs
 
 
-def scan(dirs, disciplines, cutoff, max_samples, snippet):
+# ── log walk ───────────────────────────────────────────────────────────────
+# The file formats live in scripts/lib/log_sources.py, which yields one record
+# shape for every supported CLI — including the bare-string `content` a user
+# turn often carries, which a reader that handles only the list shape silently
+# drops (that was most of the breach evidence; a regression test pins it).
+text_of = log_sources.text_of
+
+
+def scan(sources, disciplines, cutoff, max_samples, snippet):
     hits = {d["id"]: {"fire": [], "breach": [], "fire_n": 0, "breach_n": 0}
             for d in disciplines}
     seen = set()
     files = msgs = 0
     cut_s = cutoff.isoformat()
 
-    for d in dirs:
-        if not os.path.isdir(d):
-            continue
-        for path in sorted(glob.glob(os.path.join(d, "*.jsonl"))):
-            try:
-                if os.path.getmtime(path) < cutoff.timestamp():
-                    continue
-            except OSError:
-                continue
+    for source in sources:
+        for sf in source.iter_files(cutoff):
             files += 1
-            src = os.path.basename(path)[:8]
-            with open(path, errors="replace") as fh:
-                for line in fh:
-                    # cheap prefilter — note it keys on the ROLE, never on
-                    # '"text"', which would drop bare-string user turns
-                    if '"assistant"' not in line and '"user"' not in line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except ValueError:
-                        continue
-                    kind = obj.get("type")
-                    if kind not in ("assistant", "user"):
-                        continue
-                    ts = obj.get("timestamp", "")
-                    if not ts or ts < cut_s:
-                        continue
-                    txt = text_of((obj.get("message") or {}).get("content")).strip()
-                    if not txt or txt.startswith(SKIP_PREFIX):
-                        continue
-                    if "<system-reminder>" in txt[:80]:
-                        continue
-                    role = "assistant" if kind == "assistant" else "user"
-                    sub = bool(obj.get("isSidechain"))
-                    msgs += 1
-                    for d_ in disciplines:
-                        for rex, slot, want in ((d_["_fire"], "fire", d_["role"]),
-                                                (d_["_breach"], "breach", d_["breach_role"])):
-                            if rex is None or (want != "any" and want != role):
-                                continue
-                            m = rex.search(txt)
-                            if not m:
-                                continue
-                            start = max(0, m.start() - 40)
-                            frag = txt[start:start + snippet].replace("\n", " ").strip()
-                            key = hashlib.md5(
-                                (d_["id"] + slot + frag[:80]).encode("utf-8")).hexdigest()
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            h = hits[d_["id"]]
-                            h[slot + "_n"] += 1
-                            if len(h[slot]) < max_samples:
-                                h[slot].append({"ts": ts[:16].replace("T", " "),
-                                                "src": src, "sub": sub, "frag": frag})
+            src = sf.session_id[:8]
+            for rec in sf.records():
+                ts = rec["ts"]
+                if not ts or ts < cut_s:
+                    continue
+                txt = rec["text"].strip()
+                if not txt or txt.startswith(SKIP_PREFIX):
+                    continue
+                if "<system-reminder>" in txt[:80]:
+                    continue
+                role = rec["role"]
+                sub = rec["is_sidechain"]
+                msgs += 1
+                for d_ in disciplines:
+                    for rex, slot, want in ((d_["_fire"], "fire", d_["role"]),
+                                            (d_["_breach"], "breach", d_["breach_role"])):
+                        if rex is None or (want != "any" and want != role):
+                            continue
+                        m = rex.search(txt)
+                        if not m:
+                            continue
+                        start = max(0, m.start() - 40)
+                        frag = txt[start:start + snippet].replace("\n", " ").strip()
+                        key = hashlib.md5(
+                            (d_["id"] + slot + frag[:80]).encode("utf-8")).hexdigest()
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        h = hits[d_["id"]]
+                        h[slot + "_n"] += 1
+                        if len(h[slot]) < max_samples:
+                            h[slot].append({"ts": ts[:16].replace("T", " "),
+                                            "src": src, "sub": sub, "frag": frag})
     return hits, files, msgs
 
 
@@ -393,16 +419,10 @@ def main():
     except ValueError:
         die("--max-samples and --snippet want integers")
 
-    dirs = [os.path.expanduser(p) for p in opts(argv, "--dir", multi=True)] or default_dirs()
-    missing = [d for d in dirs if not os.path.isdir(d)]
-    if len(missing) == len(dirs):
-        die("no session-log directory found: %s\n"
-            "  Pass --dir explicitly. (The default is derived from the current\n"
-            "  directory; it only exists if this project has transcripts.)"
-            % ", ".join(missing))
+    sources, dirs = resolve_sources(argv)
 
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
-    hits, files, msgs = scan(dirs, disciplines, cutoff, max_samples, snippet)
+    hits, files, msgs = scan(sources, disciplines, cutoff, max_samples, snippet)
     if files == 0:
         # An empty report and "every discipline is dead" must never look alike.
         die("no session log from the last %d day(s) under: %s\n"
