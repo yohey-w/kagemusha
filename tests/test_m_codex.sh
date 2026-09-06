@@ -1,0 +1,331 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════
+# M. two CLIs, one loop — Claude Code and Codex CLI.
+#
+# The claim this group holds up is narrow and testable: SWITCHING THE CLI MUST
+# CHANGE THE CALL AND NOTHING ELSE. Same prompt, same SSOT, same instructions
+# file, same scaffolding — a different command line, and that is all.
+#
+#   M1  the scaffolder's asymmetric instructions rule, all three cases
+#   M2  the opt-in flags (--codex, --link-skills) and what they refuse to do
+#   M3  agent_cli.sh dispatch, argv shape asserted per CLI with fake binaries
+#   M4  the same prompt reaches both CLIs — proved by running the real
+#       morning_brief.sh twice against shims and diffing what arrived
+#   M5  no executable in the kit starts an AI CLI outside the two aggregators
+#   M6  no mechanism file names one CLI's private paths or tool namespace
+#   M7  the Codex conversation-log adapter's own unit tests (band B), when
+#       that file is present in the tree
+#
+# NO AI CLI IS CALLED. Every invocation here lands on a shim in a throwaway
+# directory, and the tests assert argv — never model output.
+# ═══════════════════════════════════════════════════════════════════════════
+# shellcheck shell=bash
+# shellcheck disable=SC2154  # globals come from scripts/test.sh
+
+group "M. two CLIs, one loop (Claude Code · Codex)"
+
+M_KIT="$TEST_TMP/m_kit"; kit_copy "$M_KIT"
+
+# ─── M1. one instructions file, two names, asymmetric on purpose ───────────
+# The failure this rule exists to prevent is TWO instruction files with
+# different contents. Adding a pointer beside your file cannot cause it; and
+# generating a second file from a template beside your own is exactly it.
+m_scaffold() {  # m_scaffold <fixture-name> [preexisting file=content ...]
+  local fx="$TEST_TMP/m_$1"; shift
+  kit_copy "$fx"
+  local kv
+  for kv in "$@"; do printf '%s\n' "${kv#*=}" > "$fx/${kv%%=*}"; done
+  "$fx/scripts/setup.sh" > "$fx/.setup.log" 2>&1
+  printf '%s' "$fx"
+}
+
+M_FRESH="$(m_scaffold fresh)"
+assert_file "M1: neither present → AGENTS.md is written" "$M_FRESH/AGENTS.md"
+assert_same "M1: …from templates/agent_instructions.md, byte for byte" \
+  "$M_FRESH/AGENTS.md" "$M_FRESH/templates/agent_instructions.md"
+assert_eq "M1: …and CLAUDE.md is the one-line import, nothing more" \
+  "@AGENTS.md" "$(cat "$M_FRESH/CLAUDE.md")"
+
+M_AONLY="$(m_scaffold aonly "AGENTS.md=# mine, for codex")"
+assert_grep "M1: AGENTS.md only → the file itself is untouched" \
+  "mine, for codex" "$M_AONLY/AGENTS.md"
+assert_eq "M1: …and the missing pointer is supplied" \
+  "@AGENTS.md" "$(cat "$M_AONLY/CLAUDE.md")"
+
+M_CONLY="$(m_scaffold conly "CLAUDE.md=# mine, for claude")"
+assert_absent "M1: CLAUDE.md only → NO AGENTS.md is generated beside it" "$M_CONLY/AGENTS.md"
+assert_grep "M1: …the file itself is untouched" "mine, for claude" "$M_CONLY/CLAUDE.md"
+assert_grep "M1: …and the migration is printed, not performed" \
+  "mv $M_CONLY/CLAUDE.md $M_CONLY/AGENTS.md" "$M_CONLY/.setup.log"
+
+# the pointer is a POINTER: it must never become a second copy of the rules
+assert_ne "M1: the pointer is not a second copy of the instructions" \
+  "$(cat "$M_FRESH/templates/agent_instructions.md")" "$(cat "$M_FRESH/CLAUDE.md")"
+assert_eq "M1: …and it is exactly one line" "1" "$(wc -l < "$M_FRESH/CLAUDE.md")"
+
+# ─── M2. the opt-in flags ──────────────────────────────────────────────────
+# .codex/config.toml is NOT part of the default scaffold. It names an absolute
+# path only your machine knows and it does nothing until the project is also
+# trusted in ~/.codex/config.toml, so shipping it by default would ship a file
+# that silently has no effect.
+assert_absent "M2: a default scaffold writes no .codex/config.toml" "$M_FRESH/.codex/config.toml"
+M_CX="$TEST_TMP/m_codexflag"; kit_copy "$M_CX"
+"$M_CX/scripts/setup.sh" --codex > "$M_CX/.setup.log" 2>&1
+assert_eq "M2: setup.sh --codex exits 0" "0" "$?"
+assert_file "M2: --codex writes .codex/config.toml" "$M_CX/.codex/config.toml"
+assert_same "M2: …from templates/codex/config.toml.example" \
+  "$M_CX/.codex/config.toml" "$M_CX/templates/codex/config.toml.example"
+assert_grep "M2: …and the run says it is inert until the project is trusted" \
+  "trust_level" "$M_CX/.setup.log"
+# the template has to carry the two things that make it work at all
+assert_grep "M2: the Codex template configures the date-stamp hook" \
+  "hooks.UserPromptSubmit" "$M_KIT/templates/codex/config.toml.example"
+assert_grep "M2: …and the Claude template configures the same thing" \
+  "UserPromptSubmit" "$M_KIT/templates/claude/settings.json.example"
+assert_ok "M2: the Claude settings template is valid JSON" \
+  python3 -c "import json,sys;json.load(open(sys.argv[1]))" "$M_KIT/templates/claude/settings.json.example"
+assert_ok "M2: the Codex config template is valid TOML" \
+  python3 -c "import tomllib,sys;tomllib.load(open(sys.argv[1],'rb'))" "$M_KIT/templates/codex/config.toml.example"
+
+assert_exit "M2: an unknown flag is refused, not silently ignored" 2 \
+  "$M_KIT/scripts/setup.sh" --no-such-flag
+
+# --link-skills, against a fake HOME with only ONE of the two CLIs installed
+M_SKHOME="$TEST_TMP/m_skillhome"
+mkdir -p "$M_SKHOME/.codex/skills"          # codex present, claude absent
+printf 'not ours\n' > "$M_SKHOME/.codex/skills/OCCUPIED"
+M_SK="$TEST_TMP/m_skills"; kit_copy "$M_SK"
+mkdir -p "$M_SK/templates/skills/OCCUPIED"
+HOME="$M_SKHOME" "$M_SK/scripts/setup.sh" --link-skills > "$M_SK/.setup.log" 2>&1
+assert_eq "M2: setup.sh --link-skills exits 0" "0" "$?"
+assert_eq "M2: an existing skill entry is never replaced" \
+  "not ours" "$(cat "$M_SKHOME/.codex/skills/OCCUPIED")"
+assert_grep "M2: …and the run says it skipped it" "skip (exists)" "$M_SK/.setup.log"
+if [[ -L "$M_SKHOME/.codex/skills/meeting-copilot" ]]; then
+  pass "M2: a shipped skill is symlinked (not copied) into the CLI that IS installed"
+else
+  fail "M2: a shipped skill is symlinked (not copied) into the CLI that IS installed" \
+    "$(ls -la "$M_SKHOME/.codex/skills" 2>&1)"
+fi
+assert_absent "M2: nothing is created for the CLI that is not installed" "$M_SKHOME/.claude"
+
+# ─── M3. dispatch: the argv each CLI actually receives ─────────────────────
+# The old design was a comment telling you to edit one of three invocation
+# lines, in four files. Nothing checked that you edited them consistently.
+# Here the command line is built in one function and asserted here.
+M_BIN="$TEST_TMP/m_bin"; mkdir -p "$M_BIN"
+M_ARGS="$TEST_TMP/m_argv.txt"
+# The prompt is recorded on its own, in $SHIM_ARGS.prompt: a prompt is many
+# lines long, so a line-per-argument dump cannot be split back into arguments.
+cat > "$M_BIN/claude" <<'SHIM'
+#!/usr/bin/env bash
+: > "$SHIM_ARGS"; for a in "$@"; do printf '%s\n' "$a" >> "$SHIM_ARGS"; done
+prev=""; for a in "$@"; do [[ "$prev" == "-p" ]] && printf '%s' "$a" > "$SHIM_ARGS.prompt"; prev="$a"; done
+printf 'CLAUDE-ANSWER\n'
+SHIM
+cat > "$M_BIN/codex" <<'SHIM'
+#!/usr/bin/env bash
+: > "$SHIM_ARGS"; for a in "$@"; do printf '%s\n' "$a" >> "$SHIM_ARGS"; done
+# codex takes the prompt as the last positional and writes its final message to
+# the file named by -o, and only there — stdout is the session banner.
+out=""; prev=""; last=""
+for a in "$@"; do [[ "$prev" == "-o" ]] && out="$a"; prev="$a"; last="$a"; done
+printf '%s' "$last" > "$SHIM_ARGS.prompt"
+[[ -n "$out" ]] && printf 'CODEX-ANSWER\n' > "$out"
+printf 'banner: this is the session log, not the answer\n'
+SHIM
+chmod +x "$M_BIN/claude" "$M_BIN/codex"
+
+m_run() {  # m_run <AGENT_CLI> [extra agent_run args...] — echo the answer
+  local cli="$1"; shift
+  env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI="$cli" \
+      AGENT_CMD="" AGENT_MODEL="" AGENT_MODEL_CLAUDE="" AGENT_MODEL_CODEX="" \
+      AGENT_EFFORT="" AGENT_EFFORT_CLAUDE="" AGENT_EFFORT_CODEX="" \
+      AGENT_FLAGS="" CODEX_FLAGS="" PROJECT_ROOT="$TEST_TMP/m_root" \
+      bash -c 'source "$1/scripts/lib/agent_cli.sh"; shift; agent_run "$@"' _ "$M_KIT" "$@"
+}
+m_argv() { tr '\n' '|' < "$M_ARGS"; }
+
+assert_eq "M3: claude — the answer comes back on stdout" \
+  "CLAUDE-ANSWER" "$(m_run claude --model m1 --effort e1 -- "THE PROMPT")"
+assert_eq "M3: claude — argv is -p <prompt> --model --effort" \
+  "-p|THE PROMPT|--model|m1|--effort|e1|" "$(m_argv)"
+
+assert_eq "M3: codex — the answer comes from -o, not from stdout" \
+  "CODEX-ANSWER" "$(m_run codex --model m1 --effort e1 --no-preamble -- "THE PROMPT")"
+M_CODEX_ARGV="$(m_argv)"
+for m_want in "exec|" "-m|m1|" "-c|model_reasoning_effort=e1|" "--ephemeral|" "-s|read-only|" "-o|"; do
+  case "$M_CODEX_ARGV" in
+    *"$m_want"*) pass "M3: codex argv carries: ${m_want//|/ }" ;;
+    *) fail "M3: codex argv carries: ${m_want//|/ }" "got: $M_CODEX_ARGV" ;;
+  esac
+done
+assert_eq "M3: codex — the prompt is the LAST argument (a positional, not a flag)" \
+  "THE PROMPT" "$(tail -n 1 "$M_ARGS")"
+
+# --write is the only thing that opens the sandbox, and it is per call
+m_run codex --write --no-preamble -- "W" > /dev/null
+assert_grep "M3: --write selects workspace-write" "workspace-write" "$M_ARGS"
+m_run codex --no-preamble -- "R" > /dev/null
+assert_no_grep "M3: …and without it the run cannot write" "workspace-write" "$M_ARGS"
+
+# the working root is named, because cron's working directory is $HOME
+assert_grep "M3: codex is given an explicit working root (cron's cwd is \$HOME)" \
+  "$TEST_TMP/m_root" "$M_ARGS"
+
+# the read-only preamble: codex exec is agentic unless told otherwise
+m_run codex -- "ASK" > /dev/null
+assert_grep "M3: a read-only codex call is told not to use tools" "Do not use any tool" "$M_ARGS"
+m_run codex --write -- "ASK" > /dev/null
+assert_no_grep "M3: …and a --write call is NOT (it has files to touch)" \
+  "Do not use any tool" "$M_ARGS"
+m_run claude -- "ASK" > /dev/null
+assert_no_grep "M3: …and claude never gets the preamble" "Do not use any tool" "$M_ARGS"
+
+# `--flags ""` means no flags. It is not the same as leaving it out — distill.sh
+# passes an empty string precisely to keep --dangerously-skip-permissions out.
+M_FLAGGED="$(env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI=claude \
+  AGENT_FLAGS="--dangerously-skip-permissions" \
+  bash -c 'source "$1/scripts/lib/agent_cli.sh"; agent_run --flags "" -- P >/dev/null; tr "\n" "|" < "$SHIM_ARGS"' _ "$M_KIT")"
+assert_no_grep_str "M3: --flags '' keeps the permission flag OUT" \
+  "dangerously" "$M_FLAGGED"
+M_DEFAULTED="$(env PATH="$M_BIN:/usr/bin:/bin" SHIM_ARGS="$M_ARGS" AGENT_CLI=claude \
+  AGENT_FLAGS="--dangerously-skip-permissions" \
+  bash -c 'source "$1/scripts/lib/agent_cli.sh"; agent_run -- P >/dev/null; tr "\n" "|" < "$SHIM_ARGS"' _ "$M_KIT")"
+case "$M_DEFAULTED" in
+  *dangerously*) pass "M3: …while omitting --flags DOES inherit AGENT_FLAGS" ;;
+  *) fail "M3: …while omitting --flags DOES inherit AGENT_FLAGS" "got: $M_DEFAULTED" ;;
+esac
+
+# detection never starts a CLI, and says so plainly when there is nothing to run
+# PATH is emptied INSIDE the shell, not around it: with an empty PATH outside,
+# `env` cannot find bash and the check would pass on the wrong error.
+M_NOCLI="$(AGENT_CLI=auto AGENT_CMD="" bash -c \
+  'export PATH=/nonexistent; source "$1/scripts/lib/agent_cli.sh"; agent_cli_which' _ "$M_KIT" 2>&1)"
+assert_nonempty_str "M3: with no CLI on PATH the failure names the keys to set" \
+  "$(printf '%s' "$M_NOCLI" | grep -F 'AGENT_CLI' || true)"
+
+# ─── M4. the same prompt reaches both CLIs ─────────────────────────────────
+# This is the whole claim, run end to end through the shipped morning_brief.sh:
+# swap the CLI and the COMMAND changes while the PROMPT does not.
+M_LOOP="$TEST_TMP/m_loop"; mkdir -p "$M_LOOP/ssot" "$M_LOOP/briefs" "$M_LOOP/logs"
+M_CFG="$TEST_TMP/m_config.env"
+m_brief() {  # m_brief <AGENT_CLI> <argv-file> — run the real script with shims
+  cat > "$M_CFG" <<CFG
+PROJECT_ROOT="$M_LOOP"
+SSOT_DIR="\$PROJECT_ROOT/ssot"
+BRIEF_DIR="\$PROJECT_ROOT/briefs"
+LOG_DIR="\$PROJECT_ROOT/logs"
+QUEUE_FILE="\$PROJECT_ROOT/approval_queue.md"
+AGENT_CLI="$1"
+AGENT_CMD=""
+AGENT_MODEL=""
+AGENT_FLAGS=""
+CODEX_FLAGS=""
+AGENT_TIMEOUT=60
+NTFY_ENABLED=0
+NTFY_TOPIC=""
+CFG
+  env -i HOME="$TEST_TMP/m_fakehome" PATH="$M_BIN:/usr/bin:/bin" \
+      LOOP_CONFIG="$M_CFG" SHIM_ARGS="$2" "$M_KIT/scripts/morning_brief.sh" >/dev/null 2>&1
+}
+M_A_CLAUDE="$TEST_TMP/m_brief_claude.txt"
+M_A_CODEX="$TEST_TMP/m_brief_codex.txt"
+m_brief claude "$M_A_CLAUDE"
+m_brief codex  "$M_A_CODEX"
+assert_file "M4: the claude run reached a CLI" "$M_A_CLAUDE"
+assert_file "M4: the codex run reached a CLI" "$M_A_CODEX"
+assert_file "M4: …and the claude prompt was captured whole" "$M_A_CLAUDE.prompt"
+assert_file "M4: …and the codex prompt was captured whole" "$M_A_CODEX.prompt"
+
+# morning_brief writes files, so it calls --write — which is also why the codex
+# side carries no read-only preamble and the two prompts can be compared raw.
+assert_eq "M4: BOTH CLIs receive the byte-identical prompt" \
+  "$(cat "$M_A_CLAUDE.prompt")" "$(cat "$M_A_CODEX.prompt")"
+assert_grep "M4: …and it really is the morning board's prompt" \
+  "approval queue" "$M_A_CLAUDE.prompt"
+assert_ge "M4: …and it is a whole prompt, not a fragment" \
+  "$(wc -l < "$M_A_CLAUDE.prompt")" 15
+
+# what DOES differ is the command line around it
+assert_grep "M4: the claude run uses the -p form" "-p" "$M_A_CLAUDE"
+assert_no_grep "M4: …and never the exec subcommand" "exec" "$M_A_CLAUDE"
+assert_grep "M4: the codex run uses exec" "exec" "$M_A_CODEX"
+assert_grep "M4: …with the sandbox opened for the two files it must write" \
+  "workspace-write" "$M_A_CODEX"
+assert_grep "M4: …and an explicit working root, not cron's \$HOME" \
+  "$M_LOOP" "$M_A_CODEX"
+
+# ─── M5. one aggregator per language, and no CLI started outside it ────────
+# The old CLI-SWAP comments are gone; this is what keeps them from growing back.
+M_AGG_SH="scripts/lib/agent_cli.sh"
+M_AGG_PY="templates/skills/meeting-copilot/scripts/agent_cli.py"
+assert_file "M5: the bash aggregator exists" "$M_KIT/$M_AGG_SH"
+assert_file "M5: the python aggregator exists" "$M_KIT/$M_AGG_PY"
+
+# executables only, comments stripped: a line DESCRIBING the two dialects is
+# documentation; a line STARTING one is the thing being banned.
+M_STRAY=""
+while IFS= read -r m_f; do
+  case "$m_f" in "$M_AGG_SH"|"$M_AGG_PY") continue ;; esac
+  m_hit="$(sed -e 's/^[[:space:]]*#.*$//' "$REPO_ROOT/$m_f" \
+           | grep -nE '(^|[^_[:alnum:]])claude("|'"'"')?[[:space:],]+("|'"'"')?-p([^[:alnum:]]|$)' || true)"
+  [[ -n "$m_hit" ]] && M_STRAY="${M_STRAY}${m_f}: ${m_hit}"$'\n'
+done < <(git -C "$REPO_ROOT" ls-files 'scripts/*.sh' 'scripts/*.example' \
+           'templates/*.py' 'templates/*.sh' '*.example')
+assert_empty_str "M5: no executable starts an AI CLI outside the two aggregators" "$M_STRAY"
+# control: the detector can see one
+M_PROBE="$TEST_TMP/m_probe.sh"
+printf '#!/usr/bin/env bash\nclaude -p "$PROMPT" --model x\n' > "$M_PROBE"
+assert_nonempty_str "M5: control — a direct invocation IS detected" \
+  "$(sed -e 's/^[[:space:]]*#.*$//' "$M_PROBE" \
+     | grep -nE '(^|[^_[:alnum:]])claude("|'"'"')?[[:space:],]+("|'"'"')?-p([^[:alnum:]]|$)' || true)"
+
+# ─── M6. the mechanism names no CLI's private paths ────────────────────────
+# Scope is deliberate and narrow: the SSOT/judgment/queue FORMS and the scaffold
+# manifest. Those are what a user fills in and what a second CLI has to read, so
+# a home path or a tool namespace in them makes the loop CLI-shaped. The scripts
+# are NOT in scope for paths (they legitimately name both CLIs' config files),
+# only for the connector namespace, which is one vendor's wire format.
+M_FORMS=(templates/decisions.md templates/tasks.md templates/glossary.md
+         templates/people.md templates/approval_queue.md templates/verifiers.md
+         templates/system_map.md templates/decisions_journal.md
+         templates/judgment_model.md templates/promotion_queue.md
+         templates/charter.md templates/agent_instructions.md
+         manifests/scaffold.tsv ssot/README.md)
+M_LEAK=""
+for m_f in "${M_FORMS[@]}"; do
+  assert_file "M6: form present: $m_f" "$REPO_ROOT/$m_f"
+  # shellcheck disable=SC2088  # the tilde is the STRING being searched for, not a path to expand
+  m_hit="$(grep -nE '~/\.claude|\.claude/projects|\.codex/|mcp__' "$REPO_ROOT/$m_f" || true)"
+  [[ -n "$m_hit" ]] && M_LEAK="${M_LEAK}${m_f}: ${m_hit}"$'\n'
+done
+assert_empty_str "M6: no form names one CLI's home paths or tool namespace" "$M_LEAK"
+M_MCP=""
+while IFS= read -r m_f; do
+  m_hit="$(grep -n 'mcp__' "$REPO_ROOT/$m_f" || true)"
+  [[ -n "$m_hit" ]] && M_MCP="${M_MCP}${m_f}: ${m_hit}"$'\n'
+done < <(git -C "$REPO_ROOT" ls-files 'scripts/*.sh' 'scripts/*.py')
+assert_empty_str "M6: no script hard-codes one vendor's connector namespace" "$M_MCP"
+assert_nonempty_str "M6: control — the leak detector detects" \
+  "$(printf 'x mcp__vendor_tool y\n' | grep -n 'mcp__' || true)"
+
+# the two claims the forms have to make out loud, since M6 only proves absence
+assert_grep "M6: the instructions template says plain files are the only canon" \
+  "キャッシュ" "$REPO_ROOT/templates/agent_instructions.md"
+assert_grep "M6: …and that the steps are the same on either CLI" \
+  "手順は CLI で変わらない" "$REPO_ROOT/templates/agent_instructions.md"
+assert_grep "M6: ssot/README.md says the same, at the shelf" \
+  "キャッシュ" "$REPO_ROOT/ssot/README.md"
+assert_grep "M6: …and names git as what arbitrates two live CLIs" \
+  "git" "$REPO_ROOT/ssot/README.md"
+
+# ─── M7. the Codex conversation-log adapter's own tests ────────────────────
+# Owned by the log-adapter lane. Run them if they are here; say plainly that
+# they are not, rather than reporting a green that covered nothing.
+if [[ -f "$REPO_ROOT/tests/unit_codex_logs.py" ]]; then
+  assert_ok "M7: the Codex log adapter's unit tests pass" \
+    env PYTHONPATH="$REPO_ROOT" python3 -m unittest discover -s "$REPO_ROOT/tests" -p 'unit_codex_logs.py'
+else
+  pass "M7: no Codex log adapter in this tree yet (tests/unit_codex_logs.py absent)"
+fi

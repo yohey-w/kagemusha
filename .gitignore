@@ -42,8 +42,12 @@
 # directory has to be un-excluded before a file inside it can be re-included —
 # and the width of the hole is asserted by test groups D and H, not promised
 # here. See ssot/norms/README.md and docs/norms-loop.md.
+# ssot/README.md is un-ignored on the same terms and for the same reason: it is
+# the shelf's SHAPE (what the SSOT is, and what a CLI's memory is allowed to be),
+# not an entry. Everything else directly under ssot/ stays instance data.
 !/ssot
 /ssot/*
+!/ssot/README.md
 !/ssot/norms
 /ssot/norms/*
 !/ssot/norms/README.md
