@@ -36,7 +36,8 @@ import time
 from datetime import datetime
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import meetlive_config as cfgmod  # noqa: E402
+import agent_cli                    # noqa: E402  起動口はここ1本
+import meetlive_config as cfgmod   # noqa: E402
 
 # viewer2 が読む時刻の書式。ここを崩すとカードが「同席開始より前」に落ちて消える。
 TS_FMT = "%Y-%m-%dT%H:%M:%S.000"
@@ -338,20 +339,23 @@ def call_llm(text: str, recent: str, pack: str, timeout: float = 90.0) -> str:
     prompt = (f"{system_prompt()}\n\n{pack}\n\n# 直近の会話(文字起こし・参考)\n{recent[-1200:]}\n\n"
               f"# 相手の発話\n{text}\n\n# 出力(4行)")
     try:
-        r = subprocess.run(["claude", "-p", "--model", model, "--effort", effort],
-                           input=prompt, capture_output=True, text=True, timeout=timeout)
+        # 起動口は agent_cli 1本（claude / codex）。プロンプトは stdin ではなく
+        # argv で渡す——codex 側は stdin を「追加入力」として別扱いするため、
+        # 両CLIで同じ経路にそろえる。
+        out = agent_cli.run(prompt, model=model, effort=effort, timeout=timeout,
+                            cli=cfgmod.agent_cli_name())
     except subprocess.TimeoutExpired:
         print(f"[responder] ⚠ 生成が {timeout:.0f}秒で返りませんでした"
               f"（材料 {len(pack)}字・model={model}）", flush=True)
         return ""
-    except (OSError, ValueError) as e:
+    except (OSError, ValueError, agent_cli.NoAgentCLI) as e:
         print(f"[responder] ⚠ 生成を起動できません: {e!r}", flush=True)
         return ""
-    out = (r.stdout or "").strip()
     if not out:
-        err = (r.stderr or "").strip().replace("\n", " ")[:200]
-        print(f"[responder] ⚠ 生成が空で返りました rc={r.returncode} "
-              f"材料={len(pack)}字 stderr={err or '(なし)'}", flush=True)
+        # 🔴 空の理由は必ず残す。CLI名まで書くのは、混雑・未認証・モデルid違いが
+        # 画面の上では全部「材料になし」に見えるため。
+        print(f"[responder] ⚠ 生成が空で返りました cli={cfgmod.agent_cli_name()} model={model} "
+              f"材料={len(pack)}字", flush=True)
     return out
 
 
