@@ -14,7 +14,7 @@
 
 ### Q. Claude CLI 以外でも使える？
 
-使える。`config.env` の `AGENT_CMD`/`AGENT_MODEL`/`AGENT_FLAGS` を差し替え、`scripts/morning_brief.sh` の「CLI-SWAP POINT」コメントにある通り起動行を1行直す。プロンプトを argv で受け取り非対話で走る CLI なら何でもよい（Codex・Gemini 等）。プロンプト本文と SSOT のフォーマットはモデル非依存。
+使える。**Claude Code と Codex CLI は既定で両対応**——`config.env` の `AGENT_CLI` を `claude` / `codex` / `auto` にするだけで、起動行は `scripts/lib/agent_cli.sh` が組み立てる（**スクリプトを1行も直さない**。旧「CLI-SWAP POINT」コメントは廃止した——4ファイルを手で直す設計は、直し忘れを誰も検査できなかった）。それ以外の CLI（Gemini 等）は `AGENT_CMD` にそのバイナリを置けば `-p <prompt>` の形で叩かれる。プロンプト本文と SSOT のフォーマットはモデル非依存。
 
 ### Q. ntfy への通知は「外向き操作」じゃないの？
 
@@ -88,5 +88,5 @@ Two questions the README used to answer, kept here so an English reader does not
 No — it proposes. Reinforcing an existing principle (adding a citation) is applied directly; a **new** principle or a **contradiction** is written to a `*_pending.md` file for you to confirm. An unattended rewrite of the model that governs the agent's calls is exactly the kind of un-undoable change this whole kit exists to gate.
 
 **Q. Can I use a CLI other than Claude?**
-Yes. Swap `AGENT_CMD` / `AGENT_MODEL` / `AGENT_FLAGS` in `config.env` and edit the one invocation line at the "CLI-SWAP POINT" comment in the scripts. Any CLI that takes a prompt on argv and runs non-interactively works (Codex, Gemini, …). Prompts and SSOT formats are model-agnostic.
+Yes. **Claude Code and Codex CLI are both supported out of the box**: set `AGENT_CLI` to `claude` / `codex` / `auto` in `config.env` and `scripts/lib/agent_cli.sh` builds the command line — **no script is edited**. (The old "CLI-SWAP POINT" comments are gone: a swap you perform by hand in four files is a swap nothing can check you performed consistently.) For any other CLI, point `AGENT_CMD` at the binary and it is driven in the `-p <prompt>` form. Prompts and SSOT formats are model-agnostic.
 

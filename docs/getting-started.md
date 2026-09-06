@@ -73,7 +73,7 @@ That's it. The `scripts/` in this repo are a **convenience layer** (headless aut
 **Installing an AI CLI (if you don't have one).** Any agentic CLI works; the two most common:
 
 - **Claude Code** (Anthropic): native installer is the recommended path — `curl -fsSL https://claude.ai/install.sh | bash` (macOS/Linux/WSL; Windows PowerShell: `irm https://claude.ai/install.ps1 | iex`), then run `claude` once to sign in ([docs](https://code.claude.com/docs/en/setup); npm install also works). Its per-directory instructions file is `CLAUDE.md` — which `setup.sh` creates for you.
-- **Codex CLI** (OpenAI, GPT models): `npm install -g @openai/codex`, then run `codex` once to sign in with your ChatGPT account ([repo](https://github.com/openai/codex)). Its instructions file is `AGENTS.md` — rename the generated `CLAUDE.md` to `AGENTS.md` and you're done.
+- **Codex CLI** (OpenAI, GPT models): `npm install -g @openai/codex`, then run `codex` once to sign in with your ChatGPT account ([repo](https://github.com/openai/codex)). Nothing to rename: `setup.sh` writes `AGENTS.md` (which Codex reads directly) plus a one-line `CLAUDE.md` that imports it, so both CLIs see the same text. Set `AGENT_CLI="codex"` in `config.env`, and run `./scripts/setup.sh --codex` if you also want the starter `.codex/config.toml`. ⚠️ A project's `.codex/config.toml` is only read once the project is **trusted** — add `[projects."<absolute path>"] trust_level = "trusted"` to `~/.codex/config.toml`, or it is ignored with no error.
 
 The instructions themselves (`templates/agent_instructions.md`) are tool-agnostic; `setup.sh` just saves them under the filename your tool reads.
 
@@ -234,7 +234,7 @@ cd kagemusha
 **AI CLI の導入（まだ持っていなければ）。** エージェント型の CLI なら何でもよい。代表的な2つ:
 
 - **Claude Code**（Anthropic）: 公式推奨はネイティブインストーラ——`curl -fsSL https://claude.ai/install.sh | bash`（macOS/Linux/WSL。Windows PowerShellは `irm https://claude.ai/install.ps1 | iex`）のあと `claude` を一度起動してサインイン（[公式ドキュメント](https://code.claude.com/docs/en/setup)。npm経由も可）。ディレクトリごとの指示ファイルは `CLAUDE.md`——`setup.sh` が作ってくれる。
-- **Codex CLI**（OpenAI・GPT系モデル）: `npm install -g @openai/codex` のあと `codex` を一度起動して ChatGPT アカウントでサインイン（[公式リポジトリ](https://github.com/openai/codex)）。指示ファイルは `AGENTS.md`——生成された `CLAUDE.md` を `AGENTS.md` にリネームすれば完了。
+- **Codex CLI**（OpenAI・GPT系モデル）: `npm install -g @openai/codex` のあと `codex` を一度起動して ChatGPT アカウントでサインイン（[公式リポジトリ](https://github.com/openai/codex)）。**リネームは不要**——`setup.sh` が `AGENTS.md`（Codex が直読）と、それを取り込む1行だけの `CLAUDE.md` の両方を作るので、どちらの CLI からも同じ本文が見える。`config.env` の `AGENT_CLI` に `"codex"` を入れる。`.codex/config.toml` の雛形も欲しければ `./scripts/setup.sh --codex`。⚠️ プロジェクトの `.codex/config.toml` は**信頼登録済みのときしか読まれない**——`~/.codex/config.toml` に `[projects."<絶対パス>"] trust_level = "trusted"` を足すこと。無いとエラーも出さずに無視される。
 
 指示の中身（`templates/agent_instructions.md`）はツール非依存で、`setup.sh` は使うツールが読むファイル名で保存するだけだ。
 

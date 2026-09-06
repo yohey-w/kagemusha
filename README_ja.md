@@ -12,6 +12,8 @@ kagemusha は、**あなたが今使っている AI コーディングエージ�
 
 **向く人**: 不可逆な操作があり、却下理由を残せる人。／**向かない人**: 完成済みの判断基準や、チームの承認 SaaS が欲しい人。
 
+**Claude Code でも Codex CLI でも動きます**——指示ファイルは1本、書式は同じ、起動行だけを差し替える（[対応表](#works-with-claude-code-and-codex-cli)）。
+
 [固定証拠 `evidence-v1.0.0`](https://github.com/yohey-w/kagemusha/tree/evidence-v1.0.0)・[10分デモ](docs/getting-started.md#10分デモ)・[導入手順](docs/getting-started.md#手順コピペ)
 
 <!-- contract:demo -->
@@ -98,6 +100,25 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 ## 6. 自分の環境に入れる（30分・コピペ）
 
 **移動しました → [`docs/getting-started.md`](docs/getting-started.md#手順コピペ)。** clone して `./scripts/setup.sh` を走らせると、**中身の入っていない書式**があなたのフォルダに出てきます——あとは、いま使っているアシスタントでそのフォルダを開いて仕事をするだけです。前提表・コピペ手順・任意の血統違い検算器は全部そちらにあります。*（見出しを残しているのは、記事と併読本がこの節を番号で引いているためです。）*
+
+### Works with Claude Code and Codex CLI
+
+使う CLI は**キー1個**で決まります: `config.env` の `AGENT_CLI=claude|codex`（`auto` = PATH にある方）。プロンプトも書式も承認の境界も変わりません——**変わるのは起動行だけ**で、それは1か所（[`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)）が組み立てます。
+
+| | Claude Code | Codex CLI | 片方に無いときの代替 |
+|---|---|---|---|
+| 指示ファイル | `CLAUDE.md` ＝ `@AGENTS.md` の1行 | `AGENTS.md` を直読 | 中身は1本・名前が2つ。`setup.sh` が両方作る |
+| スキル | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` が有る方へ symlink |
+| 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提） | `AGENTS.md` に「日付は必ず検算」と書く |
+| メモリ | 自動メモリ | memories | **どちらも正本ではない。** 正本はプレーンファイル（[`ssot/README.md`](ssot/README.md)） |
+| ヘッドレス起動 | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | argv でプロンプトを取る CLI なら何でも |
+| 無人での接続子 | `--allowedTools mcp__…` | curated plugin（ツール単位の許可リストは無い） | *(実測結果は保留 — [`docs/inbound-loop.md`](docs/inbound-loop.md))* |
+| 会話ログの採取 | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | *(アダプタは保留 — [`docs/distillation-loop.md`](docs/distillation-loop.md))* |
+| スケジューラ | cron / タスクスケジューラ——両方同じ。CLI 固有のスケジューラは使わないし、要らない |||
+
+**Claude Code・5行。** ① `./scripts/setup.sh` ② `AGENTS.md` の委任境界を埋める ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
+
+**Codex CLI・5行。** ① `./scripts/setup.sh --codex` ② `AGENTS.md` を埋め、`~/.codex/config.toml` に `[projects."<絶対パス>"] trust_level = "trusted"` を足す——**これが無いとプロジェクト側の設定は黙って無視されます** ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="codex"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
 
 ## 9. 発展編
 

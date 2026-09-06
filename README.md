@@ -12,6 +12,8 @@ kagemusha is **a set of Markdown forms plus the scripts that run them**, for the
 
 **Fits** you if operations that cannot be undone are part of your day and you are willing to write down why you rejected something. **Does not fit** you if you want ready-made judgment criteria, or an approval SaaS for a team.
 
+**Works with Claude Code and Codex CLI** — one instructions file, one set of forms, one command line built for whichever you run ([what maps to what](#works-with-claude-code-and-codex-cli)).
+
 [Fixed evidence: `evidence-v1.0.0`](https://github.com/yohey-w/kagemusha/tree/evidence-v1.0.0) · [The 10-minute demo](docs/getting-started.md#the-10-minute-demo) · [Install it](docs/getting-started.md#the-steps-copy-paste)
 
 <!-- contract:demo -->
@@ -98,6 +100,25 @@ Set the level of checking by the loss if it is wrong, its reversibility, how det
 ## 6. Set it up in your own environment (30 minutes, copy-paste)
 
 **Moved → [`docs/getting-started.md`](docs/getting-started.md#the-steps-copy-paste).** Clone it, run `./scripts/setup.sh`, and forms with nothing filled in land in your folder — from then on you open that folder with the assistant you already use. The prerequisite table, the copy-paste steps and the optional verifier from a different model lineage are all there. *(The heading stays: articles and the companion book cite this section by number.)*
+
+### Works with Claude Code and Codex CLI
+
+Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` = whichever is on your PATH). The prompts, the forms and the approval boundary do not change — only the command line does, and it is built in one place ([`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)).
+
+| | Claude Code | Codex CLI | if a CLI lacks it |
+|---|---|---|---|
+| instructions | `CLAUDE.md` = the one line `@AGENTS.md` | `AGENTS.md`, read directly | one file, two names — `setup.sh` writes both |
+| skills | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` symlinks into whichever exists |
+| per-turn date stamp | `.claude/settings.json` → `UserPromptSubmit` hook | `.codex/config.toml` → `[[hooks.UserPromptSubmit]]` (needs the project trusted) | state the date in `AGENTS.md` instead |
+| memory | auto-memory directory | memories | **neither is canon.** The plain files are ([`ssot/README.md`](ssot/README.md)) |
+| headless invocation | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | any CLI taking a prompt on argv works |
+| connectors, unattended | `--allowedTools mcp__…` | curated plugins, no per-tool allowlist | *(measured result pending — [`docs/inbound-loop.md`](docs/inbound-loop.md))* |
+| transcript harvest | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | *(adapter pending — [`docs/distillation-loop.md`](docs/distillation-loop.md))* |
+| scheduling | cron / Task Scheduler — the same for both; no CLI-native scheduler is used or needed |||
+
+**Claude Code, in five lines.** ① `./scripts/setup.sh` ② fill `AGENTS.md` (the delegation boundary) ③ `cp config.env.example config.env`, set `PROJECT_ROOT` and `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` by hand once ⑤ put that line on cron.
+
+**Codex CLI, in five lines.** ① `./scripts/setup.sh --codex` ② fill `AGENTS.md`, and add `[projects."<abs path>"] trust_level = "trusted"` to `~/.codex/config.toml` — without it the project's own config is ignored, silently ③ `cp config.env.example config.env`, set `PROJECT_ROOT` and `AGENT_CLI="codex"` ④ `./scripts/morning_brief.sh` by hand once ⑤ put that line on cron.
 
 ## 9. Going further
 
