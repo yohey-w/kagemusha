@@ -103,7 +103,7 @@ Set the level of checking by the loss if it is wrong, its reversibility, how det
 
 ### Works with Claude Code and Codex CLI
 
-Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` = whichever is on your PATH). The prompts, the forms and the approval boundary do not change — only the command line does, and it is built in one place ([`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)).
+Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` = whichever is on your PATH) — the same name **in the environment beats the file**, so `AGENT_CLI=codex ./scripts/morning_brief.sh` is a one-off switch, and `AGENT_CMD` only overrides *which executable* that CLI is. The prompts, the forms and the approval boundary do not change — only the command line does, and it is built in one place ([`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)).
 
 | | Claude Code | Codex CLI | if a CLI lacks it |
 |---|---|---|---|

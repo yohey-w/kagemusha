@@ -36,17 +36,45 @@
 #   --              end of options; everything after it is the PROMPT
 #
 # ─── environment ───────────────────────────────────────────────────────────
-#   AGENT_CLI              claude | codex | auto   (default: auto)
+# PRECEDENCE, one line: an explicit ENVIRONMENT VARIABLE beats config.env, and
+# config.env beats auto-detection. This matters because every script here does
+# `source config.env` AFTER sourcing this library, and a plain assignment in a
+# config file overwrites what you exported on the command line. So the keys
+# below are read from the environment ONCE, when this file is sourced, and a
+# key that was non-empty then wins for the rest of the run.
+#   ⚠️ The corollary: assigning one of these in the SAME shell after sourcing
+#   this file does nothing — the frozen value still wins. Set them in the
+#   environment of the command (`AGENT_CLI=codex ./scripts/morning_brief.sh`)
+#   or in config.env, not in between.
+#
+#   AGENT_CLI              claude | codex | auto   (default: auto). THE TYPE OF
+#                          CLI, and the only key that decides it.
 #                          auto = whichever is on PATH via `command -v`; if both
 #                          are, claude. Detection NEVER executes a CLI.
-#   AGENT_CMD              the binary to run (default: the resolved CLI's name).
+#   AGENT_CMD              WHICH EXECUTABLE to run for that type — a path
+#                          override, not a second way to choose the type.
 #                          Cron's PATH is short, so an absolute path belongs here.
-#                          If AGENT_CLI is unset, the basename of AGENT_CMD picks
-#                          the dialect: .../claude -> claude, .../codex -> codex.
-#   AGENT_MODEL            model id. Per-CLI overrides win over it:
-#   AGENT_MODEL_CLAUDE     …when the resolved CLI is claude
-#   AGENT_MODEL_CODEX      …when it is codex
-#   AGENT_EFFORT / AGENT_EFFORT_CLAUDE / AGENT_EFFORT_CODEX   same shape
+#                          · AGENT_CLI unset and AGENT_CMD=.../codex -> type codex;
+#                            any other basename (.../claude, your own wrapper,
+#                            gemini) -> type claude. That is the old behaviour and
+#                            it still holds.
+#                          · AGENT_CLI set and AGENT_CMD naming the OTHER CLI
+#                            (AGENT_CLI=codex, AGENT_CMD=claude — an old config.env
+#                            plus a new environment) is a contradiction: AGENT_CLI
+#                            wins, AGENT_CMD is dropped, and one line says so on
+#                            stderr. Building `claude exec -m …` out of the two is
+#                            the bug this rule exists to prevent.
+#   AGENT_MODEL            model id for CLAUDE — the kit's original single key,
+#                          kept for backward compatibility. CODEX NEVER READS IT:
+#                          a Claude model id is not a Codex model id, and the two
+#                          dialects sharing one key is how `claude-opus-4-8` ended
+#                          up on a codex command line.
+#   AGENT_MODEL_CLAUDE     model id when the resolved type is claude (beats AGENT_MODEL)
+#   AGENT_MODEL_CODEX      model id when it is codex. Unset -> the built-in
+#                          default below, never AGENT_MODEL.
+#   AGENT_EFFORT / AGENT_EFFORT_CLAUDE / AGENT_EFFORT_CODEX   effort, same shape.
+#                          Effort names ("high", "xhigh") are not model ids, so
+#                          the shared key still serves both.
 #   AGENT_FLAGS            extra flags, claude only (this is where
 #                          --dangerously-skip-permissions lives)
 #   CODEX_FLAGS            extra flags, codex only
@@ -58,10 +86,11 @@
 #                          prompts are not your judgment. Turn it on to debug a
 #                          scheduled run, then turn it off.
 #
-# ⚠️ AGENT_MODEL is a single key shared by both dialects, and a Claude model id
-# is not a Codex model id. If you switch AGENT_CLI, either change AGENT_MODEL or
-# set the two per-CLI keys and leave it empty. Nothing can detect this for you:
-# a wrong model id comes back as the CLI's own error, not as a kit error.
+# ⚠️ A model id that belongs to the other dialect is not something the CLI tells
+# you about kindly: codex would go and ask its API for "claude-opus-4-8". So the
+# two crossings are handled here — the shared AGENT_MODEL is simply not read for
+# codex, and a `claude-*` id that reaches a codex call any other way (--model,
+# AGENT_MODEL_CODEX) FAILS THE BUILD, before anything is spawned.
 # ═══════════════════════════════════════════════════════════════════════════
 # shellcheck shell=bash
 
@@ -82,29 +111,76 @@ AGENT_CLI_ARGV_MAX_BYTES="${AGENT_CLI_ARGV_MAX_BYTES:-98304}"   # 96 KB, under t
 
 AGENT_CLI_PREAMBLE="${AGENT_CLI_PREAMBLE:-Answer with output only. Do not use any tool: do not read or write files, do not run commands, do not search.（ツールを使わず、出力だけを返す）}"
 
+# The model a codex call uses when nothing names one. It exists because the
+# alternative — falling back to the shared AGENT_MODEL — is exactly how a Claude
+# model id reached a codex command line. Override it per machine if you want a
+# different default; set AGENT_MODEL_CODEX to pin one per config.
+AGENT_CLI_DEFAULT_MODEL_CODEX="${AGENT_CLI_DEFAULT_MODEL_CODEX:-gpt-5.6-sol}"
+
+# ─── the environment, frozen once ──────────────────────────────────────────
+# Read here, at source time, which is BEFORE the caller sources config.env
+# (tests/test_m_codex.sh pins that order for every script that does both). A key
+# that is non-empty in the environment now is the operator's explicit choice and
+# outranks whatever config.env assigns to it later. An EMPTY environment value
+# is not a choice — "" already means "let it be decided" everywhere in
+# config.env.example — so it is not frozen.
+if [[ -z "${AGENT_CLI_ENV_FROZEN:-}" ]]; then
+  AGENT_CLI_ENV_FROZEN=1
+  for _agent_cli_k in AGENT_CLI AGENT_CMD AGENT_MODEL AGENT_MODEL_CLAUDE AGENT_MODEL_CODEX \
+                      AGENT_EFFORT AGENT_EFFORT_CLAUDE AGENT_EFFORT_CODEX \
+                      AGENT_FLAGS CODEX_FLAGS; do
+    _agent_cli_v="${!_agent_cli_k:-}"
+    [[ -n "$_agent_cli_v" ]] || continue
+    # AGENT_CLI=auto is "decide for me", not a choice that beats config.env
+    [[ "$_agent_cli_k" == "AGENT_CLI" && "$_agent_cli_v" == "auto" ]] && continue
+    printf -v "AGENT_CLI_ENV__${_agent_cli_k}" '%s' "$_agent_cli_v"
+  done
+  unset _agent_cli_k _agent_cli_v
+fi
+
+# agent_cli_env KEY — the value that wins for KEY: the environment's, if it
+# named one when this file was sourced; otherwise the current one (config.env's).
+agent_cli_env() {
+  local key="$1" snap="AGENT_CLI_ENV__$1"
+  if [[ -n "${!snap:-}" ]]; then printf '%s' "${!snap}"; else printf '%s' "${!key:-}"; fi
+}
+
 agent_cli_die() { printf 'agent_cli: %s\n' "$1" >&2; return 2; }
 
+# agent_cli_kind_of PATH_OR_NAME — the dialect a binary's NAME implies:
+# claude | codex | "" for a name we do not know (your own wrapper, the demo's
+# stub distiller, gemini). "" is not an error: it means the name says nothing
+# about the dialect, so something else has to.
+agent_cli_kind_of() {
+  case "$(basename -- "$1")" in
+    *codex*)  printf 'codex' ;;
+    *claude*) printf 'claude' ;;
+    *)        printf '' ;;
+  esac
+}
+
 # agent_cli_which — print the dialect this machine will use: claude | codex.
+# AGENT_CLI decides it; AGENT_CMD only gets a vote when AGENT_CLI is silent.
 # `command -v` only: a detector that runs a CLI to find out whether it exists
 # costs a login round-trip, and fails differently when you are logged out.
 agent_cli_which() {
-  local want="${AGENT_CLI:-auto}"
+  local want cmd kind
+  want="$(agent_cli_env AGENT_CLI)"; want="${want:-auto}"
   case "$want" in
     claude|codex) printf '%s' "$want"; return 0 ;;
     auto) : ;;
     *) agent_cli_die "AGENT_CLI must be claude, codex or auto (got: $want)"; return 2 ;;
   esac
-  # An explicit AGENT_CMD names the dialect by its basename — and if the name is
-  # one we do not know (your own wrapper, the demo's stub distiller, gemini),
-  # the answer is `claude`, meaning the `-p <prompt>` argv form. That is not a
-  # guess about which vendor you installed: it is the form every CLI but codex
-  # in this kit's history has used, and it is what the CLI-SWAP comment this
-  # library replaced had as its default line.
-  if [[ -n "${AGENT_CMD:-}" ]]; then
-    case "$(basename -- "$AGENT_CMD")" in
-      *codex*) printf 'codex';  return 0 ;;
-      *)       printf 'claude'; return 0 ;;
-    esac
+  # No AGENT_CLI: an explicit AGENT_CMD names the dialect by its basename — and
+  # if the name is one we do not know, the answer is `claude`, meaning the
+  # `-p <prompt>` argv form. That is not a guess about which vendor you
+  # installed: it is the form every CLI but codex in this kit's history has
+  # used, and it is what the CLI-SWAP comment this library replaced had as its
+  # default line.
+  cmd="$(agent_cli_env AGENT_CMD)"
+  if [[ -n "$cmd" ]]; then
+    kind="$(agent_cli_kind_of "$cmd")"
+    printf '%s' "${kind:-claude}"; return 0
   fi
   if command -v claude >/dev/null 2>&1; then printf 'claude'; return 0; fi
   if command -v codex  >/dev/null 2>&1; then printf 'codex';  return 0; fi
@@ -114,9 +190,36 @@ agent_cli_which() {
   return 2
 }
 
+# agent_cli_bin DIALECT — the executable to run for that dialect.
+# AGENT_CMD overrides the name; it cannot change the dialect. When it names the
+# OTHER known CLI the two keys contradict each other, and the resolution is
+# fixed and loud: the dialect wins, the binary falls back to the dialect's own
+# name, and ONE line goes to stderr. The alternative — running the named binary
+# in the other dialect's argv form — is `claude exec -m claude-opus-4-8`, a
+# command line that belongs to no CLI at all.
+agent_cli_bin() {
+  local cli="$1" cmd kind
+  cmd="$(agent_cli_env AGENT_CMD)"
+  [[ -n "$cmd" ]] || { printf '%s' "$cli"; return 0; }
+  kind="$(agent_cli_kind_of "$cmd")"
+  if [[ -n "$kind" && "$kind" != "$cli" ]]; then
+    # ONE line, every time a command line is built — this function runs inside a
+    # command substitution, so it cannot remember that it already spoke, and a
+    # flag pretending otherwise would just be dead code. A run that builds two
+    # command lines (a dry run, then the call) says it twice, on purpose: the
+    # second one is the line that actually spawns.
+    printf 'agent_cli: AGENT_CLI=%s wins over AGENT_CMD=%s (that names %s) — running %s; AGENT_CMD only overrides the path of the CLI that AGENT_CLI names, so clear it in config.env.\n' \
+      "$cli" "$cmd" "$kind" "$cli" >&2
+    printf '%s' "$cli"; return 0
+  fi
+  printf '%s' "$cmd"
+}
+
 # agent_cli_build [options] -- PROMPT
 #   Fills the array AGENT_CLI_ARGV with the exact command line, and sets
-#   AGENT_CLI_DIALECT / AGENT_CLI_TIMEOUT / AGENT_CLI_PROMPT. It runs nothing.
+#   AGENT_CLI_DIALECT / AGENT_CLI_TIMEOUT / AGENT_CLI_PROMPT, plus what was
+#   resolved out of the keys above: AGENT_CLI_BIN / AGENT_CLI_MODEL /
+#   AGENT_CLI_EFFORT. It runs nothing.
 #   Everything that decides what a call LOOKS like lives here and nowhere else,
 #   so the dry runs print the command that will actually be made rather than a
 #   second hand-written copy of it that drifts.
@@ -142,31 +245,51 @@ agent_cli_build() {
   [[ -n "$prompt" ]] || { agent_cli_die "no prompt (did you forget the -- separator?)"; return 2; }
 
   cli="$(agent_cli_which)" || return 2
-  bin="${AGENT_CMD:-$cli}"
+  bin="$(agent_cli_bin "$cli")"
   # shellcheck disable=SC2034  # read by callers and by tests/test_m_codex.sh
   AGENT_CLI_DIALECT="$cli"
   AGENT_CLI_TIMEOUT="${timeout_s:-${AGENT_TIMEOUT:-120}}"
 
-  # per-CLI keys beat the shared one; an explicit --model beats both
+  # An explicit --model beats every key. Then the per-CLI key. Then: claude
+  # falls back to the shared AGENT_MODEL (the kit's original key, which was
+  # always a Claude id), and codex falls back to ITS OWN default — never to
+  # AGENT_MODEL. One key cannot hold two vendors' model ids, and the version
+  # that let it try is what put `claude exec -m claude-opus-4-8` on screen.
   if [[ -z "$model" ]]; then
     case "$cli" in
-      claude) model="${AGENT_MODEL_CLAUDE:-${AGENT_MODEL:-}}" ;;
-      codex)  model="${AGENT_MODEL_CODEX:-${AGENT_MODEL:-}}" ;;
+      claude) model="$(agent_cli_env AGENT_MODEL_CLAUDE)"
+              [[ -n "$model" ]] || model="$(agent_cli_env AGENT_MODEL)" ;;
+      codex)  model="$(agent_cli_env AGENT_MODEL_CODEX)"
+              [[ -n "$model" ]] || model="${AGENT_CLI_DEFAULT_MODEL_CODEX:-}" ;;
     esac
   fi
+  # Effort names are not model ids ("high" means the same thing to both), so the
+  # shared key still serves both dialects.
   if [[ -z "$effort" ]]; then
     case "$cli" in
-      claude) effort="${AGENT_EFFORT_CLAUDE:-${AGENT_EFFORT:-}}" ;;
-      codex)  effort="${AGENT_EFFORT_CODEX:-${AGENT_EFFORT:-}}" ;;
+      claude) effort="$(agent_cli_env AGENT_EFFORT_CLAUDE)" ;;
+      codex)  effort="$(agent_cli_env AGENT_EFFORT_CODEX)" ;;
     esac
+    [[ -n "$effort" ]] || effort="$(agent_cli_env AGENT_EFFORT)"
+  fi
+
+  # The crossing that survives every fallback above: an id aimed AT codex by
+  # hand (--model, or AGENT_MODEL_CODEX) that is a Claude id. Fail here, while
+  # the keys that set it are still on screen — codex would instead go to its own
+  # API and come back with a vendor error that names none of them.
+  if [[ "$cli" == "codex" && "$model" == claude-* ]]; then
+    agent_cli_die "codex cannot run the Claude model id '$model'.
+  Set AGENT_MODEL_CODEX (or pass --model) to a Codex model id — AGENT_MODEL is
+  the Claude key and codex does not read it."
+    return 2
   fi
   # `--flags ""` means "no flags", NOT "fall back to the environment": the one
   # caller that passes an empty string (distill.sh) does so precisely to keep
   # --dangerously-skip-permissions OUT of a run that must have no hands.
   if [[ -z "$flags_given" ]]; then
     case "$cli" in
-      claude) extra_flags="${AGENT_FLAGS:-}" ;;
-      codex)  extra_flags="${CODEX_FLAGS:-}" ;;
+      claude) extra_flags="$(agent_cli_env AGENT_FLAGS)" ;;
+      codex)  extra_flags="$(agent_cli_env CODEX_FLAGS)" ;;
     esac
   fi
 
@@ -230,14 +353,28 @@ agent_cli_build() {
   esac
   # shellcheck disable=SC2034  # read by callers and by tests/test_m_codex.sh
   AGENT_CLI_PROMPT="$prompt"
+  # the resolution, published so a dry run can print what was decided and not a
+  # second hand-written guess at it
+  # shellcheck disable=SC2034
+  AGENT_CLI_BIN="$bin"
+  # shellcheck disable=SC2034
+  AGENT_CLI_MODEL="$model"
+  # shellcheck disable=SC2034
+  AGENT_CLI_EFFORT="$effort"
 }
 
 # agent_cli_show [same options] -- PLACEHOLDER
-#   One line: the command that agent_run would make. For the dry runs, so what
-#   they print and what they would do come from the same code.
+#   ONE line: the command that agent_run would make, then — after a `#`, so the
+#   line stays a command you can read — the four things that were RESOLVED to
+#   build it: type, executable, model, effort. Those four are where a config
+#   goes wrong (an old AGENT_CMD, a model id from the other vendor), and the
+#   argv alone does not say which key each came from. `-` means "nothing set;
+#   the CLI decides". For the dry runs, so what they print and what they would
+#   do come from the same code.
 agent_cli_show() {
   agent_cli_build "$@" || return 2
-  printf '%s' "${AGENT_CLI_ARGV[*]}"
+  printf '%s  # cli=%s bin=%s model=%s effort=%s' "${AGENT_CLI_ARGV[*]}" \
+    "$AGENT_CLI_DIALECT" "$AGENT_CLI_BIN" "${AGENT_CLI_MODEL:--}" "${AGENT_CLI_EFFORT:--}"
 }
 
 # agent_run [options] -- PROMPT

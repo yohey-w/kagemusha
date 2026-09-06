@@ -107,6 +107,26 @@ assert_nonempty_str() {
   if [[ -n "$2" ]]; then pass "$1"; else fail "$1" "expected non-empty output"; fi
 }
 
+# assert_grep_str NAME PATTERN VALUE — fixed-string, against a STRING rather
+# than a file. The file-based pair above cannot check a captured command line.
+assert_grep_str() {
+  if printf '%s' "$3" | grep -qF -- "$2"; then pass "$1"
+  else fail "$1" "not found: $2
+in  : $(printf '%s' "$3" | head -n 20)"; fi
+}
+
+# assert_no_grep_str NAME PATTERN VALUE — the negative of the above.
+# ⚠️ It was CALLED before it was DEFINED (tests/test_m_codex.sh M3 has used it
+# since 977f338): bash printed "command not found", the run stayed green, and
+# the assertion counted for nothing. An assertion that cannot fail is worse than
+# a missing one — it reads as coverage. Both halves of the pair live here now.
+assert_no_grep_str() {
+  if printf '%s' "$3" | grep -qF -- "$2"; then
+    fail "$1" "MUST NOT appear: $2
+in  : $(printf '%s' "$3" | head -n 20)"
+  else pass "$1"; fi
+}
+
 # ─── fixtures ──────────────────────────────────────────────────────────────
 
 # kit_copy DEST — materialize ONLY the git-tracked files (working-tree content,

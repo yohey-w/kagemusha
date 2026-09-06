@@ -9,6 +9,7 @@
 #   M1  the scaffolder's asymmetric instructions rule, all three cases
 #   M2  the opt-in flags (--codex, --link-skills) and what they refuse to do
 #   M3  agent_cli.sh dispatch, argv shape asserted per CLI with fake binaries
+#   M3c precedence: an explicit environment variable beats config.env
 #   M4  the same prompt reaches both CLIs — proved by running the real
 #       morning_brief.sh twice against shims and diffing what arrived
 #   M5  no executable in the kit starts an AI CLI outside the two aggregators
@@ -120,6 +121,9 @@ M_ARGS="$TEST_TMP/m_argv.txt"
 cat > "$M_BIN/claude" <<'SHIM'
 #!/usr/bin/env bash
 : > "$SHIM_ARGS"; for a in "$@"; do printf '%s\n' "$a" >> "$SHIM_ARGS"; done
+# WHICH binary ran, recorded on its own: argv cannot say, and the bug M3c
+# pins was codex's argv handed to the claude binary.
+basename "$0" > "$SHIM_ARGS.bin"
 prev=""; for a in "$@"; do [[ "$prev" == "-p" ]] && printf '%s' "$a" > "$SHIM_ARGS.prompt"; prev="$a"; done
 cat > "$SHIM_ARGS.stdin"
 printf 'CLAUDE-ANSWER\n'
@@ -127,6 +131,9 @@ SHIM
 cat > "$M_BIN/codex" <<'SHIM'
 #!/usr/bin/env bash
 : > "$SHIM_ARGS"; for a in "$@"; do printf '%s\n' "$a" >> "$SHIM_ARGS"; done
+# WHICH binary ran, recorded on its own: argv cannot say, and the bug M3c
+# pins was codex's argv handed to the claude binary.
+basename "$0" > "$SHIM_ARGS.bin"
 # codex takes the prompt as the last positional and writes its final message to
 # the file named by -o, and only there — stdout is the session banner.
 out=""; prev=""; last=""
@@ -273,6 +280,162 @@ assert big not in agent_cli.build(big, cli='claude'), 'claude argv still carries
 assert agent_cli.build(big, cli='codex')[-1] == '-', 'codex needs the - marker'
 assert agent_cli.build(small, cli='codex')[-1].endswith(small), 'small prompts stay positional'
 " "$M_PY_SCRIPTS"
+
+# ─── M3c. precedence: the environment beats config.env ─────────────────────
+# MEASURED ON A REAL INSTALLATION. config.env still held the kit's original keys
+# (AGENT_CMD="claude", AGENT_MODEL="claude-opus-4-8"); the operator ran
+# `AGENT_CLI=codex ./scripts/morning_brief.sh`; the loop built
+#   claude exec -m claude-opus-4-8 …
+# — a command line that belongs to no CLI: codex's subcommand, handed to the
+# claude binary, carrying a Claude model id. Two causes, both fixed here:
+#   · every script does `source config.env` AFTER sourcing the library, and a
+#     plain assignment in a config file overwrites what you exported;
+#   · AGENT_CMD was treated as "the binary", full stop, so a type it disagreed
+#     with produced a mongrel instead of an error.
+M_CFG_OLD="$TEST_TMP/m_cfg_old.env"       # the shape that broke: pre-AGENT_CLI keys
+cat > "$M_CFG_OLD" <<'CFG'
+AGENT_CMD="claude"
+AGENT_MODEL="claude-opus-4-8"
+AGENT_FLAGS="--dangerously-skip-permissions"
+CFG
+M_CFG_AUTO="$TEST_TMP/m_cfg_auto.env"     # what config.env.example ships, plus an old CMD
+cat > "$M_CFG_AUTO" <<'CFG'
+AGENT_CLI="auto"
+AGENT_CMD="claude"
+CFG
+M_CFG_CLAUDE="$TEST_TMP/m_cfg_claude.env" # the type named in the file, not just implied
+cat > "$M_CFG_CLAUDE" <<'CFG'
+AGENT_CLI="claude"
+AGENT_CMD=""
+AGENT_MODEL="claude-opus-4-8"
+CFG
+
+M_PREC_ERR="$TEST_TMP/m_prec.err"
+m_prec() {  # m_prec <config file> [VAR=VAL ...] — the resolved command line
+  local cfg="$1"; shift
+  env PATH="$M_BIN:/usr/bin:/bin" PROJECT_ROOT="$TEST_TMP/m_root" "$@" \
+    bash -c 'source "$1/scripts/lib/agent_cli.sh"; source "$2"
+             agent_cli_show --no-preamble -- "<prompt>"' _ "$M_KIT" "$cfg" 2>"$M_PREC_ERR"
+}
+
+# the reported case, at the library
+M_PREC="$(m_prec "$M_CFG_OLD" AGENT_CLI=codex)"
+assert_grep_str "M3c: AGENT_CLI=codex in the environment beats AGENT_CMD in config.env" \
+  "cli=codex bin=codex" "$M_PREC"
+assert_grep_str "M3c: …so the whole command line is codex's" "codex exec" "$M_PREC"
+assert_no_grep_str "M3c: …and NOT the mongrel that was measured" "claude exec" "$M_PREC"
+assert_grep_str "M3c: …the model is codex's own default, not the config's Claude id" \
+  "-m gpt-5.6-sol" "$M_PREC"
+assert_no_grep_str "M3c: …no Claude model id crosses over" "claude-opus-4-8" "$M_PREC"
+assert_no_grep_str "M3c: …and no claude-only flag does either" "dangerously" "$M_PREC"
+assert_eq "M3c: the contradiction is reported in exactly ONE line, on stderr" \
+  "1" "$(wc -l < "$M_PREC_ERR")"
+assert_grep "M3c: …naming the key that won" "AGENT_CLI=codex" "$M_PREC_ERR"
+assert_grep "M3c: …and the key that was dropped" "AGENT_CMD=claude" "$M_PREC_ERR"
+
+# backward compatibility: the same config with nothing in the environment is the
+# claude dialect it has always been, and says nothing on stderr.
+M_PREC="$(m_prec "$M_CFG_OLD")"
+assert_grep_str "M3c: AGENT_CMD=claude alone still means the claude dialect" \
+  "cli=claude bin=claude" "$M_PREC"
+assert_grep_str "M3c: …in the -p form, with the config's own model" \
+  "claude -p <prompt> --model claude-opus-4-8" "$M_PREC"
+assert_empty_str "M3c: …and nothing is warned about (the two keys agree)" \
+  "$(cat "$M_PREC_ERR")"
+
+# an unrecognised binary is NOT a contradiction: it is a wrapper for the type
+# you named. (The demo's stub distiller is exactly this.)
+M_PREC="$(m_prec "$M_CFG_OLD" AGENT_CLI=codex AGENT_CMD="$M_BIN/my-wrapper")"
+assert_grep_str "M3c: a wrapper name we do not know is kept, for the type that was named" \
+  "cli=codex bin=$M_BIN/my-wrapper" "$M_PREC"
+assert_empty_str "M3c: …and it is not warned about" "$(cat "$M_PREC_ERR")"
+
+# the type key itself: the environment beats config.env, both when the file says
+# "auto" and when it names the other CLI outright
+assert_grep_str "M3c: env AGENT_CLI beats AGENT_CLI=\"auto\" in config.env" \
+  "cli=codex" "$(m_prec "$M_CFG_AUTO" AGENT_CLI=codex)"
+assert_grep_str "M3c: …and beats a config.env that names the other CLI" \
+  "cli=codex" "$(m_prec "$M_CFG_CLAUDE" AGENT_CLI=codex)"
+assert_grep_str "M3c: config.env still decides when the environment is silent" \
+  "cli=claude bin=claude model=claude-opus-4-8" "$(m_prec "$M_CFG_CLAUDE")"
+assert_grep_str "M3c: …and AGENT_CLI=auto in the environment is not a choice, so it does not" \
+  "cli=claude" "$(m_prec "$M_CFG_CLAUDE" AGENT_CLI=auto)"
+
+# the dry run prints the four things that were RESOLVED, not just the argv
+assert_grep_str "M3c: agent_cli_show names type, executable, model and effort" \
+  "# cli=codex bin=codex model=gpt-5.6-sol effort=xhigh" \
+  "$(m_prec "$M_CFG_OLD" AGENT_CLI=codex AGENT_EFFORT_CODEX=xhigh)"
+assert_grep_str "M3c: …and prints '-' for what nothing set" \
+  "effort=-" "$(m_prec "$M_CFG_OLD" AGENT_CLI=codex)"
+
+# a Claude model id aimed AT codex by hand survives every fallback above, so the
+# build refuses it — while the keys that set it are still on screen.
+m_reject() {  # m_reject [VAR=VAL ...] -- [agent_cli_show args]
+  local envs=(); while [[ "$1" != "--" ]]; do envs+=("$1"); shift; done; shift
+  env PATH="$M_BIN:/usr/bin:/bin" AGENT_CLI=codex "${envs[@]}" \
+    bash -c 'source "$1/scripts/lib/agent_cli.sh"; shift; agent_cli_show "$@" -- P' _ "$M_KIT" "$@"
+}
+assert_exit "M3c: AGENT_MODEL_CODEX=claude-… fails the build (nothing is spawned)" 2 \
+  m_reject AGENT_MODEL_CODEX=claude-opus-4-8 --
+assert_exit "M3c: …and so does --model claude-…" 2 \
+  m_reject -- --model claude-opus-4-8
+assert_grep_str "M3c: …with a message naming the id and the key to change" \
+  "AGENT_MODEL_CODEX" "$(m_reject AGENT_MODEL_CODEX=claude-opus-4-8 -- 2>&1)"
+
+# the freeze reads the environment at SOURCE time, so it only works while every
+# script sources the library BEFORE config.env. Pin the order; do not trust it.
+M_ORDER=""; M_ORDER_N=0
+while IFS= read -r m_f; do
+  m_lib="$(grep -n 'source .*lib/agent_cli\.sh' "$REPO_ROOT/$m_f" | grep -v '^[0-9]*:#' | head -n1 | cut -d: -f1)"
+  m_cfg="$(grep -n 'source "\$CONFIG"' "$REPO_ROOT/$m_f" | head -n1 | cut -d: -f1)"
+  [[ -n "$m_lib" && -n "$m_cfg" ]] || continue
+  M_ORDER_N=$((M_ORDER_N + 1))
+  [[ "$m_lib" -lt "$m_cfg" ]] || M_ORDER="${M_ORDER}${m_f}: library at line $m_lib, config at line $m_cfg"$'\n'
+done < <(git -C "$REPO_ROOT" ls-files 'scripts/*.sh')
+assert_ge "M3c: the order check found the scripts that do both" "$M_ORDER_N" 2
+assert_empty_str "M3c: every one sources the library BEFORE config.env" "$M_ORDER"
+
+# ─── M3d. the reported failure, end to end through the shipped script ──────
+# The library-level tests above cannot see WHICH BINARY ran — the bug fed
+# codex's argv to the claude binary, and an argv dump looks the same either way.
+# So this one runs the real morning_brief.sh against the shims, with the exact
+# config.env shape that broke, and reads the binary's own name back.
+M_PLOOP="$TEST_TMP/m_prec_loop"; mkdir -p "$M_PLOOP/ssot" "$M_PLOOP/briefs" "$M_PLOOP/logs"
+M_PCFG="$TEST_TMP/m_prec_config.env"
+cat > "$M_PCFG" <<CFG
+PROJECT_ROOT="$M_PLOOP"
+SSOT_DIR="\$PROJECT_ROOT/ssot"
+BRIEF_DIR="\$PROJECT_ROOT/briefs"
+LOG_DIR="\$PROJECT_ROOT/logs"
+QUEUE_FILE="\$PROJECT_ROOT/approval_queue.md"
+AGENT_CMD="claude"
+AGENT_MODEL="claude-opus-4-8"
+AGENT_FLAGS="--dangerously-skip-permissions"
+AGENT_TIMEOUT=60
+NTFY_ENABLED=0
+NTFY_TOPIC=""
+CFG
+M_PARGS="$TEST_TMP/m_prec_brief.txt"
+env -i HOME="$TEST_TMP/m_fakehome" PATH="$M_BIN:/usr/bin:/bin" AGENT_CLI=codex \
+    LOOP_CONFIG="$M_PCFG" SHIM_ARGS="$M_PARGS" "$M_KIT/scripts/morning_brief.sh" >/dev/null 2>&1
+assert_eq "M3d: the CODEX binary is the one that ran, not the config's claude" \
+  "codex" "$(cat "$M_PARGS.bin" 2>/dev/null)"
+assert_grep "M3d: …with codex's default model" "gpt-5.6-sol" "$M_PARGS"
+assert_no_grep "M3d: …and the config's Claude model id never reaches it" \
+  "claude-opus-4-8" "$M_PARGS"
+assert_no_grep "M3d: …nor the claude-only permission flag" "dangerously" "$M_PARGS"
+M_PLOG="$(ls "$M_PLOOP"/logs/morning_brief_2*.log 2>/dev/null | head -n1)"
+assert_grep "M3d: …and the dropped key is on the record, in the run's own log" \
+  "AGENT_CMD=claude" "${M_PLOG:-/nonexistent}"
+
+# the control: the same config with no AGENT_CLI in the environment is the
+# claude run it has always been. Fixing the crossing must not move the default.
+M_PARGS2="$TEST_TMP/m_prec_brief_claude.txt"
+env -i HOME="$TEST_TMP/m_fakehome" PATH="$M_BIN:/usr/bin:/bin" \
+    LOOP_CONFIG="$M_PCFG" SHIM_ARGS="$M_PARGS2" "$M_KIT/scripts/morning_brief.sh" >/dev/null 2>&1
+assert_eq "M3d: control — with no AGENT_CLI the same config still runs claude" \
+  "claude" "$(cat "$M_PARGS2.bin" 2>/dev/null)"
+assert_grep "M3d: …with its own model id" "claude-opus-4-8" "$M_PARGS2"
 
 # ─── M4. the same prompt reaches both CLIs ─────────────────────────────────
 # This is the whole claim, run end to end through the shipped morning_brief.sh:
