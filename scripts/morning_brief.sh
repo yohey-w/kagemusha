@@ -24,6 +24,8 @@ export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"
 
 # ─── locate & load config ──────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/agent_cli.sh
+source "$SCRIPT_DIR/lib/agent_cli.sh"
 CONFIG="${LOOP_CONFIG:-$SCRIPT_DIR/../config.env}"
 if [[ ! -f "$CONFIG" ]]; then
   echo "config not found: $CONFIG" >&2
@@ -37,7 +39,9 @@ source "$CONFIG"
 : "${SSOT_DIR:?set SSOT_DIR in config.env}"
 : "${BRIEF_DIR:?set BRIEF_DIR in config.env}"
 : "${LOG_DIR:?set LOG_DIR in config.env}"
-: "${AGENT_CMD:?set AGENT_CMD in config.env}"
+# Either AGENT_CLI names the dialect or AGENT_CMD names the binary; with
+# neither, and no CLI on PATH, agent_cli_which says so and names both keys.
+agent_cli_which >/dev/null || exit 2
 
 TODAY="$(date +%F)"
 DOW="$(date +%A)"
@@ -76,14 +80,14 @@ Do this:
 PROMPT_EOF
 
 # ─── run the agent (headless) ──────────────────────────────────────────────
-# CLI-SWAP POINT ▼  Replace this ONE invocation to use a different CLI.
-#   Claude : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS
-#   Codex  : "$AGENT_CMD" exec "$PROMPT" $AGENT_FLAGS         # (codex CLI)
-#   Gemini : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+-m "$AGENT_MODEL"} $AGENT_FLAGS
-#   Any CLI that takes a prompt on argv and runs non-interactively works.
-# shellcheck disable=SC2086
-timeout "${AGENT_TIMEOUT:-1500}" "$AGENT_CMD" -p "$PROMPT" \
-  ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS \
+# ONE invocation, and it is not written out per CLI any more: set AGENT_CLI in
+# config.env and scripts/lib/agent_cli.sh builds the right command line. The
+# prompt above does not change between CLIs — that is the point of the split.
+#
+# --write, because this run has two files to produce. On Claude Code the flag
+# that actually grants that is yours (AGENT_FLAGS); on Codex it selects
+# -s workspace-write, rooted at PROJECT_ROOT rather than at cron's $HOME.
+agent_run --write --timeout "${AGENT_TIMEOUT:-1500}" --cd "$PROJECT_ROOT" -- "$PROMPT" \
   >> "${LOG_DIR}/morning_brief_${TODAY}.log" 2>&1
 status=$?
 

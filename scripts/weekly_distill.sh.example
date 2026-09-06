@@ -51,10 +51,14 @@ CONV_DIRS="${CONV_DIRS:-}"                 # e.g. "$HOME/.claude/projects/-home-
 MODEL_MAX_LINES="${MODEL_MAX_LINES:-160}"
 MODEL_MAX_PRINCIPLES="${MODEL_MAX_PRINCIPLES:-32}"
 
-# The agent CLI (headless). Same swap points as morning_brief.sh.
-AGENT_CMD="${AGENT_CMD:-claude}"
-AGENT_MODEL="${AGENT_MODEL:-claude-opus-4-8}"
-AGENT_FLAGS="${AGENT_FLAGS:---dangerously-skip-permissions}"
+# The agent CLI (headless). One invocation for every CLI, built by
+# scripts/lib/agent_cli.sh — pick the CLI with AGENT_CLI (claude|codex|auto).
+# shellcheck source=scripts/lib/agent_cli.sh
+source "$SCRIPT_DIR/lib/agent_cli.sh"
+AGENT_CLI="${AGENT_CLI:-auto}"
+AGENT_MODEL="${AGENT_MODEL:-}"       # "" = the CLI's own default; see config.env.example
+AGENT_FLAGS="${AGENT_FLAGS:---dangerously-skip-permissions}"   # claude only
+CODEX_FLAGS="${CODEX_FLAGS:-}"                                 # codex only
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-1200}"
 
 # ntfy self-ping (inward — a note to yourself, not an outward send).
@@ -174,13 +178,8 @@ if [[ "${DISTILL_DRYRUN:-0}" = "1" ]]; then
 fi
 
 # ─── run the agent (headless) ────────────────────────────────────────────────
-# CLI-SWAP POINT ▼  (same as morning_brief.sh)
-#   Claude : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS
-#   Codex  : "$AGENT_CMD" exec "$PROMPT" $AGENT_FLAGS
-#   Gemini : "$AGENT_CMD" -p "$PROMPT" ${AGENT_MODEL:+-m "$AGENT_MODEL"} $AGENT_FLAGS
-# shellcheck disable=SC2086
-timeout "$AGENT_TIMEOUT" "$AGENT_CMD" -p "$PROMPT" \
-  ${AGENT_MODEL:+--model "$AGENT_MODEL"} $AGENT_FLAGS >> "$LOG" 2>&1
+# --write: this run revises the judgment model file and writes a report.
+agent_run --write --timeout "$AGENT_TIMEOUT" --cd "$(dirname "$MODEL_FILE")" -- "$PROMPT" >> "$LOG" 2>&1
 RC=$?
 
 # ─── lint the result, append the verdict to the report ───────────────────────

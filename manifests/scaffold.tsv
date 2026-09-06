@@ -58,6 +58,12 @@
 #     because there is no template to copy: the phrases you type when you
 #     overrule an agent cannot be shipped, and the scanner refuses to run until
 #     you write your own.
+#   · CLAUDE.md — created by setup.sh as the single line `@AGENTS.md`, not copied
+#     from anywhere. AGENTS.md above is the ONE agent-instructions file (Codex
+#     reads it directly; Claude Code reads it through that import — measured, not
+#     assumed). A pointer with one line in it is not a template, so it cannot be
+#     a row here: rule 2 requires a source under templates/, and there is no
+#     source. The asymmetry setup.sh implements is written out there.
 #   · templates/promotion_candidate.md — read by scripts/distill.sh and pasted
 #     into the prompt it fires. It is a format definition the machinery consumes
 #     in place, not a file the user fills in, so it is not scaffolded.
@@ -87,4 +93,4 @@ templates/decisions_journal.md	judgment/decisions_journal.md	skip-if-exists
 templates/judgment_model.md	judgment/judgment_model.md	skip-if-exists
 templates/promotion_queue.md	judgment/promotion_queue.md	skip-if-exists
 templates/charter.md	projects/_charter_template.md	skip-if-exists
-templates/agent_instructions.md	CLAUDE.md	skip-if-any-exists:CLAUDE.md,AGENTS.md
+templates/agent_instructions.md	AGENTS.md	skip-if-any-exists:CLAUDE.md,AGENTS.md

@@ -26,6 +26,7 @@ assert_nonempty_str "B: setup.sh prints what it did" "$b_out"
 
 # the exact set of files that appeared, compared against a written-out manifest
 b_expected="$(LC_ALL=C sort <<'MANIFEST'
+AGENTS.md
 CLAUDE.md
 approval_queue.md
 config.env
@@ -53,8 +54,10 @@ for d in ssot briefs logs local projects projects/_archive \
 done
 
 # every scaffolded file is a byte-for-byte copy of its template
-assert_same "B: CLAUDE.md comes from templates/agent_instructions.md" \
-  "$B_FX/CLAUDE.md" "$B_FX/templates/agent_instructions.md"
+# CHANGED (Codex support): the instructions file is AGENTS.md, because that is
+# the name Codex reads. CLAUDE.md is no longer a copy of anything — see below.
+assert_same "B: AGENTS.md comes from templates/agent_instructions.md" \
+  "$B_FX/AGENTS.md" "$B_FX/templates/agent_instructions.md"
 assert_same "B: ssot/decisions.md comes from templates/decisions.md" \
   "$B_FX/ssot/decisions.md" "$B_FX/templates/decisions.md"
 assert_same "B: ssot/tasks.md comes from templates/tasks.md" \
@@ -78,8 +81,19 @@ assert_same "B: projects/_charter_template.md comes from templates/charter.md" \
 assert_same "B: config.env comes from config.env.example" \
   "$B_FX/config.env" "$B_FX/config.env.example"
 
-# AGENTS.md is NOT created — Codex users rename CLAUDE.md themselves
-assert_absent "B: AGENTS.md is not created" "$B_FX/AGENTS.md"
+# ── ONE instructions file, under two names ─────────────────────────────────
+# CHANGED, deliberately. The old rule was "CLAUDE.md is written; a Codex user
+# renames it by hand", asserted here as `AGENTS.md is not created`. A rename you
+# have to remember is a rename half the users will not do, and the kit then
+# ships instructions Codex never reads. So: AGENTS.md is the file, and CLAUDE.md
+# is the single line `@AGENTS.md` — Claude Code's import, measured on 2.1.261
+# (a marker put in AGENTS.md came back in the reply through that one line).
+# Two files, one text, no fork.
+assert_file "B: CLAUDE.md is created too" "$B_FX/CLAUDE.md"
+assert_eq "B: …and it is exactly the one-line import of AGENTS.md" \
+  "@AGENTS.md" "$(cat "$B_FX/CLAUDE.md")"
+assert_ne "B: …so it is NOT a second copy of the instructions" \
+  "$(cat "$B_FX/templates/agent_instructions.md")" "$(cat "$B_FX/CLAUDE.md")"
 
 # ── every scaffolded file is EMPTY FORM, not somebody's content ────────────
 # This is the property the two-layer split exists to guarantee, checked here on
@@ -151,14 +165,41 @@ assert_grep "B: operator edit to config.env survives" "SENTINEL_KEY=value" "$B_F
 assert_grep "B: the correction phrases you wrote survive a re-run" \
   "SENTINEL_PATTERN" "$B_FX/judgment/correction_patterns.txt"
 
-# a pre-existing AGENTS.md must block CLAUDE.md creation (Codex users)
+# ── the rule is ASYMMETRIC, and both halves are checked ────────────────────
+# CHANGED (Codex support). The asymmetry is the whole design: adding a pointer
+# beside your file is safe, generating a second instructions file beside it is
+# not. So AGENTS.md-only gets the pointer written for it, and CLAUDE.md-only
+# gets nothing but a hint — because whatever is in that file is YOURS, and a
+# template-generated AGENTS.md next to it would be a silent fork of your rules.
+
+# (a) AGENTS.md only → the pointer is added, the file itself untouched
 B_FX2="$TEST_TMP/b_agents"
 kit_copy "$B_FX2"
 printf 'my own codex instructions\n' > "$B_FX2/AGENTS.md"
 "$B_FX2/scripts/setup.sh" > "$TEST_TMP/b_run3.log" 2>&1; b_rc3=$?
 assert_eq "B: setup with pre-existing AGENTS.md exits 0" "0" "$b_rc3"
-assert_absent "B: CLAUDE.md not created when AGENTS.md exists" "$B_FX2/CLAUDE.md"
 assert_grep "B: existing AGENTS.md left untouched" "my own codex instructions" "$B_FX2/AGENTS.md"
+assert_eq "B: CLAUDE.md is created as the import when only AGENTS.md existed" \
+  "@AGENTS.md" "$(cat "$B_FX2/CLAUDE.md")"
+
+# (b) CLAUDE.md only → NOTHING is written, and the migration is printed
+B_FX2B="$TEST_TMP/b_claude_only"
+kit_copy "$B_FX2B"
+printf 'my own claude instructions\n' > "$B_FX2B/CLAUDE.md"
+"$B_FX2B/scripts/setup.sh" > "$TEST_TMP/b_run3b.log" 2>&1; b_rc3b=$?
+assert_eq "B: setup with pre-existing CLAUDE.md exits 0" "0" "$b_rc3b"
+assert_absent "B: AGENTS.md is NOT generated beside an existing CLAUDE.md" "$B_FX2B/AGENTS.md"
+assert_grep "B: existing CLAUDE.md left untouched" "my own claude instructions" "$B_FX2B/CLAUDE.md"
+assert_grep "B: …and the one-line migration is printed instead" \
+  "mv $B_FX2B/CLAUDE.md $B_FX2B/AGENTS.md" "$TEST_TMP/b_run3b.log"
+
+# (c) both present → neither is touched, nothing is created
+B_FX2C="$TEST_TMP/b_both"
+kit_copy "$B_FX2C"
+printf 'mine\n' > "$B_FX2C/AGENTS.md"; printf 'also mine\n' > "$B_FX2C/CLAUDE.md"
+"$B_FX2C/scripts/setup.sh" > "$TEST_TMP/b_run3c.log" 2>&1
+assert_grep "B: both files present → AGENTS.md untouched" "mine" "$B_FX2C/AGENTS.md"
+assert_grep "B: both files present → CLAUDE.md untouched" "also mine" "$B_FX2C/CLAUDE.md"
 
 # ── 3. explicit target directory ───────────────────────────────────────────
 B_FX3="$TEST_TMP/b_kit"
@@ -168,6 +209,7 @@ B_LOG4="$TEST_TMP/b_run4.log"
 "$B_FX3/scripts/setup.sh" "$B_TARGET" > "$B_LOG4" 2>&1; b_rc4=$?
 assert_eq "B: setup.sh <target> exits 0" "0" "$b_rc4"
 assert_file "B: <target>/ssot/decisions.md created" "$B_TARGET/ssot/decisions.md"
+assert_file "B: <target>/AGENTS.md created" "$B_TARGET/AGENTS.md"
 assert_file "B: <target>/CLAUDE.md created" "$B_TARGET/CLAUDE.md"
 assert_file "B: <target>/system_map.md created" "$B_TARGET/system_map.md"
 assert_dir  "B: <target>/judgment/mining created" "$B_TARGET/judgment/mining"
@@ -178,6 +220,7 @@ assert_absent "B: kit root NOT scaffolded when a target is given" "$B_FX3/ssot/d
 assert_absent "B: …and no judgment/ tree at the kit root either" "$B_FX3/judgment"
 assert_file "B: …while the shipped norms shelf is left untouched" "$B_FX3/ssot/norms/README.md"
 assert_absent "B: kit root gets no CLAUDE.md when a target is given" "$B_FX3/CLAUDE.md"
+assert_absent "B: kit root gets no AGENTS.md when a target is given" "$B_FX3/AGENTS.md"
 # config.env is the one exception: it lives next to the scripts that source it
 assert_file "B: config.env still lands next to the scripts" "$B_FX3/config.env"
 assert_grep "B: output names the target directory" "$B_TARGET" "$B_LOG4"
