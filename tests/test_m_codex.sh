@@ -558,3 +558,68 @@ assert_grep "M6: …and names git as what arbitrates two live CLIs" \
 assert_file "M7: the Codex log adapter's tests are in the tree" "$REPO_ROOT/tests/unit_codex_logs.py"
 assert_ok "M7: the Codex log adapter's unit tests pass" \
   env -C "$REPO_ROOT" python3 -m unittest tests.unit_codex_logs
+
+# ─── M8. the Codex date stamp must leave the hook as JSON ──────────────────
+# The two CLIs read the same event and disagree about the wire. Claude Code
+# prepends the hook's raw stdout to the turn; Codex parses stdout against a
+# schema (`user-prompt-submit.command.output`, embedded in the codex binary,
+# `additionalProperties: false`) and refuses anything else. Plain text gets
+# "Hook failed: hook returned invalid user prompt submit JSON output" in the
+# TUI — and NOTHING in `codex exec`, which drops the output in silence. That
+# silence is the reason this test exists: the lane the kit actually automates
+# is the one where a broken stamp has no symptom, until a deadline is written
+# on the wrong weekday. Measured 2026-09-07 on codex-cli 0.153.4.
+#
+# The command is RUN, not pattern-matched. A shape assertion on the string
+# would pass on a command whose shell quoting is broken, which is precisely
+# the failure that is easy to introduce here — the value nests JSON double
+# quotes inside a shell single-quoted printf inside a TOML literal.
+M_HOOK_CMD="$(python3 -c '
+import tomllib, sys
+d = tomllib.load(open(sys.argv[1], "rb"))
+print(d["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"], end="")
+' "$REPO_ROOT/templates/codex/config.toml.example" 2>/dev/null || true)"
+assert_nonempty_str "M8: the Codex template parses as TOML and declares a hook command" \
+  "$M_HOOK_CMD"
+assert_grep_str "M8: …and it is the JSON envelope form, not a bare date" \
+  "hookSpecificOutput" "$M_HOOK_CMD"
+
+M_HOOK_OUT="$(bash -c "$M_HOOK_CMD" 2>/dev/null || true)"
+assert_nonempty_str "M8: the hook command runs and writes to stdout" "$M_HOOK_OUT"
+assert_ok "M8: …and that stdout is valid JSON" \
+  env M_HOOK_JSON="$M_HOOK_OUT" python3 -c 'import json, os; json.loads(os.environ["M_HOOK_JSON"])'
+
+M_HOOK_EVT="$(printf '%s' "$M_HOOK_OUT" | python3 -c '
+import json, sys
+print(json.load(sys.stdin)["hookSpecificOutput"]["hookEventName"], end="")' 2>/dev/null || true)"
+assert_eq "M8: …carrying the event name Codex requires" "UserPromptSubmit" "$M_HOOK_EVT"
+
+M_HOOK_CTX="$(printf '%s' "$M_HOOK_OUT" | python3 -c '
+import json, sys
+print(json.load(sys.stdin)["hookSpecificOutput"]["additionalContext"], end="")' 2>/dev/null || true)"
+assert_grep_str "M8: …and the stamp itself, inside additionalContext" "[now] " "$M_HOOK_CTX"
+# the substitution really happened: a literal %Y would mean printf swallowed
+# the date and shipped the format string to the model.
+assert_no_grep_str "M8: …with the date substituted, not the format string" "%Y" "$M_HOOK_CTX"
+
+# control — the form 殿 hit on 2026-09-07: bare `date` output is not JSON, so
+# the check above is capable of failing.
+assert_nonempty_str "M8: control — the JSON check rejects the plain-text form" \
+  "$(bash -c "date '+[now] %Y-%m-%d (%a) %H:%M %Z'" | python3 -c '
+import json, sys
+try:
+    json.load(sys.stdin)
+except Exception:
+    print("rejected", end="")' 2>/dev/null || true)"
+
+# the asymmetry is deliberate: Claude Code wants the raw text, so nobody
+# should "fix" that half by copying the envelope across.
+M_CLAUDE_HOOK="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(d["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"], end="")
+' "$REPO_ROOT/templates/claude/settings.json.example" 2>/dev/null || true)"
+assert_grep_str "M8: the Claude half still emits the stamp as plain text" \
+  "date " "$M_CLAUDE_HOOK"
+assert_no_grep_str "M8: …and does NOT carry Codex's JSON envelope" \
+  "hookSpecificOutput" "$M_CLAUDE_HOOK"

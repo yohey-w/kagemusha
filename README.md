@@ -109,7 +109,7 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 |---|---|---|---|
 | instructions | `CLAUDE.md` = the one line `@AGENTS.md` | `AGENTS.md`, read directly | one file, two names — `setup.sh` writes both |
 | skills | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` symlinks into whichever exists |
-| per-turn date stamp | `.claude/settings.json` → `UserPromptSubmit` hook | `.codex/config.toml` → `[[hooks.UserPromptSubmit]]` (needs the project trusted) | state the date in `AGENTS.md` instead |
+| per-turn date stamp | `.claude/settings.json` → `UserPromptSubmit` hook, raw stdout | `.codex/config.toml` → `[[hooks.UserPromptSubmit]]` (needs the project trusted). Same event, different wire: stdout must be the JSON envelope `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"…"}}` — plain text is refused in the TUI and dropped in silence by `codex exec` | state the date in `AGENTS.md` instead |
 | memory | auto-memory directory | memories | **neither is canon.** The plain files are ([`ssot/README.md`](ssot/README.md)) |
 | headless invocation | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | any CLI taking a prompt on argv works |
 | connectors, unattended | works, with `--allowedTools mcp__…` | works; **no per-tool allowlist exists** — the enable switch is the plugin ([`docs/inbound-loop.md`](docs/inbound-loop.md)) | keep the sweep read-only by what you enable, not by what you ask for |

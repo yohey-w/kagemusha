@@ -109,7 +109,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 |---|---|---|---|
 | 指示ファイル | `CLAUDE.md` ＝ `@AGENTS.md` の1行 | `AGENTS.md` を直読 | 中身は1本・名前が2つ。`setup.sh` が両方作る |
 | スキル | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` が有る方へ symlink |
-| 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提） | `AGENTS.md` に「日付は必ず検算」と書く |
+| 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook。stdout はそのまま使われる | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提）。同じイベントだが形式が違う——stdout は JSON エンベロープ `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"…"}}` 必須。平文は TUI では Hook failed、`codex exec` では無言で破棄される | `AGENTS.md` に「日付は必ず検算」と書く |
 | メモリ | 自動メモリ | memories | **どちらも正本ではない。** 正本はプレーンファイル（[`ssot/README.md`](ssot/README.md)） |
 | ヘッドレス起動 | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | argv でプロンプトを取る CLI なら何でも |
 | 無人での接続子 | 動く（`--allowedTools mcp__…` で絞れる） | 動くが、**ツール単位の許可リストが無い**——入切はプラグイン単位（[`docs/inbound-loop.md`](docs/inbound-loop.md)） | 読み取り専用に保つのは「何を頼むか」ではなく「何を有効にするか」で |
