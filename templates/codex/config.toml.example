@@ -38,17 +38,42 @@ sandbox_mode = "workspace-write"
 # look wrong. So the machine states the date, once, at the top of every turn,
 # and nothing has to remember to ask.
 #
-# UserPromptSubmit fires before your message reaches the model and its stdout is
-# added to the turn. VERIFIED on codex-cli 0.149.0 (the hook ran and its output
-# arrived); the event name and this table shape are what that run used. Other
-# event names ship in the same binary — SessionStart, SessionEnd, Stop,
-# PreToolUse, PostToolUse, PermissionRequest, Compact — but only UserPromptSubmit
-# was measured here, so treat the rest as "present, unverified".
+# ⚠️ CODEX WANTS JSON ON STDOUT. PLAIN TEXT IS DISCARDED. This is the one place
+# in the kit where the two CLIs are genuinely NOT interchangeable. Claude Code
+# takes the hook's raw stdout and prepends it to the turn; Codex parses stdout
+# against a schema — `user-prompt-submit.command.output`, embedded in the codex
+# binary — whose `additionalProperties` is false and whose `hookEventName` is
+# required. So the stamp has to travel inside the envelope below. Hand Codex
+# bare text and the interactive TUI answers
+#
+#     Hook failed: hook returned invalid user prompt submit JSON output
+#
+# while `codex exec` says NOTHING AT ALL — the output is dropped in silence and
+# the turn simply has no date in it. That silence is why this deserves a
+# paragraph: on the non-interactive lane the failure has no symptom except a
+# model that has, once again, guessed the weekday.
+#
+# MEASURED 2026-09-07 on codex-cli 0.153.4, by putting a nonce inside the stamp
+# and asking the model to read it back. With the envelope the nonce came back;
+# with plain text it did not; with a bare {"additionalContext": "…"} and no
+# envelope it did not either — that is `additionalProperties: false` at work.
+# The envelope is the same shape Claude Code uses, so the two hooks differ in
+# their wrapper and in nothing else.
+#
+# ON EDITING THE STAMP. The date format below contains no `"` and no backslash,
+# so substituting it into the JSON cannot break the JSON. Keep it that way. The
+# TOML value is a multi-line literal so that the JSON's double quotes and the
+# date's single quotes both survive without a second layer of escaping.
+#
+# UserPromptSubmit fires before your message reaches the model. Other event
+# names ship in the same binary — SessionStart, SessionEnd, Stop, PreToolUse,
+# PostToolUse, PermissionRequest, Compact — but only UserPromptSubmit was
+# measured here, so treat the rest as "present, unverified".
 [[hooks.UserPromptSubmit]]
 
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
-command = "date '+[now] %Y-%m-%d (%a) %H:%M %Z'"
+command = '''printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}' "$(date '+[now] %Y-%m-%d (%a) %H:%M %Z')"'''
 
 # ─── skills ────────────────────────────────────────────────────────────────
 # Codex discovers skills under ~/.codex/skills/ (and a plugin may add more).
