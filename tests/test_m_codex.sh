@@ -74,8 +74,17 @@ M_CX="$TEST_TMP/m_codexflag"; kit_copy "$M_CX"
 "$M_CX/scripts/setup.sh" --codex > "$M_CX/.setup.log" 2>&1
 assert_eq "M2: setup.sh --codex exits 0" "0" "$?"
 assert_file "M2: --codex writes .codex/config.toml" "$M_CX/.codex/config.toml"
-assert_same "M2: …from templates/codex/config.toml.example" \
-  "$M_CX/.codex/config.toml" "$M_CX/templates/codex/config.toml.example"
+# The generated file is the template with ONE substitution: the hook path has
+# to be absolute (a relative one resolves against wherever codex was started),
+# and only the installing machine knows what it is. So the contract is not
+# "identical" but "identical once the path is put back" — asserted by undoing
+# the substitution, which also proves nothing ELSE was rewritten on the way.
+M_CX_UNSUB="$TEST_TMP/m_codexflag_unsub.toml"
+sed "s|$M_CX|__PROJECT_ROOT__|g" "$M_CX/.codex/config.toml" > "$M_CX_UNSUB"
+assert_same "M2: …from templates/codex/config.toml.example, bar the path substitution" \
+  "$M_CX_UNSUB" "$M_CX/templates/codex/config.toml.example"
+assert_no_grep "M2: …with no placeholder left behind" \
+  "__PROJECT_ROOT__" "$M_CX/.codex/config.toml"
 assert_grep "M2: …and the run says it is inert until the project is trusted" \
   "trust_level" "$M_CX/.setup.log"
 # the template has to carry the two things that make it work at all
@@ -623,3 +632,171 @@ assert_grep_str "M8: the Claude half still emits the stamp as plain text" \
   "date " "$M_CLAUDE_HOOK"
 assert_no_grep_str "M8: …and does NOT carry Codex's JSON envelope" \
   "hookSpecificOutput" "$M_CLAUDE_HOOK"
+
+# ─── M9. the outbound guard: the rule that has to be a control ─────────────
+# THE FAILURE THIS GROUP EXISTS FOR IS SILENCE. Measured 2026-09-07 on
+# codex-cli 0.153.4: with "outward = ask first" in AGENTS.md and the strictest
+# sandbox, `codex exec -s read-only "email the customer …"` called gmail's send
+# tool unasked, and when the approval policy refused it, created a draft to the
+# real customer instead. The hook below is the machine's "no". But the host
+# FAILS OPEN — a hook that is missing, unexecutable, or prints anything the
+# schema rejects lets the call through and says nothing — so a broken guard and
+# an absent guard look identical from outside. These assertions are the only
+# thing that can tell them apart, and they run the script rather than reading
+# it, because the failure that is easy to introduce here is a typo in a printf.
+M_GUARD="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
+assert_file "M9: the outbound guard ships in the kit" "$M_GUARD"
+assert_ok "M9: …and is syntactically valid bash" bash -n "$M_GUARD"
+assert_ok "M9: …and is executable in the tree" test -x "$M_GUARD"
+
+# m_guard PAYLOAD → the hook's stdout for that PreToolUse input
+m_guard() { printf '%s' "$1" | bash "$M_GUARD" 2>/dev/null; }
+m_decision() {  # → allow | deny | INVALID
+  M_G_OUT="$(m_guard "$1")" M_G_PY='
+import json, os, sys
+try: d = json.loads(os.environ["M_G_OUT"])
+except Exception: print("INVALID"); sys.exit()
+h = d.get("hookSpecificOutput") or {}
+print(h.get("permissionDecision") or ("allow" if not h else "INVALID"))
+' python3 -c 'import os;exec(os.environ["M_G_PY"])'
+}
+
+# the incident itself, and its neighbours
+for m_verb in send_email create_draft update_draft reply forward; do
+  assert_eq "M9: gmail.$m_verb is denied" "deny" \
+    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__gmail__${m_verb}\",\"tool_input\":{}}")"
+done
+assert_eq "M9: slack post_message is denied" "deny" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__slack__post_message","tool_input":{}}')"
+
+# reading is not sending. A guard that also blocks the sweep gets switched off,
+# and a guard that is switched off protects nothing.
+assert_eq "M9: gmail.search_emails is allowed" "allow" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__gmail__search_emails","tool_input":{}}')"
+assert_eq "M9: an unrelated connector read is allowed" "allow" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__google-drive__search_files","tool_input":{}}')"
+
+# the shell is out of scope ON PURPOSE: git push and rm are reversible-by-history
+# operations this loop deliberately leaves unattended, and a substring rule over
+# command text would eat them.
+assert_eq "M9: the shell is never matched, whatever the command says" "allow" \
+  "$(m_decision '{"tool_name":"Bash","tool_input":{"command":"git push && rm -rf ./tmp && echo post"}}')"
+assert_eq "M9: …nor is a connector merely NAMED after a verb (postgres)" "allow" \
+  "$(m_decision '{"tool_name":"mcp__postgres__query","tool_input":{}}')"
+
+# fail CLOSED on an unreadable payload: loudly wrong is recoverable, quietly
+# absent is the failure this file exists to prevent.
+assert_eq "M9: an input with no tool_name is denied, not waved through" "deny" \
+  "$(m_decision '{"hook_event_name":"PreToolUse"}')"
+assert_eq "M9: …and so is empty input" "deny" "$(m_decision '')"
+
+# every branch must be valid JSON, or codex drops it and the call proceeds
+M_GUARD_BAD=""
+for m_p in '{"tool_name":"mcp__codex_apps__gmail__create_draft"}' \
+           '{"tool_name":"mcp__codex_apps__gmail__search_emails"}' \
+           '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+           '' ; do
+  M_G_OUT="$(m_guard "$m_p")" python3 -c 'import json,os;json.loads(os.environ["M_G_OUT"])' 2>/dev/null \
+    || M_GUARD_BAD="${M_GUARD_BAD}${m_p:-<empty>}"$'\n'
+done
+assert_empty_str "M9: every branch prints valid JSON (the host drops anything else, in silence)" "$M_GUARD_BAD"
+
+# the deny must carry a non-empty reason (the binary refuses a bare deny) and
+# that reason must route the agent to the queue rather than to another verb.
+M_GUARD_REASON="$(M_G_OUT="$(m_guard '{"tool_name":"mcp__codex_apps__gmail__send_email"}')" \
+  python3 -c 'import json,os;print(json.loads(os.environ["M_G_OUT"])["hookSpecificOutput"]["permissionDecisionReason"],end="")')"
+assert_nonempty_str "M9: the deny carries a reason (a bare deny is refused by codex)" "$M_GUARD_REASON"
+assert_grep_str "M9: …and the reason names where the message goes instead" \
+  "approval_queue.md" "$M_GUARD_REASON"
+
+# the pass must be the EMPTY document. `permissionDecision: allow` is rejected
+# by the binary ("PreToolUse hook returned unsupported permissionDecision:allow"),
+# so there is no way to say yes and an over-helpful edit here would fail open.
+assert_eq "M9: the pass is the empty document, since the schema has no yes" \
+  "{}" "$(m_guard '{"tool_name":"Bash","tool_input":{"command":"ls"}}')"
+
+# control: the harness can tell a deny from an allow
+assert_eq "M9: control — the decision reader reports INVALID on garbage" \
+  "INVALID" "$(M_G_OUT='not json' M_G_PY='
+import json, os, sys
+try: d = json.loads(os.environ["M_G_OUT"])
+except Exception: print("INVALID"); sys.exit()
+print("allow")
+' python3 -c 'import os;exec(os.environ["M_G_PY"])')"
+
+# ── the wiring: the template must point at the script, absolutely ──────────
+M_GUARD_CMD="$(python3 -c '
+import tomllib, sys
+d = tomllib.load(open(sys.argv[1], "rb"))
+print(d["hooks"]["PreToolUse"][0]["hooks"][0]["command"], end="")
+' "$REPO_ROOT/templates/codex/config.toml.example" 2>/dev/null || true)"
+assert_grep_str "M9: the Codex template declares a PreToolUse hook" \
+  "outbound_guard.sh" "$M_GUARD_CMD"
+assert_grep_str "M9: …whose path is a placeholder setup.sh fills in absolutely" \
+  "__PROJECT_ROOT__/" "$M_GUARD_CMD"
+
+M_GUARD_FX="$(m_scaffold guard)"
+"$M_GUARD_FX/scripts/setup.sh" --codex >> "$M_GUARD_FX/.setup.log" 2>&1
+assert_file "M9: setup.sh --codex installs the guard beside the config" \
+  "$M_GUARD_FX/.codex/hooks/outbound_guard.sh"
+assert_ok "M9: …executable" test -x "$M_GUARD_FX/.codex/hooks/outbound_guard.sh"
+assert_same "M9: …byte for byte from the template" \
+  "$M_GUARD_FX/.codex/hooks/outbound_guard.sh" "$M_GUARD"
+M_GUARD_WIRED="$(python3 -c '
+import tomllib, sys
+d = tomllib.load(open(sys.argv[1], "rb"))
+print(d["hooks"]["PreToolUse"][0]["hooks"][0]["command"], end="")
+' "$M_GUARD_FX/.codex/config.toml" 2>/dev/null || true)"
+assert_no_grep_str "M9: the generated config has no placeholder left in it" \
+  "__PROJECT_ROOT__" "$M_GUARD_WIRED"
+assert_grep_str "M9: …and names an absolute path (a relative one resolves elsewhere)" \
+  "$M_GUARD_FX/.codex/hooks/outbound_guard.sh" "$M_GUARD_WIRED"
+assert_ok "M9: …that exists and runs" bash -n "$M_GUARD_WIRED"
+
+# ─── M10. --help must not run the program ──────────────────────────────────
+# Measured 2026-09-07: `scripts/morning_brief.sh --help` fell through into the
+# body, started an agent and created briefs/ and logs/ under the directory the
+# operator happened to be standing in. A help flag with side effects is the one
+# flag people type when they are LEAST sure what a script does.
+M_HELP_HOME="$TEST_TMP/m_help_home"
+for m_entry in morning_brief.sh distill.sh inbound_watch.sh.example weekly_distill.sh.example; do
+  m_dir="$TEST_TMP/m_help_$(printf '%s' "$m_entry" | tr './' '__')"
+  rm -rf "$m_dir" "$M_HELP_HOME"; mkdir -p "$m_dir" "$M_HELP_HOME"
+  m_out="$(cd "$m_dir" && HOME="$M_HELP_HOME" LOOP_CONFIG="/nonexistent/config.env" \
+           bash "$M_KIT/scripts/$m_entry" --help 2>&1)"; m_rc=$?
+  assert_eq "M10: $m_entry --help exits 0" "0" "$m_rc"
+  assert_grep_str "M10: $m_entry --help says usage" "usage:" "$m_out"
+  assert_empty_str "M10: $m_entry --help creates nothing in the cwd" \
+    "$(find "$m_dir" -mindepth 1 2>/dev/null)"
+  assert_empty_str "M10: $m_entry --help creates nothing in \$HOME" \
+    "$(find "$M_HELP_HOME" -mindepth 1 2>/dev/null)"
+  # and an unknown flag must say so rather than run the body
+  m_out2="$(cd "$m_dir" && HOME="$M_HELP_HOME" LOOP_CONFIG="/nonexistent/config.env" \
+            bash "$M_KIT/scripts/$m_entry" --no-such-flag 2>&1)"; m_rc2=$?
+  assert_eq "M10: $m_entry rejects an unknown flag (exit 64)" "64" "$m_rc2"
+  assert_grep_str "M10: …by name" "unknown option" "$m_out2"
+  assert_empty_str "M10: …and still creates nothing" \
+    "$(find "$m_dir" -mindepth 1 2>/dev/null; find "$M_HELP_HOME" -mindepth 1 2>/dev/null)"
+done
+
+# the dry run is the other half: it must print the command and touch nothing.
+M_DRY_DIR="$TEST_TMP/m_dry"; rm -rf "$M_DRY_DIR"; mkdir -p "$M_DRY_DIR"
+M_DRY_CFG="$M_DRY_DIR/config.env"
+cat > "$M_DRY_CFG" <<EOF
+PROJECT_ROOT="$M_DRY_DIR/proj"
+SSOT_DIR="$M_DRY_DIR/proj/ssot"
+BRIEF_DIR="$M_DRY_DIR/proj/briefs"
+LOG_DIR="$M_DRY_DIR/proj/logs"
+QUEUE_FILE="$M_DRY_DIR/proj/approval_queue.md"
+AGENT_CLI="claude"
+AGENT_CMD="$M_DRY_DIR/fake-claude"
+EOF
+printf '#!/usr/bin/env bash\ntouch "%s/RAN"\n' "$M_DRY_DIR" > "$M_DRY_DIR/fake-claude"
+chmod +x "$M_DRY_DIR/fake-claude"
+M_DRY_OUT="$(cd "$M_DRY_DIR" && LOOP_CONFIG="$M_DRY_CFG" bash "$M_KIT/scripts/morning_brief.sh" --dry-run 2>&1)"
+assert_grep_str "M10: --dry-run prints the command it would run" "would run" "$M_DRY_OUT"
+assert_grep_str "M10: …built by the real builder, so it names the resolved binary" \
+  "$M_DRY_DIR/fake-claude" "$M_DRY_OUT"
+assert_grep_str "M10: …and the prompt itself" "morning stock-take" "$M_DRY_OUT"
+assert_empty_str "M10: --dry-run starts no agent and creates no directory" \
+  "$(find "$M_DRY_DIR" -mindepth 1 ! -name 'config.env' ! -name 'fake-claude' 2>/dev/null)"

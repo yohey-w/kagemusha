@@ -44,6 +44,37 @@
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
+# ─── arguments, parsed BEFORE anything that touches the disk ───────────────
+# Above the PATH export, above the config load, above the first mkdir. `--help`
+# on a sibling script used to fall through into the body — asking a cron script
+# what its flags were RAN IT, and left directories behind in whatever folder you
+# were standing in (measured 2026-09-07). Answer before the side effects exist.
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      cat <<'USAGE'
+distill.sh — the MATERIAL trigger of the distillation courier. Inward only.
+
+usage: distill.sh [--help]
+
+  --help    this text. Reads nothing, writes nothing.
+
+Takes no other flags; it is driven by config.env and by environment variables:
+
+  DISTILL_DRYRUN=1   decide and print, fire nothing (the dry run)
+  LOOP_CONFIG=path   read that config instead of config.env
+
+Fires the model only past the material threshold; below it, one log line and
+silence. See docs/distillation-loop.md.
+USAGE
+      exit 0 ;;
+    *)
+      echo "distill.sh: unknown option: $arg" >&2
+      echo "  try: distill.sh --help" >&2
+      exit 64 ;;
+  esac
+done
+
 # cron's default PATH omits ~/.local/bin, so AGENT_CMD (claude / codex / gemini,
 # installed there by most native installers) is not found and the run dies instantly.
 export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"

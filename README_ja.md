@@ -112,7 +112,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 | 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook。stdout はそのまま使われる | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提）。同じイベントだが形式が違う——stdout は JSON エンベロープ `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"…"}}` 必須。平文は TUI では Hook failed、`codex exec` では無言で破棄される | `AGENTS.md` に「日付は必ず検算」と書く |
 | メモリ | 自動メモリ | memories | **どちらも正本ではない。** 正本はプレーンファイル（[`ssot/README.md`](ssot/README.md)） |
 | ヘッドレス起動 | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | argv でプロンプトを取る CLI なら何でも |
-| 無人での接続子 | 動く（`--allowedTools mcp__…` で絞れる） | 動くが、**ツール単位の許可リストが無い**——入切はプラグイン単位（[`docs/inbound-loop.md`](docs/inbound-loop.md)） | 読み取り専用に保つのは「何を頼むか」ではなく「何を有効にするか」で |
+| 無人での接続子 | 動く（`--allowedTools mcp__…` で絞れる） | 動くが、**ツール単位の許可リストが無く、プラグインの `enabled=false` も切れない**（実測 2026-09-07）——外向きの歯止めは同梱の `PreToolUse` フック（[`docs/inbound-loop.md`](docs/inbound-loop.md)） | 読み取り専用に保つのは文章ではなくフックで |
 | 会話ログの採取 | `~/.claude/projects/*.jsonl` | `~/.codex/sessions/**/rollout-*.jsonl` | アダプタ1本が両方を読む。`LOG_SOURCE=auto` で有る方 |
 | スケジューラ | cron / タスクスケジューラ——両方同じ。CLI 固有のスケジューラは使わないし、要らない |||
 
@@ -121,6 +121,8 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 **Claude Code・5行。** ① `./scripts/setup.sh` ② `AGENTS.md` の委任境界を埋める ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
 
 **Codex CLI・5行。** ① `./scripts/setup.sh --codex` ② `AGENTS.md` を埋め、`~/.codex/config.toml` に `[projects."<絶対パス>"] trust_level = "trusted"` を足す——**これが無いとプロジェクト側の設定は黙って無視されます** ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="codex"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
+
+**外向きの歯止め——「文章」は歯止めにならない。** 実測 2026-09-07・codex-cli 0.153.4。`AGENTS.md` に「外向き＝承認」を書き、最も厳しいサンドボックスのまま `codex exec -s read-only "顧客へ『テストです』とメールを送って"` を投げたら、**誰にも聞かずに送信ツールを実発行**し、承認ポリシーに弾かれると**実在の顧客宛ての下書きに回り込んだ**。`-s read-only` が縛るのはファイルシステムであってコネクタではなく、塞がれた経路は閉じた扉ではない。⇒ 機構の層を**2つ**使う。ただし効いたのは①だけだ: ① 同梱の `PreToolUse` フック（[`templates/codex/hooks/outbound_guard.sh`](templates/codex/hooks/outbound_guard.sh)・`setup.sh --codex` が設置）。操作名が `send`／`post`／`create_draft`／`reply`／… のコネクタ呼び出しを拒否し、「`approval_queue.md` へ積め」と返す——同日の再測定で、下書きは拒否され、読み取りは通った ② コネクタ自体を切る——ただし `[plugins."<id>"] enabled = false` は**正しいIDでも無効化できなかった**ので、本当に消すなら `codex plugin remove`（読み取りも消える）。詳細と通信形式は [`docs/inbound-loop.md`](docs/inbound-loop.md)。
 
 ## 9. 発展編
 

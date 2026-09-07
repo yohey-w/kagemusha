@@ -14,6 +14,39 @@
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
+# ─── arguments, parsed BEFORE anything that touches the disk ───────────────
+# This block sits above the PATH export, above the config load and above the
+# first mkdir on purpose. `--help` used to fall through to the body: asking a
+# cron script what its flags were RAN THE MORNING BRIEF, and created ~/briefs
+# and ~/logs under whatever directory you happened to be standing in (measured
+# 2026-09-07). A help flag that has side effects is a trap, and the only way to
+# not have one is to answer before the side effects exist.
+DRY_RUN=""
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      cat <<'USAGE'
+morning_brief.sh — the time trigger of the work loop. Inward only.
+
+usage: morning_brief.sh [--dry-run] [--help]
+
+  --dry-run   print the resolved command and the prompt, then exit. Starts no
+              agent, writes no board, sends no notification, creates no
+              directory. Use it to see what cron would run.
+  --help      this text. Reads nothing, writes nothing.
+
+Reads config from config.env (or $LOOP_CONFIG). Writes today's board to
+$BRIEF_DIR and a log to $LOG_DIR. See docs/getting-started.md.
+USAGE
+      exit 0 ;;
+    -n|--dry-run) DRY_RUN=1 ;;
+    *)
+      echo "morning_brief.sh: unknown option: $arg" >&2
+      echo "  try: morning_brief.sh --help" >&2
+      exit 64 ;;
+  esac
+done
+
 # cron's default PATH omits ~/.local/bin, so AGENT_CMD (claude / codex / gemini,
 # installed there by most native installers) is not found and the run dies instantly.
 export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"
@@ -47,8 +80,11 @@ TODAY="$(date +%F)"
 DOW="$(date +%A)"
 OUT="${BRIEF_DIR}/${TODAY}.md"
 NOTIFY_FILE="${BRIEF_DIR}/${TODAY}.notify.txt"   # the agent writes a 1-line summary here
-mkdir -p "$BRIEF_DIR" "$LOG_DIR"
-rm -f "$NOTIFY_FILE"
+# A dry run stops here, one line above the first thing that touches the disk.
+if [[ -z "$DRY_RUN" ]]; then
+  mkdir -p "$BRIEF_DIR" "$LOG_DIR"
+  rm -f "$NOTIFY_FILE"
+fi
 
 # ─── the prompt: an inward-only stock-take. Edit freely for your own context. ─
 # The prompt does the reasoning; it must not run any send/publish/push command.
@@ -87,6 +123,18 @@ PROMPT_EOF
 # --write, because this run has two files to produce. On Claude Code the flag
 # that actually grants that is yours (AGENT_FLAGS); on Codex it selects
 # -s workspace-write, rooted at PROJECT_ROOT rather than at cron's $HOME.
+if [[ -n "$DRY_RUN" ]]; then
+  # Show the command that WOULD run, built by the same code path as the real
+  # one — printing a hand-written approximation would make the dry run a
+  # second implementation, and a second implementation is what drifts.
+  echo "would run  : $(agent_cli_show --write --timeout "${AGENT_TIMEOUT:-1500}" --cd "$PROJECT_ROOT" -- '<prompt>')"
+  echo "would write: $OUT"
+  echo "             $NOTIFY_FILE"
+  echo "would log  : ${LOG_DIR}/morning_brief_${TODAY}.log"
+  printf -- '--- prompt ---\n%s\n' "$PROMPT"
+  exit 0
+fi
+
 agent_run --write --timeout "${AGENT_TIMEOUT:-1500}" --cd "$PROJECT_ROOT" -- "$PROMPT" \
   >> "${LOG_DIR}/morning_brief_${TODAY}.log" 2>&1
 status=$?

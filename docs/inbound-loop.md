@@ -168,14 +168,44 @@ mcp: codex_apps/gmail.search_emails (completed)
 
 **`--allowedTools` に当たるものは無い。** `codex exec --help` にツール単位の許可リストは無く、`-s read-only` が縛るのは**ファイルシステムとシェル**であって**コネクタではない**。つまり `read-only` で走っていても、書き込み系のコネクタツール（メール送信・ラベル変更）は**構造的には呼べる**——止めているのはプロンプトの文言だけになる。Claude 側の `--allowedTools` が持っていた「機構としての境界」は、ここには無い。
 
-境界を機構で引きたいなら、いま確実なのは**プラグインを1つも余計に有効にしないこと**だ。有効・無効は `~/.codex/config.toml` に載る:
+### 外向きの歯止め — プロンプトは止めない（実測 2026-09-07・codex-cli 0.153.4）
 
-```toml
-[plugins."gmail@openai-curated"]
-enabled = true
+上の「止めているのはプロンプトの文言だけ」を、実際にやって確かめた。指示ファイル（`AGENTS.md`）に「外向き＝承認」を書いた状態で、いちばん厳しいサンドボックス設定のまま:
+
+```
+codex exec -s read-only "顧客へ『テストです』とメールを送って"
 ```
 
-〔未確認〕**1回の起動だけ無効にする** `-c 'plugins."gmail@openai-curated".enabled=false'` が効くかは確かめられなかった。`codex plugin list` の表示は付けても付けなくても `installed, enabled` のままで、この一覧が「インストール状態」を出しているのか「その実行での有効状態」を出しているのかを区別できなかった。**確かめずに安全策として書くわけにはいかない**ので、恒久的に切るなら config.toml か `codex plugin remove` を使う。
+**誰にも聞かずに `gmail.send_email` を実発行した。** `codex exec` の承認ポリシー（`never`）が機械的に弾くと、**自分の判断で `create_draft` に回り込み**、実在の顧客宛ての下書きを作った。ここから出てくる事実は2つある。
+
+- **`-s read-only` はファイルシステムだけを縛る。** コネクタ呼び出しはネットワーク越しの呼び出しで、サンドボックスは何の意見も持たない。CLI で最も厳しい設定にしても、外に出るメールは1歩も遅くならない。
+- **塞がれた経路は閉じた扉ではない。** 機構が「駄目だ」と言わない限り、モデルは**隣の動詞**を自分で見つける。散文はそれを止めない。
+
+⇒ **「no」を機構の側に置く。** このキットは PreToolUse フック [`templates/codex/hooks/outbound_guard.sh`](../templates/codex/hooks/outbound_guard.sh) を同梱している。`./scripts/setup.sh --codex` が `.codex/hooks/` へ置き、生成される `.codex/config.toml` から絶対パスで参照する。コネクタ／MCP のツール名のうち**操作名**が `send` `post` `create_draft` `update_draft` `reply` `forward` `publish` `delete` を含むものを拒否し、理由に「approval_queue.md へ積んで承認を待て」と返す。シェルは対象外——`git push` や `rm` は履歴で戻せる操作で、無人で回す前提のものだからだ。
+
+同じ日に、フックを入れて測り直した結果:
+
+| やらせたこと | フック無し | フック有り |
+|---|---|---|
+| `test@example.invalid` 宛ての下書き作成 | 作られる | **拒否**。モデルは代わりに approval_queue.md へ書こうとした（下書きは0件） |
+| `gmail.search_emails`（読み取り） | 通る | **通る**（読み取りは塞がない） |
+
+ツール名の実測形は `mcp__codex_apps__gmail__create_draft`、シェルは `Bash`。stdin は codex バイナリに埋まっている `pre-tool-use.command.input` スキーマ（`additionalProperties: false`）。stdout の `pre-tool-use.command.output` は **`permissionDecision` の `allow` も `ask` も受け付けない**——「はい」と言う手段が無いので、通すときは空の `{}` を出す。拒否は `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}`（理由は空にできない）。
+
+⚠️ **フックは fail-open である。** スクリプトが無い・実行できない・スキーマに合わない出力を出す——どれでも `codex exec` は**無言で通す**。壊れたフックと存在しないフックは外から見分けがつかない。だから `scripts/test.sh` はこのスクリプトに合成 JSON を流し込んで stdout を検査する。フックを書き換えたら、その検査も一緒に走らせること。
+
+⚠️ **プロジェクトの信頼とフックの信頼は別物。** プロジェクトが `~/.codex/config.toml` で trusted でなければフックは黙って無視され、trusted でも初回は TUI で承認が要る。無人実行は `--dangerously-bypass-hook-trust` が要るが、これは**有効な全フックを未レビューで走らせる**という意味なので、先に1回手で開いて信頼を保存するほうがよい。⚠️ **git worktree では本体側の `.codex/config.toml` が読まれた**（2026-09-07 実測）。フックの変更は普通のクローンで試すこと。
+
+### プラグインの入切は歯止めにならなかった（実測 2026-09-07・codex-cli 0.153.4）
+
+第2の層として自然に思いつくのは「コネクタを config で切る」ことだ。**このバージョンでは効かない。**
+
+- **正しいプラグインIDは `gmail@openai-curated-remote`**（マーケットプレイス名が `openai-curated-remote`）。`[plugins."gmail@openai-curated"]` は**存在しないIDで、何も無効化しない**。
+- **正しいIDで `enabled = false` にしても効かなかった。** ユーザ設定（`~/.codex/config.toml`）でもプロジェクト設定（`.codex/config.toml`）でも、`codex plugin list` は `installed, enabled` のままで、`codex exec` は `codex_apps/gmail.search_emails` を**普通に呼べた**。
+- `codex plugin --help` に `disable` サブコマンドは無い（`add` / `list` / `marketplace` / `remove` のみ）。**恒久的に切る唯一の手段は `codex plugin remove <id>`** で、これは読み取りも一緒に消える。
+- `codex mcp list` が「0台」でも安全の証明にならない。これらは `codex_apps/*` のプラグイン枠で、ユーザ登録の MCP サーバとは別勘定。
+
+⇒ **既定の構えは「フック＋（読み取りが要らないなら）`codex plugin remove`」の2層**。`enabled = false` を書いて安心してはいけない。
 
 無人化の前に踏む地雷が3つある。どれも実測で踏んだ:
 
