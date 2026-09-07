@@ -28,6 +28,32 @@
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
+# ─── arguments, parsed BEFORE anything that touches the disk ───────────────
+# Above the PATH export, above the config load, above the first mkdir. `--help`
+# on a sibling script used to fall through into the body — asking a cron script
+# what its flags were RAN IT, and left directories behind in whatever folder you
+# were standing in (measured 2026-09-07). Answer before the side effects exist.
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)
+      cat <<'USAGE'
+weekly_distill.sh — the weekly judgment distillation. Inward only.
+
+usage: weekly_distill.sh [--help]
+
+  --help    this text. Reads nothing, writes nothing.
+
+Takes no other flags; it is driven by config.env and by LOOP_CONFIG.
+See docs/judgment-distillation.md.
+USAGE
+      exit 0 ;;
+    *)
+      echo "weekly_distill.sh: unknown option: $arg" >&2
+      echo "  try: weekly_distill.sh --help" >&2
+      exit 64 ;;
+  esac
+done
+
 # cron's default PATH omits ~/.local/bin, so AGENT_CMD (claude / codex / gemini,
 # installed there by most native installers) is not found and the run dies instantly.
 export PATH="/usr/local/bin:/usr/bin:/bin:${HOME}/.local/bin:${PATH}"

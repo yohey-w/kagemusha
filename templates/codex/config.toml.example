@@ -6,18 +6,23 @@
 #
 # ⚠️ A PROJECT FILE IS ONLY READ IF THE PROJECT IS TRUSTED. Trust does not live
 # here — it lives in your USER config, ~/.codex/config.toml, keyed by the
-# absolute path. Measured on codex-cli 0.149.0: with the project untrusted, the
-# hooks below are silently ignored — no warning, no error, no hook line in the
-# transcript. Add this to ~/.codex/config.toml first:
+# absolute path. Measured on codex-cli 0.149.0 and again on 0.153.4: with the
+# project untrusted, the hooks below are silently ignored — no warning, no
+# error, no hook line in the transcript. Add this to ~/.codex/config.toml first:
 #
 #     [projects."/absolute/path/to/your/work-loop"]
 #     trust_level = "trusted"
 #
-# ⚠️ HOOKS ALSO NEED HOOK TRUST, which is separate again. Codex asks you to
-# review a hook the first time it sees it. An unattended run (cron) has nobody
-# to ask, so a scheduled run needs `--dangerously-bypass-hook-trust` — and that
-# flag means exactly what it says: every enabled hook runs unreviewed. Prefer
-# running the CLI by hand once so the trust is persisted.
+# ⚠️ HOOKS ALSO NEED HOOK TRUST, which is separate again, and THE SKIP IS
+# SILENT. Codex asks you to review a hook the first time it sees it; an
+# unattended run has nobody to ask. Measured 2026-09-07 on 0.153.4: `codex exec`
+# without `--dangerously-bypass-hook-trust` printed no hook line, ran no hook,
+# and gave no warning that it had skipped one — and editing this file
+# invalidates an approval already stored, so a hook that worked yesterday can be
+# gone today. Prefer opening the TUI here once and approving; if you must run
+# unattended with hooks live, put `--dangerously-bypass-hook-trust` in
+# CODEX_FLAGS and understand that it runs EVERY enabled hook unreviewed.
+# Look for `hook: PreToolUse` in stderr to see which of the two you have.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ─── model and reasoning ───────────────────────────────────────────────────
@@ -74,6 +79,53 @@ sandbox_mode = "workspace-write"
 [[hooks.UserPromptSubmit.hooks]]
 type = "command"
 command = '''printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}' "$(date '+[now] %Y-%m-%d (%a) %H:%M %Z')"'''
+
+# ⚠️ A GIT WORKTREE READS THE MAIN CHECKOUT'S FILE, NOT ITS OWN. Measured
+# 2026-09-07 on 0.153.4: running codex inside `git worktree add`-ed directory
+# with its own .codex/config.toml, the hooks that fired were the MAIN
+# checkout's and this file was ignored. Test hook changes in a plain clone.
+
+# ─── the outbound guard: the rule that is a control, not a request ─────────
+# WHY. The instructions file says "outward = ask first". Measured 2026-09-07 on
+# codex-cli 0.153.4, with that rule in AGENTS.md and the sandbox at its most
+# restrictive:
+#
+#     codex exec -s read-only "email the customer: 'this is a test'"
+#
+# …asked nobody, called gmail's send tool, and when exec's approval policy
+# (never) refused the send, ROUTED AROUND IT and created a draft addressed to
+# the real customer. Two things that run counter to intuition:
+#
+#   · `-s read-only` sandboxes the FILESYSTEM ONLY. A connector call is a
+#     network call the sandbox has no opinion about, so the strictest sandbox
+#     setting in the CLI does not slow an outgoing email down by one step.
+#   · A blocked path is not a closed door. The model found the neighbouring
+#     verb by itself, because nothing in the machine said no — only the prose.
+#
+# So the "no" moves into the machine. The hook below runs before every tool
+# call and denies the outward ones; the script it points at carries the wire
+# format, the verb list, and the reasoning. Re-measured with the hook in place
+# on the same day: `create_draft` was denied, the model then tried to append to
+# approval_queue.md instead, and `gmail.search_emails` still went through.
+#
+# ⚠️ IT IS ONE OF TWO LAYERS, AND THE OTHER ONE DID NOT WORK. The obvious
+# second layer is to switch the connector off in config. Measured, on this
+# version, it does not: see README (`外向きの歯止め` / `The outward brake`).
+# Until that changes, this hook is the only measured control, which is also why
+# tests/test_m_codex.sh feeds it synthetic payloads — a hook that prints
+# nothing valid fails OPEN and in silence.
+#
+# ⚠️ THE PATH MUST BE ABSOLUTE. `./scripts/setup.sh --codex` copies the script
+# to .codex/hooks/ and substitutes the absolute path below. If you are writing
+# this file by hand, replace __PROJECT_ROOT__ with your own absolute path — a
+# relative path resolves against the directory codex was STARTED in, which is
+# not always the project root, and a hook that cannot be executed is a hook
+# that silently is not there.
+[[hooks.PreToolUse]]
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "__PROJECT_ROOT__/.codex/hooks/outbound_guard.sh"
 
 # ─── skills ────────────────────────────────────────────────────────────────
 # Codex discovers skills under ~/.codex/skills/ (and a plugin may add more).

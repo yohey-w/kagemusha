@@ -230,12 +230,33 @@ if [[ -n "$WITH_CODEX" ]]; then
     echo "  skip (exists): $CODEX_DST"
   else
     mkdir -p "$(dirname "$CODEX_DST")"
-    cp "$CODEX_SRC" "$CODEX_DST"
+    # The hook command has to name an absolute path (a relative one resolves
+    # against wherever codex was started, and a hook that cannot be executed is
+    # a hook that silently is not there), so the template ships a placeholder
+    # and the only machine that knows the answer fills it in.
+    sed "s|__PROJECT_ROOT__|$TARGET_ABS_EARLY|g" "$CODEX_SRC" > "$CODEX_DST"
     echo "  create:        $CODEX_DST"
-    echo "  → it is INERT until you add this to ~/.codex/config.toml:"
-    echo "        [projects.\"$TARGET_ABS_EARLY\"]"
-    echo "        trust_level = \"trusted\""
   fi
+  # The outbound guard is the control behind that config's PreToolUse hook. It
+  # is copied whether or not the config was rewritten above, because an
+  # existing config may already point at it — and a hook pointing at a missing
+  # script fails OPEN, in silence, which is the exact failure it exists to stop.
+  CODEX_HOOK_SRC="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
+  CODEX_HOOK_DST="$TARGET/.codex/hooks/outbound_guard.sh"
+  if [[ ! -f "$CODEX_HOOK_SRC" ]]; then
+    die "missing template: $CODEX_HOOK_SRC"
+  elif [[ -e "$CODEX_HOOK_DST" ]]; then
+    echo "  skip (exists): $CODEX_HOOK_DST"
+  else
+    mkdir -p "$(dirname "$CODEX_HOOK_DST")"
+    cp "$CODEX_HOOK_SRC" "$CODEX_HOOK_DST"
+    chmod +x "$CODEX_HOOK_DST"
+    echo "  create:        $CODEX_HOOK_DST"
+  fi
+  echo "  → BOTH are INERT until you add this to ~/.codex/config.toml:"
+  echo "        [projects.\"$TARGET_ABS_EARLY\"]"
+  echo "        trust_level = \"trusted\""
+  echo "  → and the hook needs its own approval the first time you open the TUI here."
 fi
 
 # ─── --link-skills : one copy of each skill, both CLIs ─────────────────────
