@@ -237,22 +237,23 @@ if [[ -n "$WITH_CODEX" ]]; then
     sed "s|__PROJECT_ROOT__|$TARGET_ABS_EARLY|g" "$CODEX_SRC" > "$CODEX_DST"
     echo "  create:        $CODEX_DST"
   fi
-  # The outbound guard is the control behind that config's PreToolUse hook. It
-  # is copied whether or not the config was rewritten above, because an
-  # existing config may already point at it — and a hook pointing at a missing
-  # script fails OPEN, in silence, which is the exact failure it exists to stop.
-  CODEX_HOOK_SRC="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
-  CODEX_HOOK_DST="$TARGET/.codex/hooks/outbound_guard.sh"
-  if [[ ! -f "$CODEX_HOOK_SRC" ]]; then
-    die "missing template: $CODEX_HOOK_SRC"
-  elif [[ -e "$CODEX_HOOK_DST" ]]; then
-    echo "  skip (exists): $CODEX_HOOK_DST"
-  else
-    mkdir -p "$(dirname "$CODEX_HOOK_DST")"
-    cp "$CODEX_HOOK_SRC" "$CODEX_HOOK_DST"
-    chmod +x "$CODEX_HOOK_DST"
-    echo "  create:        $CODEX_HOOK_DST"
-  fi
+  # The guard and its one-shot permit helper are the control behind that
+  # config's PreToolUse hook. Copy both even when the config already exists:
+  # a hook or helper missing at send time must never become a silent bypass.
+  for codex_hook_name in outbound_guard.sh outbound_permit.py; do
+    CODEX_HOOK_SRC="$REPO_ROOT/templates/codex/hooks/$codex_hook_name"
+    CODEX_HOOK_DST="$TARGET/.codex/hooks/$codex_hook_name"
+    if [[ ! -f "$CODEX_HOOK_SRC" ]]; then
+      die "missing template: $CODEX_HOOK_SRC"
+    elif [[ -e "$CODEX_HOOK_DST" ]]; then
+      echo "  skip (exists): $CODEX_HOOK_DST"
+    else
+      mkdir -p "$(dirname "$CODEX_HOOK_DST")"
+      cp "$CODEX_HOOK_SRC" "$CODEX_HOOK_DST"
+      chmod +x "$CODEX_HOOK_DST"
+      echo "  create:        $CODEX_HOOK_DST"
+    fi
+  done
   echo "  → BOTH are INERT until you add this to ~/.codex/config.toml:"
   echo "        [projects.\"$TARGET_ABS_EARLY\"]"
   echo "        trust_level = \"trusted\""

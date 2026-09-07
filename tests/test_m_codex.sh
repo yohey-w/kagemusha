@@ -644,15 +644,29 @@ assert_no_grep_str "M8: …and does NOT carry Codex's JSON envelope" \
 # an absent guard look identical from outside. These assertions are the only
 # thing that can tell them apart, and they run the script rather than reading
 # it, because the failure that is easy to introduce here is a typo in a printf.
-M_GUARD="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
-assert_file "M9: the outbound guard ships in the kit" "$M_GUARD"
-assert_ok "M9: …and is syntactically valid bash" bash -n "$M_GUARD"
-assert_ok "M9: …and is executable in the tree" test -x "$M_GUARD"
+M_GUARD_TEMPLATE="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
+M_PERMIT_TEMPLATE="$REPO_ROOT/templates/codex/hooks/outbound_permit.py"
+assert_file "M9: the outbound guard ships in the kit" "$M_GUARD_TEMPLATE"
+assert_ok "M9: …and is syntactically valid bash" bash -n "$M_GUARD_TEMPLATE"
+assert_ok "M9: …and is executable in the tree" test -x "$M_GUARD_TEMPLATE"
+assert_file "M9: the explicit one-shot permit helper ships beside it" "$M_PERMIT_TEMPLATE"
+assert_ok "M9: …and its Python is syntactically valid" \
+  env PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile "$M_PERMIT_TEMPLATE"
+
+# Run the hook from the same .codex/hooks layout used in a real project. Its
+# project binding is deliberately derived from that location, not caller input.
+M_PERMIT_ROOT="$TEST_TMP/m_permit_project"
+mkdir -p "$M_PERMIT_ROOT/.codex/hooks"
+cp "$M_GUARD_TEMPLATE" "$M_PERMIT_TEMPLATE" "$M_PERMIT_ROOT/.codex/hooks/"
+chmod +x "$M_PERMIT_ROOT/.codex/hooks/outbound_guard.sh" \
+         "$M_PERMIT_ROOT/.codex/hooks/outbound_permit.py"
+M_GUARD="$M_PERMIT_ROOT/.codex/hooks/outbound_guard.sh"
+M_PERMIT="$M_PERMIT_ROOT/.codex/hooks/outbound_permit.py"
 
 # m_guard PAYLOAD → the hook's stdout for that PreToolUse input
 m_guard() { printf '%s' "$1" | bash "$M_GUARD" 2>/dev/null; }
-m_decision() {  # → allow | deny | INVALID
-  M_G_OUT="$(m_guard "$1")" M_G_PY='
+m_output_decision() {  # hook stdout → allow | deny | INVALID
+  M_G_OUT="$1" M_G_PY='
 import json, os, sys
 try: d = json.loads(os.environ["M_G_OUT"])
 except Exception: print("INVALID"); sys.exit()
@@ -660,14 +674,17 @@ h = d.get("hookSpecificOutput") or {}
 print(h.get("permissionDecision") or ("allow" if not h else "INVALID"))
 ' python3 -c 'import os;exec(os.environ["M_G_PY"])'
 }
+m_decision() { m_output_decision "$(m_guard "$1")"; }
 
 # the incident itself, and its neighbours
-for m_verb in send_email create_draft update_draft reply forward; do
+for m_verb in send_email create_draft update_draft reply forward delete_email; do
   assert_eq "M9: gmail.$m_verb is denied" "deny" \
     "$(m_decision "{\"tool_name\":\"mcp__codex_apps__gmail__${m_verb}\",\"tool_input\":{}}")"
 done
 assert_eq "M9: slack post_message is denied" "deny" \
   "$(m_decision '{"tool_name":"mcp__codex_apps__slack__post_message","tool_input":{}}')"
+assert_eq "M9: a connector publish operation is denied" "deny" \
+  "$(m_decision '{"tool_name":"mcp__example__publish_page","tool_input":{}}')"
 
 # reading is not sending. A guard that also blocks the sweep gets switched off,
 # and a guard that is switched off protects nothing.
@@ -715,6 +732,179 @@ assert_grep_str "M9: …and the reason names where the message goes instead" \
 assert_eq "M9: the pass is the empty document, since the schema has no yes" \
   "{}" "$(m_guard '{"tool_name":"Bash","tool_input":{"command":"ls"}}')"
 
+# ── one-shot Gmail permit: review, exact binding, expiry and atomic claim ──
+M_SEND_INPUT="$M_PERMIT_ROOT/send-input.json"
+cat > "$M_SEND_INPUT" <<'JSON'
+{"to":"to@example.test","cc":"cc@example.test","bcc":"","subject":"Approved subject","payload":{"body":{"content":"Approved body","content_type":"text/plain"},"attachments":[{"file_id":"file-1","name":"report.pdf"}]},"reply_message_id":"message-1","optional":null}
+JSON
+m_review() { python3 "$M_PERMIT" review --tool-input "$1"; }
+m_hash() { m_review "$1" | python3 -c 'import json,sys;print(json.load(sys.stdin)["sha256"])'; }
+m_issue() {  # input session [ttl]
+  local input="$1" session="$2" ttl="${3:-300}" hash
+  hash="$(m_hash "$input")"
+  python3 "$M_PERMIT" issue --tool-input "$input" --expected-sha256 "$hash" \
+    --project-root "$M_PERMIT_ROOT" --session-id "$session" --ttl-seconds "$ttl" \
+    --approval-ref "TEST-$session" --approval-quote "synthetic explicit approval" \
+    --confirm-user-approved >/dev/null
+}
+m_envelope() {  # input session cwd [tool]
+  M_INPUT="$1" M_SESSION="$2" M_CWD="$3" \
+  M_TOOL="${4:-mcp__codex_apps__gmail__send_email}" python3 -c '
+import json, os
+with open(os.environ["M_INPUT"], encoding="utf-8") as f: tool_input=json.load(f)
+print(json.dumps({"tool_name":os.environ["M_TOOL"], "tool_input":tool_input,
+                  "session_id":os.environ["M_SESSION"], "cwd":os.environ["M_CWD"]}))'
+}
+
+M_REVIEW_OUT="$(m_review "$M_SEND_INPUT")"
+assert_grep_str "M9: review exposes the complete canonical payload" "Approved body" "$M_REVIEW_OUT"
+assert_grep_str "M9: …and its SHA-256" '"sha256"' "$M_REVIEW_OUT"
+assert_absent "M9: review alone writes no permit" "$M_PERMIT_ROOT/.codex/outbound-permits"
+assert_exit "M9: issue refuses to treat a permit as approval" 1 \
+  python3 "$M_PERMIT" issue --tool-input "$M_SEND_INPUT" \
+    --expected-sha256 "$(m_hash "$M_SEND_INPUT")" --project-root "$M_PERMIT_ROOT" \
+    --session-id no-confirm --approval-ref TEST --approval-quote approved
+
+M_BASE_PAYLOAD="$(m_envelope "$M_SEND_INPUT" sess-none "$M_PERMIT_ROOT")"
+assert_eq "M9: Gmail send without a permit stays denied" "deny" "$(m_decision "$M_BASE_PAYLOAD")"
+
+m_issue "$M_SEND_INPUT" sess-exact
+M_EXACT_PAYLOAD="$(m_envelope "$M_SEND_INPUT" sess-exact "$M_PERMIT_ROOT")"
+assert_eq "M9: an exact approved Gmail send is allowed once" "allow" "$(m_decision "$M_EXACT_PAYLOAD")"
+assert_eq "M9: the claimed permit cannot be reused" "deny" "$(m_decision "$M_EXACT_PAYLOAD")"
+
+# Every send field is inside the canonical hash. A failed mismatch must not
+# consume the ticket: the approved baseline immediately after it still passes.
+M_MUT_DIR="$M_PERMIT_ROOT/mutations"; mkdir -p "$M_MUT_DIR"
+M_BASE="$M_SEND_INPUT" M_MUT_DIR="$M_MUT_DIR" python3 -c '
+import copy, json, os
+with open(os.environ["M_BASE"], encoding="utf-8") as f: base=json.load(f)
+changes = {
+ "payload.body.content": lambda d: d["payload"]["body"].__setitem__("content", d["payload"]["body"]["content"] + "!"),
+ "to": lambda d: d.__setitem__("to", "other@example.test"),
+ "cc": lambda d: d.__setitem__("cc", "other-cc@example.test"),
+ "bcc": lambda d: d.__setitem__("bcc", "hidden@example.test"),
+ "subject": lambda d: d.__setitem__("subject", d["subject"] + "!"),
+ "payload.attachments": lambda d: d["payload"].__setitem__("attachments", [{"file_id":"file-2"}]),
+ "reply_message_id": lambda d: d.__setitem__("reply_message_id", "message-2"),
+ "extra": lambda d: d.__setitem__("new_field", "not approved"),
+}
+for name, change in changes.items():
+    value=copy.deepcopy(base); change(value)
+    with open(os.path.join(os.environ["M_MUT_DIR"], name+".json"), "w", encoding="utf-8") as f:
+        json.dump(value, f)
+'
+for m_field in payload.body.content to cc bcc subject payload.attachments reply_message_id extra; do
+  m_session="sess-mutate-$m_field"
+  m_issue "$M_SEND_INPUT" "$m_session"
+  assert_eq "M9: changing $m_field is denied" "deny" \
+    "$(m_decision "$(m_envelope "$M_MUT_DIR/$m_field.json" "$m_session" "$M_PERMIT_ROOT")")"
+  assert_eq "M9: …without consuming the exact permit ($m_field)" "allow" \
+    "$(m_decision "$(m_envelope "$M_SEND_INPUT" "$m_session" "$M_PERMIT_ROOT")")"
+done
+
+# Omitted and null object fields are the one declared equivalence.
+M_OMITTED="$M_MUT_DIR/omitted.json"
+M_BASE="$M_SEND_INPUT" M_OUT="$M_OMITTED" python3 -c '
+import json,os
+d=json.load(open(os.environ["M_BASE"])); d.pop("optional")
+json.dump(d,open(os.environ["M_OUT"],"w"))'
+m_issue "$M_SEND_INPUT" sess-null
+assert_eq "M9: omitted and null object fields are equivalent" "allow" \
+  "$(m_decision "$(m_envelope "$M_OMITTED" sess-null "$M_PERMIT_ROOT")")"
+
+m_issue "$M_SEND_INPUT" sess-bound
+assert_eq "M9: a permit is denied in another session" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" wrong-session "$M_PERMIT_ROOT")")"
+assert_eq "M9: …and remains usable in its bound session" "allow" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-bound "$M_PERMIT_ROOT")")"
+
+m_issue "$M_SEND_INPUT" sess-project
+assert_eq "M9: a permit is denied outside its bound project" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-project /tmp)")"
+assert_eq "M9: …and remains usable in its bound project" "allow" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-project "$M_PERMIT_ROOT")")"
+
+m_issue "$M_SEND_INPUT" sess-tool
+assert_eq "M9: no permit opens another outward tool" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-tool "$M_PERMIT_ROOT" mcp__codex_apps__gmail__create_draft)")"
+assert_eq "M9: …and only the exact Gmail send can claim it" "allow" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-tool "$M_PERMIT_ROOT")")"
+
+# Claim validates the issuer's time window as data, not merely the expiry.
+# Python's bool is an int subclass, so exact type checks are required here.
+m_tamper_permit() {  # session mutation
+  M_PENDING="$M_PERMIT_ROOT/.codex/outbound-permits/pending" \
+  M_SESSION="$1" M_MUTATION="$2" python3 -c '
+import json, os, pathlib, time
+for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
+    with p.open(encoding="utf-8") as f: d=json.load(f)
+    if d["session_id"] != os.environ["M_SESSION"]: continue
+    mutation=os.environ["M_MUTATION"]
+    if mutation == "future":
+        d["created_at"]=int(time.time()) + 60; d["expires_at"]=d["created_at"] + 300
+    elif mutation == "overlong": d["expires_at"]=d["created_at"] + 901
+    elif mutation == "zero": d["expires_at"]=d["created_at"]
+    elif mutation == "reverse": d["expires_at"]=d["created_at"] - 1
+    elif mutation == "created-bool": d["created_at"]=True
+    elif mutation == "expires-bool": d["expires_at"]=True
+    elif mutation == "version-bool": d["version"]=True
+    with p.open("w", encoding="utf-8") as f: json.dump(d, f)
+    break
+'
+}
+m_drop_pending() {  # session
+  M_PENDING="$M_PERMIT_ROOT/.codex/outbound-permits/pending" M_SESSION="$1" python3 -c '
+import json, os, pathlib
+for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
+    with p.open(encoding="utf-8") as f: d=json.load(f)
+    if d.get("session_id") == os.environ["M_SESSION"]: p.unlink(); break
+'
+}
+for m_time_case in future overlong zero reverse created-bool expires-bool version-bool; do
+  m_session="sess-time-$m_time_case"
+  m_issue "$M_SEND_INPUT" "$m_session"
+  m_tamper_permit "$m_session" "$m_time_case"
+  assert_eq "M9: a $m_time_case permit is denied" "deny" \
+    "$(m_decision "$(m_envelope "$M_SEND_INPUT" "$m_session" "$M_PERMIT_ROOT")")"
+  m_drop_pending "$m_session"
+done
+
+m_issue "$M_SEND_INPUT" sess-expired
+M_PENDING="$M_PERMIT_ROOT/.codex/outbound-permits/pending" python3 -c '
+import json, os, pathlib, time
+for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
+    d=json.load(open(p))
+    if d["session_id"] == "sess-expired":
+        now=int(time.time()); d["created_at"]=now - 2; d["expires_at"]=now - 1
+        json.dump(d,open(p,"w")); break'
+assert_eq "M9: an expired permit is denied" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-expired "$M_PERMIT_ROOT")")"
+
+M_BAD_JSON="{\"tool_name\":\"mcp__codex_apps__gmail__send_email\",\"session_id\":\"bad\",\"cwd\":\"$M_PERMIT_ROOT\",\"tool_input\":"
+assert_eq "M9: malformed send JSON fails closed" "deny" "$(m_decision "$M_BAD_JSON")"
+
+M_NO_PY_OUT="$(printf '%s' "$M_BASE_PAYLOAD" | PATH=/nonexistent /bin/bash "$M_GUARD")"
+assert_eq "M9: a missing permit dependency fails closed" "deny" \
+  "$(m_output_decision "$M_NO_PY_OUT")"
+
+# Atomic rename is the claim: of two simultaneous calls, exactly one wins.
+m_issue "$M_SEND_INPUT" sess-race
+M_RACE_PAYLOAD="$(m_envelope "$M_SEND_INPUT" sess-race "$M_PERMIT_ROOT")"
+(printf '%s' "$M_RACE_PAYLOAD" | bash "$M_GUARD" > "$M_PERMIT_ROOT/race-1.out") & m_p1=$!
+(printf '%s' "$M_RACE_PAYLOAD" | bash "$M_GUARD" > "$M_PERMIT_ROOT/race-2.out") & m_p2=$!
+wait "$m_p1"; wait "$m_p2"
+M_RACE_ALLOW=0
+for m_out in "$M_PERMIT_ROOT"/race-*.out; do
+  [[ "$(m_output_decision "$(cat "$m_out")")" == allow ]] && M_RACE_ALLOW=$((M_RACE_ALLOW + 1))
+done
+assert_eq "M9: two concurrent claims allow exactly one send" "1" "$M_RACE_ALLOW"
+
+# A damaged record is never skipped as if it were trustworthy.
+printf '{not-json' > "$M_PERMIT_ROOT/.codex/outbound-permits/pending/corrupt.json"
+assert_eq "M9: a corrupt permit store fails closed" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-corrupt "$M_PERMIT_ROOT")")"
+
 # control: the harness can tell a deny from an allow
 assert_eq "M9: control — the decision reader reports INVALID on garbage" \
   "INVALID" "$(M_G_OUT='not json' M_G_PY='
@@ -741,7 +931,12 @@ assert_file "M9: setup.sh --codex installs the guard beside the config" \
   "$M_GUARD_FX/.codex/hooks/outbound_guard.sh"
 assert_ok "M9: …executable" test -x "$M_GUARD_FX/.codex/hooks/outbound_guard.sh"
 assert_same "M9: …byte for byte from the template" \
-  "$M_GUARD_FX/.codex/hooks/outbound_guard.sh" "$M_GUARD"
+  "$M_GUARD_FX/.codex/hooks/outbound_guard.sh" "$M_GUARD_TEMPLATE"
+assert_file "M9: setup.sh --codex installs the permit helper beside the guard" \
+  "$M_GUARD_FX/.codex/hooks/outbound_permit.py"
+assert_ok "M9: …permit helper is executable" test -x "$M_GUARD_FX/.codex/hooks/outbound_permit.py"
+assert_same "M9: …permit helper is byte for byte from the template" \
+  "$M_GUARD_FX/.codex/hooks/outbound_permit.py" "$M_PERMIT_TEMPLATE"
 M_GUARD_WIRED="$(python3 -c '
 import tomllib, sys
 d = tomllib.load(open(sys.argv[1], "rb"))

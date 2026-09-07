@@ -19,7 +19,9 @@
 #     tool with the same effect, because nothing in the machine said no.
 #
 # So the "no" has to live in the machine. This hook is that "no": Codex asks it
-# before every tool call and it answers deny for the outward ones.
+# before every tool call and it answers deny for the outward ones. The sole
+# exception is an exact Gmail send_email call carrying a short-lived, one-shot
+# permit issued after explicit operator review by outbound_permit.py.
 #
 # WHAT IT BLOCKS. Connector / MCP tool calls whose OPERATION name contains one
 # of the verbs below. Nothing else — in particular, a shell command is never
@@ -62,9 +64,9 @@
 # its stdout as JSON: the test is the only thing standing between a typo here
 # and a silent hole.
 #
-# For the same reason the parse below is plain grep/sed with no jq or python
-# dependency — a missing interpreter would be exactly that silent hole — and an
-# input with no readable tool_name is DENIED, not waved through.
+# The basic classifier uses Bash only. Python is required solely to validate
+# and atomically claim a Gmail send permit; if it or the helper is absent, that
+# send is denied. A permit records approval and never substitutes for it.
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -73,6 +75,12 @@ set -uo pipefail
 # name — so a connector that happens to be called `postgres` is not swept up by
 # `post`.
 OUTBOUND_VERBS='send|post|create_draft|update_draft|reply|forward|publish|delete'
+PERMITTED_TOOL='mcp__codex_apps__gmail__send_email'
+hook_dir="${BASH_SOURCE[0]%/*}"
+[[ "$hook_dir" == "${BASH_SOURCE[0]}" ]] && hook_dir='.'
+HOOK_DIR="$(cd "$hook_dir" 2>/dev/null && pwd -P)"
+PROJECT_ROOT="$(cd "$HOOK_DIR/../.." 2>/dev/null && pwd -P)"
+PERMIT_HELPER="$HOOK_DIR/outbound_permit.py"
 
 # Optional breadcrumb. Unset by default: a guard that writes to disk on every
 # tool call is a guard that fills a disk. Set it when you want to see the hook
@@ -92,18 +100,14 @@ deny() {  # deny <tool_name> <why>
   exit 0
 }
 
-payload="$(cat)"
+payload="$(</dev/stdin)"
 
-# tool_name is a required string field holding an identifier, so a literal
-# scan is enough and brings no interpreter with it.
-tool_name="$(printf '%s' "$payload" \
-  | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
-  | head -n 1 \
-  | sed 's/.*:[[:space:]]*"//; s/"$//')"
-
-# Belt and braces: the reason string is interpolated into JSON, so anything
-# that could break the quoting is dropped rather than escaped.
-safe_name="$(printf '%s' "$tool_name" | tr -cd 'A-Za-z0-9_.:/-')"
+# tool_name is an identifier. Matching its closing quote as well as its safe
+# character set prevents partial extraction from becoming JSON interpolation.
+safe_name=''
+if [[ "$payload" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
+  safe_name="${BASH_REMATCH[1]}"
+fi
 
 # No tool_name means the schema moved or the payload never arrived. Deny — the
 # guard being loudly wrong is recoverable; the guard being quietly absent is
@@ -117,8 +121,22 @@ if [[ "$safe_name" != mcp__* ]]; then
   allow "$safe_name"
 fi
 
+# This exact operation is the only outward call that a permit can open. The
+# helper strictly parses the entire envelope and claims the matching record by
+# atomic rename before this hook emits the empty pass document. Any failure is
+# a deny; stderr is deliberately hidden so message contents never enter the
+# hook response.
+if [[ "$safe_name" == "$PERMITTED_TOOL" ]]; then
+  if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
+    if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
+      allow "$safe_name (one-shot permit claimed)"
+    fi
+  fi
+  deny "$safe_name" "no valid one-shot permit matched the complete send arguments, project, session, and expiry"
+fi
+
 operation="${safe_name##*__}"
-if printf '%s' "$operation" | grep -qE "$OUTBOUND_VERBS"; then
+if [[ "$operation" =~ ($OUTBOUND_VERBS) ]]; then
   deny "$safe_name" "operation '$operation' matches the outbound verb list"
 fi
 
