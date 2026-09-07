@@ -13,11 +13,16 @@
 #     [projects."/absolute/path/to/your/work-loop"]
 #     trust_level = "trusted"
 #
-# ⚠️ HOOKS ALSO NEED HOOK TRUST, which is separate again. Codex asks you to
-# review a hook the first time it sees it. An unattended run (cron) has nobody
-# to ask, so a scheduled run needs `--dangerously-bypass-hook-trust` — and that
-# flag means exactly what it says: every enabled hook runs unreviewed. Prefer
-# running the CLI by hand once so the trust is persisted.
+# ⚠️ HOOKS ALSO NEED HOOK TRUST, which is separate again, and THE SKIP IS
+# SILENT. Codex asks you to review a hook the first time it sees it; an
+# unattended run has nobody to ask. Measured 2026-09-07 on 0.153.4: `codex exec`
+# without `--dangerously-bypass-hook-trust` printed no hook line, ran no hook,
+# and gave no warning that it had skipped one — and editing this file
+# invalidates an approval already stored, so a hook that worked yesterday can be
+# gone today. Prefer opening the TUI here once and approving; if you must run
+# unattended with hooks live, put `--dangerously-bypass-hook-trust` in
+# CODEX_FLAGS and understand that it runs EVERY enabled hook unreviewed.
+# Look for `hook: PreToolUse` in stderr to see which of the two you have.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ─── model and reasoning ───────────────────────────────────────────────────
