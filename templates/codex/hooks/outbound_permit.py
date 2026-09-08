@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue and atomically claim one-shot permits for an approved Gmail send.
+"""Issue and atomically claim one-shot permits for an approved exact send.
 
 A permit records approval; it never creates approval.  Run ``review`` first,
 then ``issue`` only when an operator can cite the user's explicit assent.  The
@@ -20,7 +20,12 @@ import sys
 import time
 
 
-TOOL_NAME = "mcp__codex_apps__gmail__send_email"
+GMAIL_TOOL_NAME = "mcp__codex_apps__gmail__send_email"
+SLACK_TOOL_NAME = "mcp__codex_apps__slack__slack_send_message"
+TOOL_NAMES = {
+    "gmail": GMAIL_TOOL_NAME,
+    "slack": SLACK_TOOL_NAME,
+}
 VERSION = 1
 DEFAULT_TTL = 300
 MAX_TTL = 900
@@ -109,18 +114,44 @@ def resolved_project(path_text: str) -> Path:
     return path
 
 
-def review_record(tool_input) -> dict:
+def validated_canonical_input(tool_name: str, tool_input) -> str:
     canonical = canonical_input(tool_input)
+    if tool_name == SLACK_TOOL_NAME:
+        if not tool_input:
+            raise PermitError("Slack tool_input must not be empty")
+        if tool_input.get("draft_id") is not None:
+            raise PermitError("draft_id is not valid for a new Slack send")
+        for key in ("channel_id", "message"):
+            value = tool_input.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise PermitError(f"Slack {key} must be a non-empty string")
+        if len(tool_input["message"]) > 5000:
+            raise PermitError("Slack message must be at most 5000 characters")
+        thread_ts = tool_input.get("thread_ts")
+        if thread_ts is not None and (
+            not isinstance(thread_ts, str) or not thread_ts.strip()
+        ):
+            raise PermitError("Slack thread_ts must be a non-empty string")
+        reply_broadcast = tool_input.get("reply_broadcast")
+        if reply_broadcast is not None and type(reply_broadcast) is not bool:
+            raise PermitError("Slack reply_broadcast must be a boolean")
+        if reply_broadcast is True and thread_ts is None:
+            raise PermitError("Slack reply_broadcast=true requires thread_ts")
+    return canonical
+
+
+def review_record(tool_name: str, tool_input) -> dict:
+    canonical = validated_canonical_input(tool_name, tool_input)
     return {
-        "tool_name": TOOL_NAME,
+        "tool_name": tool_name,
         "canonical_tool_input": strict_loads(canonical),
         "canonical_json": canonical,
         "sha256": digest(canonical),
     }
 
 
-def print_review(tool_input) -> str:
-    record = review_record(tool_input)
+def print_review(tool_name: str, tool_input) -> str:
+    record = review_record(tool_name, tool_input)
     print(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True))
     return record["sha256"]
 
@@ -144,8 +175,9 @@ def issue(args) -> None:
     if args.ttl_seconds < 1 or args.ttl_seconds > MAX_TTL:
         raise PermitError(f"ttl-seconds must be between 1 and {MAX_TTL}")
 
+    tool_name = TOOL_NAMES[args.tool]
     tool_input = load_tool_input(args.tool_input)
-    actual_hash = print_review(tool_input)
+    actual_hash = print_review(tool_name, tool_input)
     if actual_hash != args.expected_sha256.lower():
         raise PermitError("reviewed SHA-256 does not match the current tool-input file")
 
@@ -164,9 +196,9 @@ def issue(args) -> None:
     record = {
         "version": VERSION,
         "permit_id": permit_id,
-        "tool_name": TOOL_NAME,
+        "tool_name": tool_name,
         "tool_input_sha256": actual_hash,
-        "tool_input_canonical": canonical_input(tool_input),
+        "tool_input_canonical": validated_canonical_input(tool_name, tool_input),
         "project_root": str(project),
         "session_id": args.session_id,
         "created_at": now,
@@ -209,6 +241,8 @@ def validate_permit(record: object, now: int) -> None:
     }
     if any(not isinstance(record[key], str) or not record[key] for key in string_keys):
         raise PermitError("invalid permit string field")
+    if record["tool_name"] not in TOOL_NAMES.values():
+        raise PermitError("permit tool is not allowlisted")
     if type(record["version"]) is not int or record["version"] != VERSION:
         raise PermitError("unsupported permit version")
     if type(record["created_at"]) is not int or type(record["expires_at"]) is not int:
@@ -216,7 +250,9 @@ def validate_permit(record: object, now: int) -> None:
     lifetime = record["expires_at"] - record["created_at"]
     if record["created_at"] > now or lifetime < 1 or lifetime > MAX_TTL:
         raise PermitError("invalid permit lifetime")
-    canonical = canonical_input(strict_loads(record["tool_input_canonical"]))
+    canonical = validated_canonical_input(
+        record["tool_name"], strict_loads(record["tool_input_canonical"])
+    )
     if canonical != record["tool_input_canonical"] or digest(canonical) != record["tool_input_sha256"]:
         raise PermitError("corrupt permit payload binding")
 
@@ -234,8 +270,9 @@ def claim(args) -> None:
     envelope = strict_loads(sys.stdin.read())
     if not isinstance(envelope, dict):
         raise PermitError("hook input must be an object")
-    if envelope.get("tool_name") != TOOL_NAME:
-        raise PermitError("permit is only valid for Gmail send_email")
+    tool_name = envelope.get("tool_name")
+    if tool_name not in TOOL_NAMES.values():
+        raise PermitError("permit is only valid for an allowlisted exact send tool")
     session_id = envelope.get("session_id")
     cwd = envelope.get("cwd")
     if not isinstance(session_id, str) or not session_id or not isinstance(cwd, str):
@@ -243,7 +280,7 @@ def claim(args) -> None:
     project = resolved_project(args.project_root)
     if not cwd_belongs_to_project(cwd, project):
         raise PermitError("hook cwd is outside the permitted project")
-    canonical = canonical_input(envelope.get("tool_input"))
+    canonical = validated_canonical_input(tool_name, envelope.get("tool_input"))
     tool_hash = digest(canonical)
 
     permit_root = project / ".codex" / "outbound-permits"
@@ -261,7 +298,7 @@ def claim(args) -> None:
             raise PermitError("cannot read permit") from exc
         validate_permit(record, now)
         if (
-            record["tool_name"] == TOOL_NAME
+            record["tool_name"] == tool_name
             and record["tool_input_sha256"] == tool_hash
             and record["tool_input_canonical"] == canonical
             and record["project_root"] == str(project)
@@ -284,16 +321,18 @@ def claim(args) -> None:
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=(
-            "Review, issue, or claim a one-shot Gmail send permit. A permit "
+            "Review, issue, or claim a one-shot exact send permit. A permit "
             "does not substitute for user approval."
         )
     )
     sub = result.add_subparsers(dest="command", required=True)
     review_cmd = sub.add_parser("review", help="show canonical payload and SHA-256; write nothing")
     review_cmd.add_argument("--tool-input", type=Path, required=True)
+    review_cmd.add_argument("--tool", choices=sorted(TOOL_NAMES), default="gmail")
 
     issue_cmd = sub.add_parser("issue", help="write a short-lived one-shot permit")
     issue_cmd.add_argument("--tool-input", type=Path, required=True)
+    issue_cmd.add_argument("--tool", choices=sorted(TOOL_NAMES), default="gmail")
     issue_cmd.add_argument("--expected-sha256", required=True)
     issue_cmd.add_argument("--project-root", required=True)
     issue_cmd.add_argument("--session-id", required=True)
@@ -311,7 +350,7 @@ def main() -> int:
     args = parser().parse_args()
     try:
         if args.command == "review":
-            print_review(load_tool_input(args.tool_input))
+            print_review(TOOL_NAMES[args.tool], load_tool_input(args.tool_input))
         elif args.command == "issue":
             issue(args)
         else:

@@ -19,9 +19,10 @@
 #     tool with the same effect, because nothing in the machine said no.
 #
 # So the "no" has to live in the machine. This hook is that "no": Codex asks it
-# before every tool call and it answers deny for the outward ones. The sole
-# exception is an exact Gmail send_email call carrying a short-lived, one-shot
-# permit issued after explicit operator review by outbound_permit.py.
+# before every tool call and it answers deny for the outward ones. The only
+# exceptions are the exact Gmail and Slack send operations named below, each
+# carrying a short-lived, one-shot permit issued after explicit operator review
+# by outbound_permit.py.
 #
 # WHAT IT BLOCKS. Connector / MCP tool calls whose OPERATION name contains one
 # of the verbs below. Nothing else — in particular, a shell command is never
@@ -65,8 +66,8 @@
 # and a silent hole.
 #
 # The basic classifier uses Bash only. Python is required solely to validate
-# and atomically claim a Gmail send permit; if it or the helper is absent, that
-# send is denied. A permit records approval and never substitutes for it.
+# and atomically claim an exact send permit; if it or the helper is absent,
+# that send is denied. A permit records approval and never substitutes for it.
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -75,7 +76,9 @@ set -uo pipefail
 # name — so a connector that happens to be called `postgres` is not swept up by
 # `post`.
 OUTBOUND_VERBS='send|post|create_draft|update_draft|reply|forward|publish|delete'
-PERMITTED_TOOL='mcp__codex_apps__gmail__send_email'
+GMAIL_PERMITTED_TOOL='mcp__codex_apps__gmail__send_email'
+SLACK_PERMITTED_TOOL='mcp__codex_apps__slack__slack_send_message'
+SLACK_READ_OPERATIONS='slack_get_reactions|slack_list_channel_members|slack_list_starred_items|slack_list_user_channels|slack_list_user_conversations|slack_list_user_groups|slack_list_workspaces|slack_read_canvas|slack_read_channel|slack_read_file|slack_read_thread|slack_read_user_profile|slack_search_channels|slack_search_emojis|slack_search_public|slack_search_public_and_private|slack_search_users'
 hook_dir="${BASH_SOURCE[0]%/*}"
 [[ "$hook_dir" == "${BASH_SOURCE[0]}" ]] && hook_dir='.'
 HOOK_DIR="$(cd "$hook_dir" 2>/dev/null && pwd -P)"
@@ -121,12 +124,12 @@ if [[ "$safe_name" != mcp__* ]]; then
   allow "$safe_name"
 fi
 
-# This exact operation is the only outward call that a permit can open. The
+# These exact operations are the only outward calls that a permit can open. The
 # helper strictly parses the entire envelope and claims the matching record by
 # atomic rename before this hook emits the empty pass document. Any failure is
 # a deny; stderr is deliberately hidden so message contents never enter the
 # hook response.
-if [[ "$safe_name" == "$PERMITTED_TOOL" ]]; then
+if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
       allow "$safe_name (one-shot permit claimed)"
@@ -136,6 +139,19 @@ if [[ "$safe_name" == "$PERMITTED_TOOL" ]]; then
 fi
 
 operation="${safe_name##*__}"
+
+# The Slack connector includes write operations whose names do not contain one
+# of the generic outbound verbs (add_reaction, join_conversation, upload, …).
+# Keep its read side as a closed allowlist and fail closed on every other Slack
+# operation. This is deliberately scoped to the measured wire namespace; the
+# JavaScript wrapper spelling has one fewer `__` and is not a permit target.
+if [[ "$safe_name" == mcp__codex_apps__slack__* ]]; then
+  if [[ "$operation" =~ ^($SLACK_READ_OPERATIONS)$ ]]; then
+    allow "$safe_name"
+  fi
+  deny "$safe_name" "Slack operation '$operation' is not on the read-only allowlist"
+fi
+
 if [[ "$operation" =~ ($OUTBOUND_VERBS) ]]; then
   deny "$safe_name" "operation '$operation' matches the outbound verb list"
 fi

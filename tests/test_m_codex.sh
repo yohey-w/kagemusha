@@ -683,6 +683,16 @@ for m_verb in send_email create_draft update_draft reply forward delete_email; d
 done
 assert_eq "M9: slack post_message is denied" "deny" \
   "$(m_decision '{"tool_name":"mcp__codex_apps__slack__post_message","tool_input":{}}')"
+for m_slack_write in slack_add_reaction slack_complete_file_upload slack_create_canvas \
+                     slack_create_conversation slack_create_reminder slack_delete_message \
+                     slack_edit_message slack_get_file_upload_url slack_invite_to_conversation \
+                     slack_join_conversation slack_leave_conversation slack_schedule_message \
+                     slack_send_message_draft slack_update_canvas slack_update_user_profile; do
+  assert_eq "M9: Slack $m_slack_write is denied by the closed namespace" "deny" \
+    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__slack__${m_slack_write}\",\"tool_input\":{}}")"
+done
+assert_eq "M9: an unknown Slack operation fails closed" "deny" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__slack__slack_future_operation","tool_input":{}}')"
 assert_eq "M9: a connector publish operation is denied" "deny" \
   "$(m_decision '{"tool_name":"mcp__example__publish_page","tool_input":{}}')"
 
@@ -690,6 +700,15 @@ assert_eq "M9: a connector publish operation is denied" "deny" \
 # and a guard that is switched off protects nothing.
 assert_eq "M9: gmail.search_emails is allowed" "allow" \
   "$(m_decision '{"tool_name":"mcp__codex_apps__gmail__search_emails","tool_input":{}}')"
+for m_slack_read in slack_get_reactions slack_list_channel_members slack_list_starred_items \
+                    slack_list_user_channels slack_list_user_conversations slack_list_user_groups \
+                    slack_list_workspaces slack_read_canvas slack_read_channel slack_read_file \
+                    slack_read_thread slack_read_user_profile slack_search_channels \
+                    slack_search_emojis slack_search_public slack_search_public_and_private \
+                    slack_search_users; do
+  assert_eq "M9: Slack $m_slack_read remains available for inbound reads" "allow" \
+    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__slack__${m_slack_read}\",\"tool_input\":{}}")"
+done
 assert_eq "M9: an unrelated connector read is allowed" "allow" \
   "$(m_decision '{"tool_name":"mcp__codex_apps__google-drive__search_files","tool_input":{}}')"
 
@@ -737,12 +756,12 @@ M_SEND_INPUT="$M_PERMIT_ROOT/send-input.json"
 cat > "$M_SEND_INPUT" <<'JSON'
 {"to":"to@example.test","cc":"cc@example.test","bcc":"","subject":"Approved subject","payload":{"body":{"content":"Approved body","content_type":"text/plain"},"attachments":[{"file_id":"file-1","name":"report.pdf"}]},"reply_message_id":"message-1","optional":null}
 JSON
-m_review() { python3 "$M_PERMIT" review --tool-input "$1"; }
-m_hash() { m_review "$1" | python3 -c 'import json,sys;print(json.load(sys.stdin)["sha256"])'; }
-m_issue() {  # input session [ttl]
-  local input="$1" session="$2" ttl="${3:-300}" hash
-  hash="$(m_hash "$input")"
-  python3 "$M_PERMIT" issue --tool-input "$input" --expected-sha256 "$hash" \
+m_review() { python3 "$M_PERMIT" review --tool-input "$1" --tool "${2:-gmail}"; }
+m_hash() { m_review "$1" "${2:-gmail}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["sha256"])'; }
+m_issue() {  # input session [ttl] [tool]
+  local input="$1" session="$2" ttl="${3:-300}" tool="${4:-gmail}" hash
+  hash="$(m_hash "$input" "$tool")"
+  python3 "$M_PERMIT" issue --tool-input "$input" --tool "$tool" --expected-sha256 "$hash" \
     --project-root "$M_PERMIT_ROOT" --session-id "$session" --ttl-seconds "$ttl" \
     --approval-ref "TEST-$session" --approval-quote "synthetic explicit approval" \
     --confirm-user-approved >/dev/null
@@ -756,9 +775,17 @@ print(json.dumps({"tool_name":os.environ["M_TOOL"], "tool_input":tool_input,
                   "session_id":os.environ["M_SESSION"], "cwd":os.environ["M_CWD"]}))'
 }
 
-M_REVIEW_OUT="$(m_review "$M_SEND_INPUT")"
+M_REVIEW_OUT="$(python3 "$M_PERMIT" review --tool-input "$M_SEND_INPUT")"
 assert_grep_str "M9: review exposes the complete canonical payload" "Approved body" "$M_REVIEW_OUT"
 assert_grep_str "M9: …and its SHA-256" '"sha256"' "$M_REVIEW_OUT"
+assert_grep_str "M9: omitted selector remains backward-compatible Gmail" \
+  'mcp__codex_apps__gmail__send_email' "$M_REVIEW_OUT"
+assert_exit "M9: the tool selector is a closed allowlist" 2 \
+  python3 "$M_PERMIT" review --tool-input "$M_SEND_INPUT" --tool arbitrary
+assert_exit "M9: issue uses the same closed tool selector" 2 \
+  python3 "$M_PERMIT" issue --tool-input "$M_SEND_INPUT" --tool arbitrary \
+    --expected-sha256 ignored --project-root "$M_PERMIT_ROOT" --session-id bad-tool \
+    --approval-ref TEST --approval-quote approved --confirm-user-approved
 assert_absent "M9: review alone writes no permit" "$M_PERMIT_ROOT/.codex/outbound-permits"
 assert_exit "M9: issue refuses to treat a permit as approval" 1 \
   python3 "$M_PERMIT" issue --tool-input "$M_SEND_INPUT" \
@@ -831,6 +858,118 @@ assert_eq "M9: no permit opens another outward tool" "deny" \
 assert_eq "M9: …and only the exact Gmail send can claim it" "allow" \
   "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-tool "$M_PERMIT_ROOT")")"
 
+# ── one-shot Slack permit: exact wire name and complete argument binding ──
+M_SLACK_TOOL='mcp__codex_apps__slack__slack_send_message'
+M_SLACK_JS_TOOL='mcp__codex_apps__slack_slack_send_message'
+M_SLACK_INPUT="$M_PERMIT_ROOT/slack-input.json"
+cat > "$M_SLACK_INPUT" <<'JSON'
+{"channel_id":"C0ABC12345","message":"Approved Slack body","thread_ts":"1700000000.000001","reply_broadcast":true,"draft_id":null}
+JSON
+M_SLACK_REVIEW="$(m_review "$M_SLACK_INPUT" slack)"
+assert_grep_str "M9: Slack review names the exact hook wire tool" "$M_SLACK_TOOL" "$M_SLACK_REVIEW"
+assert_no_grep_str "M9: …not the JavaScript wrapper spelling" "$M_SLACK_JS_TOOL" "$M_SLACK_REVIEW"
+assert_grep_str "M9: Slack review exposes the exact message" "Approved Slack body" "$M_SLACK_REVIEW"
+assert_no_grep_str "M9: schema-supplied draft_id:null is canonicalized as omitted" \
+  'draft_id' "$M_SLACK_REVIEW"
+
+M_SLACK_NONE="$(m_envelope "$M_SLACK_INPUT" slack-none "$M_PERMIT_ROOT" "$M_SLACK_TOOL")"
+assert_eq "M9: Slack send without a permit stays denied" "deny" "$(m_decision "$M_SLACK_NONE")"
+m_issue "$M_SLACK_INPUT" slack-exact 300 slack
+M_SLACK_EXACT="$(m_envelope "$M_SLACK_INPUT" slack-exact "$M_PERMIT_ROOT" "$M_SLACK_TOOL")"
+assert_eq "M9: an exact approved Slack send is allowed once" "allow" "$(m_decision "$M_SLACK_EXACT")"
+assert_eq "M9: the claimed Slack permit cannot be reused" "deny" "$(m_decision "$M_SLACK_EXACT")"
+
+M_SLACK_MUT_DIR="$M_PERMIT_ROOT/slack-mutations"; mkdir -p "$M_SLACK_MUT_DIR"
+M_BASE="$M_SLACK_INPUT" M_MUT_DIR="$M_SLACK_MUT_DIR" python3 -c '
+import copy, json, os
+with open(os.environ["M_BASE"], encoding="utf-8") as f: base=json.load(f)
+changes = {
+ "channel_id": lambda d: d.__setitem__("channel_id", "C0OTHER123"),
+ "message": lambda d: d.__setitem__("message", d["message"] + "!"),
+ "thread_ts": lambda d: d.__setitem__("thread_ts", "1700000000.999999"),
+ "reply_broadcast": lambda d: d.__setitem__("reply_broadcast", False),
+ "extra": lambda d: d.__setitem__("unfurl_links", False),
+}
+for name, change in changes.items():
+    value=copy.deepcopy(base); change(value)
+    with open(os.path.join(os.environ["M_MUT_DIR"], name+".json"), "w", encoding="utf-8") as f:
+        json.dump(value, f)
+'
+for m_field in channel_id message thread_ts reply_broadcast extra; do
+  m_session="slack-mutate-$m_field"
+  m_issue "$M_SLACK_INPUT" "$m_session" 300 slack
+  assert_eq "M9: changing Slack $m_field is denied" "deny" \
+    "$(m_decision "$(m_envelope "$M_SLACK_MUT_DIR/$m_field.json" "$m_session" "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+  assert_eq "M9: …without consuming the exact Slack permit ($m_field)" "allow" \
+    "$(m_decision "$(m_envelope "$M_SLACK_INPUT" "$m_session" "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+done
+
+M_SLACK_OMITTED="$M_SLACK_MUT_DIR/draft-omitted.json"
+M_BASE="$M_SLACK_INPUT" M_OUT="$M_SLACK_OMITTED" python3 -c '
+import json,os
+d=json.load(open(os.environ["M_BASE"])); d.pop("draft_id")
+json.dump(d,open(os.environ["M_OUT"],"w"))'
+m_issue "$M_SLACK_INPUT" slack-null 300 slack
+assert_eq "M9: Slack draft_id:null and omission are equivalent" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_OMITTED" slack-null "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
+for m_bad_case in empty nonobject draft missing-message bad-broadcast broadcast-without-thread too-long; do
+  case "$m_bad_case" in
+    empty) printf '{}' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    nonobject) printf '[]' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    draft) printf '{"channel_id":"C0ABC12345","message":"x","draft_id":"DRAFT-1"}' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    missing-message) printf '{"channel_id":"C0ABC12345"}' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    bad-broadcast) printf '{"channel_id":"C0ABC12345","message":"x","reply_broadcast":"yes"}' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    broadcast-without-thread) printf '{"channel_id":"C0ABC12345","message":"x","reply_broadcast":true}' > "$M_SLACK_MUT_DIR/$m_bad_case.json" ;;
+    too-long) M_OUT="$M_SLACK_MUT_DIR/$m_bad_case.json" python3 -c \
+      'import json,os;json.dump({"channel_id":"C0ABC12345","message":"x"*5001},open(os.environ["M_OUT"],"w"))' ;;
+  esac
+  assert_exit "M9: invalid Slack payload is rejected ($m_bad_case)" 1 \
+    python3 "$M_PERMIT" review --tool slack --tool-input "$M_SLACK_MUT_DIR/$m_bad_case.json"
+done
+assert_exit "M9: Slack issue also rejects a non-null draft_id" 1 \
+  python3 "$M_PERMIT" issue --tool slack --tool-input "$M_SLACK_MUT_DIR/draft.json" \
+    --expected-sha256 0000000000000000000000000000000000000000000000000000000000000000 \
+    --project-root "$M_PERMIT_ROOT" --session-id slack-draft \
+    --approval-ref TEST --approval-quote approved --confirm-user-approved
+M_SLACK_TOP="$M_SLACK_MUT_DIR/top-level.json"
+printf '{"channel_id":"C0ABC12345","message":"top","reply_broadcast":false}' > "$M_SLACK_TOP"
+assert_ok "M9: reply_broadcast=false is valid without a thread" \
+  python3 "$M_PERMIT" review --tool slack --tool-input "$M_SLACK_TOP"
+M_SLACK_5000="$M_SLACK_MUT_DIR/5000.json"
+M_OUT="$M_SLACK_5000" python3 -c \
+  'import json,os;json.dump({"channel_id":"C0ABC12345","message":"x"*5000},open(os.environ["M_OUT"],"w"))'
+assert_ok "M9: a 5000-character Slack message remains valid" \
+  python3 "$M_PERMIT" review --tool slack --tool-input "$M_SLACK_5000"
+
+m_issue "$M_SLACK_INPUT" slack-js 300 slack
+assert_eq "M9: the JavaScript Slack spelling cannot claim a wire permit" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-js "$M_PERMIT_ROOT" "$M_SLACK_JS_TOOL")")"
+assert_eq "M9: …and the exact wire call can still claim it" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-js "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
+m_issue "$M_SLACK_INPUT" gmail-not-slack 300 gmail
+assert_eq "M9: a Gmail permit cannot open exact Slack" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" gmail-not-slack "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+assert_eq "M9: …and remains usable for exact Gmail" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" gmail-not-slack "$M_PERMIT_ROOT")")"
+m_issue "$M_SLACK_INPUT" slack-not-gmail 300 slack
+assert_eq "M9: a Slack permit cannot open exact Gmail" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-not-gmail "$M_PERMIT_ROOT")")"
+assert_eq "M9: …and remains usable for exact Slack" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-not-gmail "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
+m_issue "$M_SLACK_INPUT" slack-bound 300 slack
+assert_eq "M9: a Slack permit is denied in another session" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" wrong-session "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+assert_eq "M9: …and remains usable in its bound Slack session" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-bound "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+m_issue "$M_SLACK_INPUT" slack-project 300 slack
+assert_eq "M9: a Slack permit is denied outside its project" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-project /tmp "$M_SLACK_TOOL")")"
+assert_eq "M9: …and remains usable inside its Slack project" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-project "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
 # Claim validates the issuer's time window as data, not merely the expiry.
 # Python's bool is an int subclass, so exact type checks are required here.
 m_tamper_permit() {  # session mutation
@@ -881,8 +1020,30 @@ for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
 assert_eq "M9: an expired permit is denied" "deny" \
   "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-expired "$M_PERMIT_ROOT")")"
 
+assert_exit "M9: Slack issue rejects TTL zero" 1 \
+  m_issue "$M_SLACK_INPUT" slack-ttl-zero 0 slack
+assert_exit "M9: Slack issue rejects TTL above 900" 1 \
+  m_issue "$M_SLACK_INPUT" slack-ttl-over 901 slack
+assert_ok "M9: Slack issue accepts the 900-second boundary" \
+  m_issue "$M_SLACK_INPUT" slack-ttl-900 900 slack
+assert_eq "M9: …and that boundary permit is claimable" "allow" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-ttl-900 "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
+m_issue "$M_SLACK_INPUT" slack-expired 300 slack
+M_PENDING="$M_PERMIT_ROOT/.codex/outbound-permits/pending" python3 -c '
+import json, os, pathlib, time
+for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
+    d=json.load(open(p))
+    if d["session_id"] == "slack-expired":
+        now=int(time.time()); d["created_at"]=now - 2; d["expires_at"]=now - 1
+        json.dump(d,open(p,"w")); break'
+assert_eq "M9: an expired Slack permit is denied" "deny" \
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-expired "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
 M_BAD_JSON="{\"tool_name\":\"mcp__codex_apps__gmail__send_email\",\"session_id\":\"bad\",\"cwd\":\"$M_PERMIT_ROOT\",\"tool_input\":"
 assert_eq "M9: malformed send JSON fails closed" "deny" "$(m_decision "$M_BAD_JSON")"
+M_BAD_SLACK_JSON="{\"tool_name\":\"$M_SLACK_TOOL\",\"session_id\":\"bad-slack\",\"cwd\":\"$M_PERMIT_ROOT\",\"tool_input\":"
+assert_eq "M9: malformed Slack send JSON fails closed" "deny" "$(m_decision "$M_BAD_SLACK_JSON")"
 
 M_NO_PY_OUT="$(printf '%s' "$M_BASE_PAYLOAD" | PATH=/nonexistent /bin/bash "$M_GUARD")"
 assert_eq "M9: a missing permit dependency fails closed" "deny" \
@@ -899,6 +1060,17 @@ for m_out in "$M_PERMIT_ROOT"/race-*.out; do
   [[ "$(m_output_decision "$(cat "$m_out")")" == allow ]] && M_RACE_ALLOW=$((M_RACE_ALLOW + 1))
 done
 assert_eq "M9: two concurrent claims allow exactly one send" "1" "$M_RACE_ALLOW"
+
+m_issue "$M_SLACK_INPUT" slack-race 300 slack
+M_SLACK_RACE_PAYLOAD="$(m_envelope "$M_SLACK_INPUT" slack-race "$M_PERMIT_ROOT" "$M_SLACK_TOOL")"
+(printf '%s' "$M_SLACK_RACE_PAYLOAD" | bash "$M_GUARD" > "$M_PERMIT_ROOT/slack-race-1.out") & m_p1=$!
+(printf '%s' "$M_SLACK_RACE_PAYLOAD" | bash "$M_GUARD" > "$M_PERMIT_ROOT/slack-race-2.out") & m_p2=$!
+wait "$m_p1"; wait "$m_p2"
+M_SLACK_RACE_ALLOW=0
+for m_out in "$M_PERMIT_ROOT"/slack-race-*.out; do
+  [[ "$(m_output_decision "$(cat "$m_out")")" == allow ]] && M_SLACK_RACE_ALLOW=$((M_SLACK_RACE_ALLOW + 1))
+done
+assert_eq "M9: two concurrent Slack claims allow exactly one send" "1" "$M_SLACK_RACE_ALLOW"
 
 # A damaged record is never skipped as if it were trustworthy.
 printf '{not-json' > "$M_PERMIT_ROOT/.codex/outbound-permits/pending/corrupt.json"
