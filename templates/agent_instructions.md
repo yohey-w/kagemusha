@@ -14,6 +14,24 @@
 2. 直近の裁定は `judgment/decisions_journal.md` の末尾から
 3. 判断・推奨を出す前に `judgment/judgment_model.md`（価値判断モデル）を読む
 
+## 難易度別のモデル配分（任意）
+
+- 親エージェントが作業を分けるときに `simple` / `standard` / `complex` を判断し、
+  子の起動時にモデルと推論強度を明示する。CLI ラッパーを使う呼び出しは
+  `agent_run --difficulty standard -- "$PROMPT"` と書ける。実際の対応は `config.env` で変える。
+  独自の shell 呼び出しは `scripts/lib/agent_cli.sh` → `config.env` の順で source する。
+  この profile が効くのは `agent_run` だけで、ネイティブの sub-agent API は、その API が公開する model / effort 欄を起動時に直接指定する。
+- `simple` は抽出・分類・機械的変換、`standard` は通常の調査・実装・テスト、
+  `complex` は複数箇所の原因調査や安全性に関わる実装の目安。ラベルは閉じた3値だけ。
+  通常は high 以下、単純作業は medium / low を使い、xhigh を一律の既定にしない。
+- 別軸の任意例: Astra を使える環境では親を high で運用し、難判断では親が
+  Astra xhigh の子、特に難しい推論や創造だけ max の子を自律的に選ぶ。
+  親セッション自身の effort を途中変更する仕組みではなく、SOL 実作業子の low / medium / high 選択と併用できる。
+  利用できるモデルに合わせて設定し、Astra を全利用者に強制しない。
+- プロンプト本文からの自動判定、失敗のたびに上位モデルへ上げ続ける処理、
+  全履歴の自動複製は行わない。子も利用枠を消費し、節約は保証されない。
+  この配分は下の承認境界を変えない。
+
 ## ファイル地図
 
 | 場所 | 中身 |

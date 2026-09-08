@@ -21,6 +21,8 @@
 # ─── options ───────────────────────────────────────────────────────────────
 #   --model M       model id for the CLI in use ("" = let the CLI decide)
 #   --effort E      reasoning effort  (claude: --effort · codex: -c model_reasoning_effort=)
+#   --difficulty D  parent-selected profile: simple | standard | complex
+#                   (optional; this wrapper does not classify the prompt)
 #   --write         the run is allowed to touch files (codex: -s workspace-write)
 #                   Without it the run is read-only and, on codex, gets a
 #                   "no tools, output only" preamble.
@@ -75,6 +77,10 @@
 #   AGENT_EFFORT / AGENT_EFFORT_CLAUDE / AGENT_EFFORT_CODEX   effort, same shape.
 #                          Effort names ("high", "xhigh") are not model ids, so
 #                          the shared key still serves both.
+#   AGENT_DIFFICULTY       simple | standard | complex, optional default profile.
+#   AGENT_{MODEL,EFFORT}_{CLAUDE,CODEX}_{SIMPLE,STANDARD,COMPLEX}
+#                          provider-specific profile values. Empty means fall
+#                          back to the existing provider/shared/default keys.
 #   AGENT_FLAGS            extra flags, claude only (this is where
 #                          --dangerously-skip-permissions lives)
 #   CODEX_FLAGS            extra flags, codex only
@@ -128,6 +134,11 @@ if [[ -z "${AGENT_CLI_ENV_FROZEN:-}" ]]; then
   AGENT_CLI_ENV_FROZEN=1
   for _agent_cli_k in AGENT_CLI AGENT_CMD AGENT_MODEL AGENT_MODEL_CLAUDE AGENT_MODEL_CODEX \
                       AGENT_EFFORT AGENT_EFFORT_CLAUDE AGENT_EFFORT_CODEX \
+                      AGENT_DIFFICULTY \
+                      AGENT_MODEL_CLAUDE_SIMPLE AGENT_MODEL_CLAUDE_STANDARD AGENT_MODEL_CLAUDE_COMPLEX \
+                      AGENT_MODEL_CODEX_SIMPLE AGENT_MODEL_CODEX_STANDARD AGENT_MODEL_CODEX_COMPLEX \
+                      AGENT_EFFORT_CLAUDE_SIMPLE AGENT_EFFORT_CLAUDE_STANDARD AGENT_EFFORT_CLAUDE_COMPLEX \
+                      AGENT_EFFORT_CODEX_SIMPLE AGENT_EFFORT_CODEX_STANDARD AGENT_EFFORT_CODEX_COMPLEX \
                       AGENT_FLAGS CODEX_FLAGS; do
     _agent_cli_v="${!_agent_cli_k:-}"
     [[ -n "$_agent_cli_v" ]] || continue
@@ -138,11 +149,44 @@ if [[ -z "${AGENT_CLI_ENV_FROZEN:-}" ]]; then
   unset _agent_cli_k _agent_cli_v
 fi
 
+# Values exported before this library was sourced and values assigned later by
+# config.env are kept separate. Difficulty profiles need both layers because an
+# operator's exported base model must not be displaced by a profile that exists
+# only in config.env.
+agent_cli_exported() {
+  local snap="AGENT_CLI_ENV__$1"
+  printf '%s' "${!snap:-}"
+}
+
+agent_cli_current() {
+  local key="$1"
+  printf '%s' "${!key:-}"
+}
+
+agent_cli_first_exported() {
+  local key value
+  for key in "$@"; do
+    value="$(agent_cli_exported "$key")"
+    [[ -n "$value" ]] && { printf '%s' "$value"; return 0; }
+  done
+  return 0
+}
+
+agent_cli_first_current() {
+  local key value
+  for key in "$@"; do
+    value="$(agent_cli_current "$key")"
+    [[ -n "$value" ]] && { printf '%s' "$value"; return 0; }
+  done
+  return 0
+}
+
 # agent_cli_env KEY — the value that wins for KEY: the environment's, if it
 # named one when this file was sourced; otherwise the current one (config.env's).
 agent_cli_env() {
-  local key="$1" snap="AGENT_CLI_ENV__$1"
-  if [[ -n "${!snap:-}" ]]; then printf '%s' "${!snap}"; else printf '%s' "${!key:-}"; fi
+  local value
+  value="$(agent_cli_exported "$1")"
+  if [[ -n "$value" ]]; then printf '%s' "$value"; else agent_cli_current "$1"; fi
 }
 
 agent_cli_die() { printf 'agent_cli: %s\n' "$1" >&2; return 2; }
@@ -219,18 +263,28 @@ agent_cli_bin() {
 #   Fills the array AGENT_CLI_ARGV with the exact command line, and sets
 #   AGENT_CLI_DIALECT / AGENT_CLI_TIMEOUT / AGENT_CLI_PROMPT, plus what was
 #   resolved out of the keys above: AGENT_CLI_BIN / AGENT_CLI_MODEL /
-#   AGENT_CLI_EFFORT. It runs nothing.
+#   AGENT_CLI_EFFORT / AGENT_CLI_DIFFICULTY. It runs nothing.
 #   Everything that decides what a call LOOKS like lives here and nowhere else,
 #   so the dry runs print the command that will actually be made rather than a
 #   second hand-written copy of it that drifts.
 #   codex only: -o takes ${AGENT_CLI_OUT_PATH:-<outfile>}.
 agent_cli_build() {
-  local model="" effort="" want_json="" schema="" write="" timeout_s="" workdir="" \
-        extra_flags="" flags_given="" no_preamble="" prompt="" cli bin
+  local model="" effort="" difficulty="" difficulty_given="" want_json="" schema="" \
+        write="" timeout_s="" workdir="" extra_flags="" flags_given="" \
+        no_preamble="" prompt="" cli bin profile_suffix profile_model_key \
+        profile_effort_key
+  local -a base_model_keys=() base_effort_keys=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model)        model="${2-}"; shift 2 ;;
       --effort)       effort="${2-}"; shift 2 ;;
+      --difficulty)
+        if [[ $# -lt 2 || -z "${2-}" ]]; then
+          agent_cli_die "--difficulty requires simple, standard or complex"
+          return 2
+        fi
+        difficulty="$2"; difficulty_given=1; shift 2
+        ;;
       --json)         want_json=1; shift ;;
       --schema)       schema="${2-}"; shift 2 ;;
       --write)        write=1; shift ;;
@@ -244,33 +298,65 @@ agent_cli_build() {
   done
   [[ -n "$prompt" ]] || { agent_cli_die "no prompt (did you forget the -- separator?)"; return 2; }
 
+  [[ -n "$difficulty_given" ]] || difficulty="$(agent_cli_env AGENT_DIFFICULTY)"
+  case "$difficulty" in
+    "") profile_suffix="" ;;
+    simple|standard|complex) profile_suffix="${difficulty^^}" ;;
+    *) agent_cli_die "difficulty must be simple, standard or complex (got: ${difficulty:-<empty>})"; return 2 ;;
+  esac
+
   cli="$(agent_cli_which)" || return 2
   bin="$(agent_cli_bin "$cli")"
   # shellcheck disable=SC2034  # read by callers and by tests/test_m_codex.sh
   AGENT_CLI_DIALECT="$cli"
   AGENT_CLI_TIMEOUT="${timeout_s:-${AGENT_TIMEOUT:-120}}"
 
-  # An explicit --model beats every key. Then the per-CLI key. Then: claude
-  # falls back to the shared AGENT_MODEL (the kit's original key, which was
-  # always a Claude id), and codex falls back to ITS OWN default — never to
-  # AGENT_MODEL. One key cannot hold two vendors' model ids, and the version
-  # that let it try is what put `claude exec -m claude-opus-4-8` on screen.
+  case "$cli" in
+    claude)
+      base_model_keys=(AGENT_MODEL_CLAUDE AGENT_MODEL)
+      base_effort_keys=(AGENT_EFFORT_CLAUDE AGENT_EFFORT)
+      ;;
+    codex)
+      base_model_keys=(AGENT_MODEL_CODEX)
+      base_effort_keys=(AGENT_EFFORT_CODEX AGENT_EFFORT)
+      ;;
+  esac
+
+  # Per-call flags win. With a profile: its EXPORTED value, then the existing
+  # EXPORTED provider/shared value, then its config.env value, then the existing
+  # config/default. This preserves the long-standing "export beats config"
+  # contract even when only config.env contains profile wiring. Without a
+  # profile, the old resolution path is unchanged.
   if [[ -z "$model" ]]; then
-    case "$cli" in
-      claude) model="$(agent_cli_env AGENT_MODEL_CLAUDE)"
-              [[ -n "$model" ]] || model="$(agent_cli_env AGENT_MODEL)" ;;
-      codex)  model="$(agent_cli_env AGENT_MODEL_CODEX)"
-              [[ -n "$model" ]] || model="${AGENT_CLI_DEFAULT_MODEL_CODEX:-}" ;;
-    esac
+    if [[ -n "$profile_suffix" ]]; then
+      profile_model_key="AGENT_MODEL_${cli^^}_${profile_suffix}"
+      model="$(agent_cli_exported "$profile_model_key")"
+      [[ -n "$model" ]] || model="$(agent_cli_first_exported "${base_model_keys[@]}")"
+      [[ -n "$model" ]] || model="$(agent_cli_current "$profile_model_key")"
+      [[ -n "$model" ]] || model="$(agent_cli_first_current "${base_model_keys[@]}")"
+    else
+      case "$cli" in
+        claude) model="$(agent_cli_env AGENT_MODEL_CLAUDE)"
+                [[ -n "$model" ]] || model="$(agent_cli_env AGENT_MODEL)" ;;
+        codex)  model="$(agent_cli_env AGENT_MODEL_CODEX)" ;;
+      esac
+    fi
+    [[ -n "$model" || "$cli" != "codex" ]] || model="${AGENT_CLI_DEFAULT_MODEL_CODEX:-}"
   fi
-  # Effort names are not model ids ("high" means the same thing to both), so the
-  # shared key still serves both dialects.
   if [[ -z "$effort" ]]; then
-    case "$cli" in
-      claude) effort="$(agent_cli_env AGENT_EFFORT_CLAUDE)" ;;
-      codex)  effort="$(agent_cli_env AGENT_EFFORT_CODEX)" ;;
-    esac
-    [[ -n "$effort" ]] || effort="$(agent_cli_env AGENT_EFFORT)"
+    if [[ -n "$profile_suffix" ]]; then
+      profile_effort_key="AGENT_EFFORT_${cli^^}_${profile_suffix}"
+      effort="$(agent_cli_exported "$profile_effort_key")"
+      [[ -n "$effort" ]] || effort="$(agent_cli_first_exported "${base_effort_keys[@]}")"
+      [[ -n "$effort" ]] || effort="$(agent_cli_current "$profile_effort_key")"
+      [[ -n "$effort" ]] || effort="$(agent_cli_first_current "${base_effort_keys[@]}")"
+    else
+      case "$cli" in
+        claude) effort="$(agent_cli_env AGENT_EFFORT_CLAUDE)" ;;
+        codex)  effort="$(agent_cli_env AGENT_EFFORT_CODEX)" ;;
+      esac
+      [[ -n "$effort" ]] || effort="$(agent_cli_env AGENT_EFFORT)"
+    fi
   fi
 
   # The crossing that survives every fallback above: an id aimed AT codex by
@@ -361,20 +447,23 @@ agent_cli_build() {
   AGENT_CLI_MODEL="$model"
   # shellcheck disable=SC2034
   AGENT_CLI_EFFORT="$effort"
+  # shellcheck disable=SC2034
+  AGENT_CLI_DIFFICULTY="$difficulty"
 }
 
 # agent_cli_show [same options] -- PLACEHOLDER
 #   ONE line: the command that agent_run would make, then — after a `#`, so the
-#   line stays a command you can read — the four things that were RESOLVED to
-#   build it: type, executable, model, effort. Those four are where a config
+#   line stays a command you can read — the five things that were RESOLVED to
+#   build it: type, executable, model, effort, difficulty. Those are where a config
 #   goes wrong (an old AGENT_CMD, a model id from the other vendor), and the
 #   argv alone does not say which key each came from. `-` means "nothing set;
 #   the CLI decides". For the dry runs, so what they print and what they would
 #   do come from the same code.
 agent_cli_show() {
   agent_cli_build "$@" || return 2
-  printf '%s  # cli=%s bin=%s model=%s effort=%s' "${AGENT_CLI_ARGV[*]}" \
-    "$AGENT_CLI_DIALECT" "$AGENT_CLI_BIN" "${AGENT_CLI_MODEL:--}" "${AGENT_CLI_EFFORT:--}"
+  printf '%s  # cli=%s bin=%s model=%s effort=%s difficulty=%s' "${AGENT_CLI_ARGV[*]}" \
+    "$AGENT_CLI_DIALECT" "$AGENT_CLI_BIN" "${AGENT_CLI_MODEL:--}" \
+    "${AGENT_CLI_EFFORT:--}" "${AGENT_CLI_DIFFICULTY:--}"
 }
 
 # agent_run [options] -- PROMPT

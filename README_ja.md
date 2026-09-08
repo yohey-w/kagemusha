@@ -105,6 +105,8 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 
 使う CLI は**キー1個**で決まります: `config.env` の `AGENT_CLI=claude|codex`（`auto` = PATH にある方）。**環境変数に置いた同じキーはファイルより強い**ので `AGENT_CLI=codex ./scripts/morning_brief.sh` は一回きりの切り替えになり、`AGENT_CMD` は「その CLI の実行ファイルの差し替え」だけを担います。プロンプトも書式も承認の境界も変わりません——**変わるのは起動行だけ**で、それは1か所（[`scripts/lib/agent_cli.sh`](scripts/lib/agent_cli.sh)）が組み立てます。
 
+**Claude Code / Codex CLI 両対応の、任意難易度ルーティング。** 親が `simple` / `standard` / `complex` の1つを選び、例えば `agent_run --difficulty standard -- "$PROMPT"` と呼ぶと、[`config.env.example`](config.env.example) の provider 別 model / effort 表へ解決します（Codex SOL の low / medium / high が同梱例で、一律 xhigh にはしない）。別軸の任意例として、使える環境では Astra 親を high で運用し、その親が難判断で Astra xhigh の子、特に難しい推論・創造だけ max の子を自律的に選び、SOL 実作業子と併用できます。親セッション自身の effort を途中変更する仕組みではなく、Astra も全利用者へ強制しません。独自の shell 呼び出しは、同梱スクリプトと同じく `scripts/lib/agent_cli.sh` を `config.env` より先に source します。本文の自動分類や無限昇格はしません。`--model` / `--effort` は最優先、export は設定ファイルより優先、難易度省略時は従来どおりです。profile が効くのは `agent_run` だけで、ネイティブの sub-agent API はその API が公開する model / effort 欄を起動呼び出しに指定します。子も利用枠を消費するため節約は保証せず、承認・権限の境界も変えません。
+
 | | Claude Code | Codex CLI | 片方に無いときの代替 |
 |---|---|---|---|
 | 指示ファイル | `CLAUDE.md` ＝ `@AGENTS.md` の1行 | `AGENTS.md` を直読 | 中身は1本・名前が2つ。`setup.sh` が両方作る |
