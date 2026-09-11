@@ -8,6 +8,8 @@
 <!-- contract:identity -->
 **We do not ship the content of your judgment. We ship the forms.**
 
+**Make the AI write the approval slip.** Before any outward action (send, publish, update a canonical document), the agent writes the recipient, the content, the grounds, whether it can be undone, and where it is unsure; the human reads only the 'unsure' field and signs or stops. A button approval becomes a ritual; a slip cannot be signed unread.
+
 kagemusha is **a set of Markdown forms plus the scripts that run them**, for the AI coding agent you already use (Claude Code, Codex, Cursor, …): it makes **inward work run on its own and anything outward wait for your approval**, and it returns the reasons you rejected something to the next run as standing rules. It is not a resident agent and not a SaaS, and **your own judgment criteria are not included**.
 
 **Fits** you if operations that cannot be undone are part of your day and you are willing to write down why you rejected something. **Does not fit** you if you want ready-made judgment criteria, or an approval SaaS for a team.
