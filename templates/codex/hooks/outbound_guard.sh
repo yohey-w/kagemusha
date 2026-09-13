@@ -201,12 +201,18 @@ embedded_outbound() {
   local bs='\' dq='"'
 
   # Undo JSON's escaping so the text reads as the model wrote it. The doubled
-  # backslash goes first, or `\\"` is misread as an escaped quote. Nothing else
-  # is touched: \n, \t and \uXXXX keep their backslash, which is not an
-  # identifier character, so they can only BREAK a name apart — never glue two
-  # unrelated ones into a verb that was not called.
+  # backslash goes first, or `\\"` is misread as an escaped quote.
   unescaped="${text//"${bs}${bs}"/ }"
   unescaped="${unescaped//"${bs}${dq}"/"$dq"}"
+  # A line break arrives as the two characters \ and n, which are not
+  # whitespace — so `[[:space:]]*` steps over a space but NOT over a newline,
+  # and a name split across two lines walks past the rules below. Measured
+  # before the fix: `"…gmail_" +⏎"send_email"` and a find(…) invoked on the
+  # next line both passed. Restoring the break as one space is exactly what
+  # the source said, and a space cannot glue two identifiers into one.
+  unescaped="${unescaped//"${bs}n"/ }"
+  unescaped="${unescaped//"${bs}t"/ }"
+  unescaped="${unescaped//"${bs}r"/ }"
 
   # Re-join a name split across a concatenation: "…gmail_" + "send_email".
   joined="$unescaped"

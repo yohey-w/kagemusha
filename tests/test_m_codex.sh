@@ -794,6 +794,21 @@ assert_eq "M9: a name split across a concatenation is rejoined, then denied" "de
 assert_eq "M9: …and the join is what catches it, with no call in sight" "deny" \
   "$(m_exec_decision 'const n = "mcp__codex_apps__gmail_" + "send_email"; text(n);')"
 
+# A LINE BREAK IS NOT WHITESPACE ON THE WIRE. It arrives as the two characters
+# \ and n, so `[[:space:]]*` steps over a space and stops at a newline. Both of
+# these passed before the break was restored, and neither is exotic: the model
+# wraps long lines by itself.
+assert_eq "M9: a name split across a LINE BREAK is rejoined too" "deny" \
+  "$(m_exec_decision 'const n = "mcp__codex_apps__gmail_" +
+"send_email"; text(n);')"
+assert_eq "M9: …and a tool resolved on one line and called on the next" "deny" \
+  "$(m_exec_decision 'await ALL_TOOLS.find(t=>/create_draft/.test(t.name))
+({to:"test@example.invalid"});')"
+assert_eq "M9: …while an ordinary multi-line read is untouched" "allow" \
+  "$(m_exec_decision 'const a = await tools.exec_command({cmd:"git push"});
+const b = 1 + 2;
+text({a,b});')"
+
 # the reason must route to the queue and must NOT quote the code back: the
 # reason is interpolated into JSON with no escaping, and the code holds the
 # message body.
