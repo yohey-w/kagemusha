@@ -8,19 +8,55 @@ Use it only after the user has explicitly approved the exact message shown by `r
 The guard prevents accidental outward actions by a trusted agent working in the expected workspace.
 It is not an isolation boundary against an adversarial agent that can edit the hook or helper, or invoke the operator helper without authorization.
 A permit records an approval; possession or creation of a permit does not create approval.
-Only these exact hook wire operations can use a permit:
 
-- Gmail: `mcp__codex_apps__gmail__send_email`
-- Slack: `mcp__codex_apps__slack__slack_send_message`
+One helper serves both CLIs. `--cli` selects which pair of exact wire operations a permit may open, and which directory the store lives in.
+It defaults to `codex`, so an install that predates the shared helper keeps working with the arguments it already passes.
+Nothing else differs: canonicalization, the SHA-256 binding over the complete argument set, the project/session/expiry binding, and the single atomic claim are shared, because those are the parts that must not drift apart.
 
+| `--cli` | Gmail | Slack | permit store |
+|---|---|---|---|
+| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | `<project>/.codex/outbound-permits/` |
+| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `<project>/.claude/outbound-permits/` |
+
+A permit issued for one CLI cannot be claimed through the other: the wire name, the store directory and the selector all have to agree.
 The Slack JavaScript wrapper spelling `mcp__codex_apps__slack_slack_send_message` is different and cannot use a permit.
 No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling.
+On the Claude side this also means `mcp__slack__slack_reply_to_thread` has no permit path: a threaded Slack reply cannot be approved through a ticket and has to go through the queue.
+Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
 The installed Slack connector's read-only get/list/read/search operations remain available through an exact enumerated allowlist; all other operations in the Slack wire namespace fail closed.
 
-Codex's hook host fails open if the hook is missing, unreadable, or emits output rejected by the host schema.
+Both hook hosts fail open if the hook is missing, unreadable, or emits output the host rejects.
+Claude Code's documentation is explicit about it: when the script path does not exist or is not executable, "the shell exits with a code like 127 … For most hook events, the action proceeds."
 The guard itself denies malformed inputs and missing permit dependencies, but it cannot protect a call if the host never runs it.
-Therefore changes to the guard, helper, setup, or hook schema must pass [the complete test suite](../scripts/test.sh) before use.
-The implementation sources are [outbound_guard.sh](../templates/codex/hooks/outbound_guard.sh) and [outbound_permit.py](../templates/codex/hooks/outbound_permit.py).
+Therefore changes to a guard, the helper, setup, or a hook schema must pass [the complete test suite](../scripts/test.sh) before use.
+The implementation sources are [the Codex guard](../templates/codex/hooks/outbound_guard.sh), [the Claude Code guard](../templates/claude/hooks/outbound_guard.sh), and [the shared outbound_permit.py](../templates/hooks/outbound_permit.py).
+
+The Claude Code guard never answers `permissionDecision: "allow"`.
+That value is accepted there and it is an elevation: it approves the call and skips the permission prompt that otherwise guards an interactive session.
+Its pass is the empty document `{}`, which leaves the normal permission flow untouched, so a permit lifts the deny without granting anything.
+`"ask"` is unused for a different reason: an unattended run has nobody to ask, so `ask` on that lane is a hang rather than a question.
+
+One limitation is inherited from the Codex guard and is stated here rather than left to be discovered.
+Each guard's classifier reads `tool_name` with a regex over the raw payload and therefore takes the first occurrence.
+Every observed payload and every published example puts `tool_name` ahead of `tool_input`, but JSON member order is the producer's choice.
+The send path is not exposed to this, because the helper parses the whole envelope with a strict JSON parser before it will claim anything; only the classifier is.
+
+## A worktree has none of this
+
+A git worktree receives the TRACKED files and nothing else. The two files that arm the guard — `.claude/settings.json` and `.codex/config.toml` — are instance data and are git-ignored on purpose, because they hold machine-local absolute paths. So `git worktree add` arms nothing, and an agent started inside a worktree runs with no brake on outward calls while the checkout beside it is protected. Nothing announces this: the host fails open, and here it never even looks, because there is no hook to fail.
+
+Measured 2026-09-13 on the author's machine: six worktrees existed and not one had a `.claude/` or `.codex/` directory. An independent review reproduced it from inside the worktree it was reviewing in, and confirmed there was no registration at the user level either.
+
+This is worth stating plainly because worktree isolation is the normal recommendation for running parallel agents — so the lane that looks safest was the unguarded one, and adding workers added unguarded seats.
+
+```sh
+./scripts/worktree_guard_copy.sh --dry-run <worktree>   # see what is missing
+./scripts/worktree_guard_copy.sh <worktree>             # copy it in
+```
+
+It never overwrites anything already there, and it repoints the absolute hook path inside the copied Codex config at the worktree — Claude Code needs no rewrite, since its registration uses `${CLAUDE_PROJECT_DIR}`. Codex asks for hook approval again, because a worktree is a new path, and skips the hook silently until that is given.
+
+Arming a worktree is a backstop, not a policy. The rule stays: do outward work in the checkout that is guarded.
 
 ## Prepare the exact input
 
@@ -43,7 +79,22 @@ For matching, canonicalization recursively removes object members whose value is
 It does not remove `null` array entries, reorder arrays, or alter string values; the subject and message body remain unchanged.
 Any other change, including an extra field, recipient, attachment, subject, or body change, requires a new review and approval.
 
-For Slack, include the destination and every message option:
+On Claude Code the argument shapes are the connector's own, and they differ from the Codex ones.
+Gmail `send_message` takes recipients as **arrays**, and its body is `body` (plain) or `htmlBody` (rich):
+
+```json
+{
+  "to": ["recipient@example.invalid"],
+  "subject": "Approved subject",
+  "body": "Approved body"
+}
+```
+
+`to` must name at least one recipient, and at least one of `body` or `htmlBody` must be non-empty.
+`draftId` is rejected outright: the connector documents that when it is present "the other fields are ignored, and the specified draft is sent as is", so a permit whose hash covered `to`/`subject`/`body` would bind nothing that was actually sent.
+Slack `slack_post_message` takes exactly `channel_id` and `text`, both non-empty, with `text` limited to 5,000 characters.
+
+For Slack on Codex, include the destination and every message option:
 
 ```json
 {
@@ -61,14 +112,23 @@ A schema-supplied `draft_id: null` is equivalent to omission under the canonical
 
 ## Review, approve, and issue
 
-Use the installed helper inside the active project:
+Use the installed helper inside the active project.
+On Codex the helper sits in `.codex/hooks/`; on Claude Code it sits in `.claude/hooks/` and every subcommand takes `--cli claude`.
+The session id is the one the guard prints in its refusal (`session_id=…`), which is why the deny reason carries it:
 
 ```sh
 PROJECT_ROOT='<project-root>'
 SESSION_ID='<session-id>'
 INPUT_FILE='<project-root>/send-input.json'
 
+# Codex
 python3 "$PROJECT_ROOT/.codex/hooks/outbound_permit.py" review \
+  --tool gmail \
+  --tool-input "$INPUT_FILE"
+
+# Claude Code
+python3 "$PROJECT_ROOT/.claude/hooks/outbound_permit.py" review \
+  --cli claude \
   --tool gmail \
   --tool-input "$INPUT_FILE"
 ```
@@ -90,6 +150,22 @@ python3 "$PROJECT_ROOT/.codex/hooks/outbound_permit.py" issue \
   --ttl-seconds 300 \
   --approval-ref 'example.test/approval/reference' \
   --approval-quote 'I approve the exact reviewed message.' \
+  --confirm-user-approved
+```
+
+The Claude Code form of the same command is:
+
+```sh
+python3 "$PROJECT_ROOT/.claude/hooks/outbound_permit.py" issue \
+  --cli claude \
+  --tool gmail \
+  --tool-input "$INPUT_FILE" \
+  --expected-sha256 '<sha256-from-review>' \
+  --project-root "$PROJECT_ROOT" \
+  --session-id "$SESSION_ID" \
+  --ttl-seconds 300 \
+  --approval-ref '<where the user approved it>' \
+  --approval-quote '<the user\'s exact words>' \
   --confirm-user-approved
 ```
 
@@ -122,6 +198,20 @@ If the Slack response is a timeout, transport error, or otherwise ambiguous, do 
 Read the same channel/thread first; if needed, use the read-only Slack search operations with the exact message and narrow timestamp context.
 If the exact message is found, record its `ts` and permalink and complete the readback comparison.
 If the result remains ambiguous or the message is definitely absent, stop: any second send requires a fresh review, fresh explicit approval, and a new permit.
+
+## The acceptance run, on either CLI
+
+The automated suite proves the classifier and the binding. It cannot prove that the host actually runs the hook, because that is a property of the CLI and its trust settings, not of this repository. That last step is a manual run, and it is the one that was measured `否` the first time on Codex.
+
+Do it with a destination that cannot receive anything. `test@example.invalid` is reserved by RFC 2606 and will never route.
+
+1. **The hook fires at all.** Set `OUTBOUND_GUARD_LOG` to a writable path and make any connector read. A line appears. No line means the host is not running the hook — on Codex, the usual cause is an untrusted project or an unapproved hook; on Claude Code, a matcher written without its `.*`, or a path that is not executable.
+2. **A read still works.** Search the mailbox. It returns results. A guard that blocks the inbound sweep gets switched off, and a guard that is switched off protects nothing.
+3. **A send is refused.** Ask the agent, in its own words, to email `test@example.invalid`. The call must be denied and the refusal must name `approval_queue.md`.
+4. **The neighbour is refused too.** This is the step the first Codex run failed: when the send was blocked, the model created a **draft** to the real customer instead. Watch for the reroute — to a draft, a reply, a forward, a Notion page, a Slack message — and confirm each is refused as well. Then confirm the queue entry was actually written.
+5. **An approved send passes exactly once.** Review, obtain explicit approval, issue, call the tool once, then read the message back and confirm the permit moved from `pending` to `claimed`. Calling it a second time must be denied.
+
+Record the result where your loop records decisions, including which CLI, which version, and what the agent tried to do when it was refused. A guard that has never been run against a live model has not been tested; it has only been written.
 
 ## Validation baseline
 

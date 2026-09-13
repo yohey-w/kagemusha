@@ -6,6 +6,15 @@ then ``issue`` only when an operator can cite the user's explicit assent.  The
 boundary assumes agents cannot modify this project or invoke this operator
 helper without authorization; an adversary with workspace-write access is out
 of scope.
+
+ONE HELPER, TWO CLIs.  ``--cli codex`` (the default, so an existing Codex
+install keeps working unchanged) and ``--cli claude`` select which pair of
+exact wire tool names a permit may name, and which directory the permit store
+lives in: ``<project>/.codex/outbound-permits`` or
+``<project>/.claude/outbound-permits``.  Everything else — canonicalization,
+the SHA-256 binding over the complete argument set, the project/session/expiry
+binding, and the atomic single claim — is shared, because it is the part that
+must not drift between the two.
 """
 
 from __future__ import annotations
@@ -22,10 +31,26 @@ import time
 
 GMAIL_TOOL_NAME = "mcp__codex_apps__gmail__send_email"
 SLACK_TOOL_NAME = "mcp__codex_apps__slack__slack_send_message"
-TOOL_NAMES = {
-    "gmail": GMAIL_TOOL_NAME,
-    "slack": SLACK_TOOL_NAME,
+CLAUDE_GMAIL_TOOL_NAME = "mcp__claude_ai_Gmail__send_message"
+CLAUDE_SLACK_TOOL_NAME = "mcp__slack__slack_post_message"
+
+# The exact wire names a permit may open, per CLI.  Deliberately two acts on
+# each side — one email, one channel message.  Replies, drafts, forwards and
+# edits have no permit path and go through the approval queue.
+CLI_TOOL_NAMES = {
+    "codex": {"gmail": GMAIL_TOOL_NAME, "slack": SLACK_TOOL_NAME},
+    "claude": {"gmail": CLAUDE_GMAIL_TOOL_NAME, "slack": CLAUDE_SLACK_TOOL_NAME},
 }
+# Where each CLI's guard looks for the store.  The guard derives the project
+# root from its own location, never from caller input.
+CLI_STORE_DIR = {"codex": ".codex", "claude": ".claude"}
+DEFAULT_CLI = "codex"
+# Backwards compatibility: the module-level name the Codex guard and the
+# original tests knew.  Selecting a CLI narrows this, it never widens it.
+TOOL_NAMES = CLI_TOOL_NAMES[DEFAULT_CLI]
+ALL_TOOL_NAMES = frozenset(
+    name for table in CLI_TOOL_NAMES.values() for name in table.values()
+)
 VERSION = 1
 DEFAULT_TTL = 300
 MAX_TTL = 900
@@ -114,29 +139,89 @@ def resolved_project(path_text: str) -> Path:
     return path
 
 
+def _require_text(tool_input, key: str, label: str) -> str:
+    value = tool_input.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise PermitError(f"{label} {key} must be a non-empty string")
+    return value
+
+
+def _validate_codex_slack(tool_input) -> None:
+    if not tool_input:
+        raise PermitError("Slack tool_input must not be empty")
+    if tool_input.get("draft_id") is not None:
+        raise PermitError("draft_id is not valid for a new Slack send")
+    for key in ("channel_id", "message"):
+        _require_text(tool_input, key, "Slack")
+    if len(tool_input["message"]) > 5000:
+        raise PermitError("Slack message must be at most 5000 characters")
+    thread_ts = tool_input.get("thread_ts")
+    if thread_ts is not None and (
+        not isinstance(thread_ts, str) or not thread_ts.strip()
+    ):
+        raise PermitError("Slack thread_ts must be a non-empty string")
+    reply_broadcast = tool_input.get("reply_broadcast")
+    if reply_broadcast is not None and type(reply_broadcast) is not bool:
+        raise PermitError("Slack reply_broadcast must be a boolean")
+    if reply_broadcast is True and thread_ts is None:
+        raise PermitError("Slack reply_broadcast=true requires thread_ts")
+
+
+def _validate_claude_slack(tool_input) -> None:
+    # mcp__slack__slack_post_message takes exactly channel_id and text; a
+    # threaded reply is a different tool and has no permit path.
+    if not tool_input:
+        raise PermitError("Slack tool_input must not be empty")
+    for key in ("channel_id", "text"):
+        _require_text(tool_input, key, "Slack")
+    if len(tool_input["text"]) > 5000:
+        raise PermitError("Slack text must be at most 5000 characters")
+
+
+def _validate_claude_gmail(tool_input) -> None:
+    # mcp__claude_ai_Gmail__send_message takes recipients as ARRAYS and carries
+    # a draftId escape hatch: the connector documents that when draftId is
+    # present "the other fields are ignored, and the specified draft is sent as
+    # is".  A permit whose hash covers to/subject/body would then bind nothing
+    # that is actually sent, so a permit may not name one.
+    if not tool_input:
+        raise PermitError("Gmail tool_input must not be empty")
+    if tool_input.get("draftId") is not None:
+        raise PermitError("draftId is not valid for a permitted new send")
+    for key in ("to", "cc", "bcc"):
+        value = tool_input.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            raise PermitError(f"Gmail {key} must be an array of addresses")
+        for address in value:
+            if not isinstance(address, str) or not address.strip():
+                raise PermitError(f"Gmail {key} must contain non-empty addresses")
+    if not tool_input.get("to"):
+        raise PermitError("Gmail to must name at least one recipient")
+    subject = tool_input.get("subject")
+    if subject is not None and not isinstance(subject, str):
+        raise PermitError("Gmail subject must be a string")
+    bodies = [tool_input.get("body"), tool_input.get("htmlBody")]
+    if not any(isinstance(part, str) and part.strip() for part in bodies):
+        raise PermitError("Gmail body or htmlBody must be a non-empty string")
+
+
+# Keyed by the exact wire tool name, which is unique across both CLIs, so the
+# right shape check is selected without the caller having to say which CLI it
+# came from.  A tool with no entry is bound by its hash alone.
+INPUT_VALIDATORS = {
+    SLACK_TOOL_NAME: _validate_codex_slack,
+    CLAUDE_SLACK_TOOL_NAME: _validate_claude_slack,
+    CLAUDE_GMAIL_TOOL_NAME: _validate_claude_gmail,
+}
+
+
 def validated_canonical_input(tool_name: str, tool_input) -> str:
     canonical = canonical_input(tool_input)
-    if tool_name == SLACK_TOOL_NAME:
-        if not tool_input:
-            raise PermitError("Slack tool_input must not be empty")
-        if tool_input.get("draft_id") is not None:
-            raise PermitError("draft_id is not valid for a new Slack send")
-        for key in ("channel_id", "message"):
-            value = tool_input.get(key)
-            if not isinstance(value, str) or not value.strip():
-                raise PermitError(f"Slack {key} must be a non-empty string")
-        if len(tool_input["message"]) > 5000:
-            raise PermitError("Slack message must be at most 5000 characters")
-        thread_ts = tool_input.get("thread_ts")
-        if thread_ts is not None and (
-            not isinstance(thread_ts, str) or not thread_ts.strip()
-        ):
-            raise PermitError("Slack thread_ts must be a non-empty string")
-        reply_broadcast = tool_input.get("reply_broadcast")
-        if reply_broadcast is not None and type(reply_broadcast) is not bool:
-            raise PermitError("Slack reply_broadcast must be a boolean")
-        if reply_broadcast is True and thread_ts is None:
-            raise PermitError("Slack reply_broadcast=true requires thread_ts")
+    validator = INPUT_VALIDATORS.get(tool_name)
+    if validator is not None:
+        validator(tool_input)
     return canonical
 
 
@@ -175,14 +260,14 @@ def issue(args) -> None:
     if args.ttl_seconds < 1 or args.ttl_seconds > MAX_TTL:
         raise PermitError(f"ttl-seconds must be between 1 and {MAX_TTL}")
 
-    tool_name = TOOL_NAMES[args.tool]
+    tool_name = CLI_TOOL_NAMES[args.cli][args.tool]
     tool_input = load_tool_input(args.tool_input)
     actual_hash = print_review(tool_name, tool_input)
     if actual_hash != args.expected_sha256.lower():
         raise PermitError("reviewed SHA-256 does not match the current tool-input file")
 
     project = resolved_project(args.project_root)
-    permit_root = project / ".codex" / "outbound-permits"
+    permit_root = project / CLI_STORE_DIR[args.cli] / "outbound-permits"
     pending = permit_root / "pending"
     claimed = permit_root / "claimed"
     pending.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -232,7 +317,7 @@ def issue(args) -> None:
     }, ensure_ascii=False, indent=2, sort_keys=True))
 
 
-def validate_permit(record: object, now: int) -> None:
+def validate_permit(record: object, now: int, allowed_tools=ALL_TOOL_NAMES) -> None:
     if not isinstance(record, dict) or set(record) != PERMIT_KEYS:
         raise PermitError("invalid permit schema")
     string_keys = {
@@ -241,7 +326,7 @@ def validate_permit(record: object, now: int) -> None:
     }
     if any(not isinstance(record[key], str) or not record[key] for key in string_keys):
         raise PermitError("invalid permit string field")
-    if record["tool_name"] not in TOOL_NAMES.values():
+    if record["tool_name"] not in allowed_tools:
         raise PermitError("permit tool is not allowlisted")
     if type(record["version"]) is not int or record["version"] != VERSION:
         raise PermitError("unsupported permit version")
@@ -270,8 +355,9 @@ def claim(args) -> None:
     envelope = strict_loads(sys.stdin.read())
     if not isinstance(envelope, dict):
         raise PermitError("hook input must be an object")
+    allowed_tools = frozenset(CLI_TOOL_NAMES[args.cli].values())
     tool_name = envelope.get("tool_name")
-    if tool_name not in TOOL_NAMES.values():
+    if tool_name not in allowed_tools:
         raise PermitError("permit is only valid for an allowlisted exact send tool")
     session_id = envelope.get("session_id")
     cwd = envelope.get("cwd")
@@ -283,7 +369,7 @@ def claim(args) -> None:
     canonical = validated_canonical_input(tool_name, envelope.get("tool_input"))
     tool_hash = digest(canonical)
 
-    permit_root = project / ".codex" / "outbound-permits"
+    permit_root = project / CLI_STORE_DIR[args.cli] / "outbound-permits"
     pending = permit_root / "pending"
     claimed = permit_root / "claimed"
     if not pending.is_dir() or not claimed.is_dir():
@@ -296,7 +382,7 @@ def claim(args) -> None:
             record = strict_loads(path.read_text(encoding="utf-8"))
         except OSError as exc:
             raise PermitError("cannot read permit") from exc
-        validate_permit(record, now)
+        validate_permit(record, now, allowed_tools)
         if (
             record["tool_name"] == tool_name
             and record["tool_input_sha256"] == tool_hash
@@ -318,6 +404,17 @@ def claim(args) -> None:
     raise PermitError("no unexpired matching one-shot permit")
 
 
+def add_cli_flag(command: argparse.ArgumentParser) -> None:
+    """Which CLI's wire names and permit store this invocation means.
+
+    Defaults to codex so an installed Codex guard that predates the shared
+    helper keeps working with the argument list it already passes.
+    """
+    command.add_argument(
+        "--cli", choices=sorted(CLI_TOOL_NAMES), default=DEFAULT_CLI
+    )
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=(
@@ -329,6 +426,7 @@ def parser() -> argparse.ArgumentParser:
     review_cmd = sub.add_parser("review", help="show canonical payload and SHA-256; write nothing")
     review_cmd.add_argument("--tool-input", type=Path, required=True)
     review_cmd.add_argument("--tool", choices=sorted(TOOL_NAMES), default="gmail")
+    add_cli_flag(review_cmd)
 
     issue_cmd = sub.add_parser("issue", help="write a short-lived one-shot permit")
     issue_cmd.add_argument("--tool-input", type=Path, required=True)
@@ -340,9 +438,11 @@ def parser() -> argparse.ArgumentParser:
     issue_cmd.add_argument("--approval-ref", required=True)
     issue_cmd.add_argument("--approval-quote", required=True)
     issue_cmd.add_argument("--confirm-user-approved", action="store_true")
+    add_cli_flag(issue_cmd)
 
     claim_cmd = sub.add_parser("claim", help=argparse.SUPPRESS)
     claim_cmd.add_argument("--project-root", required=True)
+    add_cli_flag(claim_cmd)
     return result
 
 
@@ -350,7 +450,8 @@ def main() -> int:
     args = parser().parse_args()
     try:
         if args.command == "review":
-            print_review(TOOL_NAMES[args.tool], load_tool_input(args.tool_input))
+            print_review(CLI_TOOL_NAMES[args.cli][args.tool],
+                         load_tool_input(args.tool_input))
         elif args.command == "issue":
             issue(args)
         else:

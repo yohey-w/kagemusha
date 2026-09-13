@@ -196,6 +196,34 @@ codex exec -s read-only "顧客へ『テストです』とメールを送って"
 
 ⚠️ **プロジェクトの信頼とフックの信頼は別物。** プロジェクトが `~/.codex/config.toml` で trusted でなければフックは黙って無視され、trusted でも初回は TUI で承認が要る。無人実行は `--dangerously-bypass-hook-trust` が要るが、これは**有効な全フックを未レビューで走らせる**という意味なので、先に1回手で開いて信頼を保存するほうがよい。⚠️ **git worktree では本体側の `.codex/config.toml` が読まれた**（2026-09-07 実測）。フックの変更は普通のクローンで試すこと。
 
+### Claude Code 側の同じ歯止め — 既定の挙動は「設計された制御」ではない
+
+Claude Code には長いあいだフックが無く、外向きが止まっていたのは**CLI の既定の挙動のおかげ**だった。無人便では、`--allowedTools` に名前の無い MCP ツールは `permission not granted` で弾かれる。対話では許可プロンプトが出る。どちらも効いてはいるが、**選んで置いた制御ではない**——将来どこかの便が `--allowedTools "mcp__…__*"` と広く書いた瞬間、扉は**無言で開く**。対話側も、`settings.local.json` に恒久許可を1行足せば同じことが起きる。
+
+⇒ **Codex と同じ形の「no」を機構に置く。** [`templates/claude/hooks/outbound_guard.sh`](../templates/claude/hooks/outbound_guard.sh) を `.claude/hooks/` に置き、`.claude/settings.json` の `PreToolUse` に matcher `mcp__.*` で登録する（雛形は [`templates/claude/settings.json.example`](../templates/claude/settings.json.example)）。許可票のヘルパ [`templates/hooks/outbound_permit.py`](../templates/hooks/outbound_permit.py) は Codex と**共有**で、`--cli claude` で宛先のツール名と置き場だけが変わる。
+
+**2つの CLI で違うところ**（公式ドキュメント [code.claude.com/docs/en/hooks](https://code.claude.com/docs/en/hooks) で照合）:
+
+| | Codex CLI | Claude Code |
+|---|---|---|
+| 判定の書き方 | 操作名（最後の `__` 以降）に動詞が含まれるか | **フル名の正規表現**。名前空間が3段（`mcp__claude_ai_Google_Calendar__update_event`）で、あるサーバの `update_page` は外向き発言、別のサーバの `update_file` は単なるファイル編集だから、操作名だけでは切り分けられない |
+| 通すとき | `{}`（`allow` を受け付けないので、はいと言う手段が無い） | **`{}`。`allow` は受け付けられるが使わない** |
+| `ask` | 受け付けない | 受け付けるが**使わない** |
+| matcher | フック単位の設定のみ | `mcp__.*`。**`.*` が必須**——「文字・数字・`_`・`-`・空白・`,`・`\|` だけの matcher は完全一致として比較される」ので、`mcp__` と書くと**どのツールにも一致しない**（そして何も言わない） |
+| パスの書き方 | 絶対パス（`setup.sh --codex` が置換） | `${CLAUDE_PROJECT_DIR}` が環境変数として渡る |
+| 不全時 | fail open・無言 | fail open。「スクリプトのパスが存在しない、または実行可能でないとき…ほとんどのフックイベントでは、その動作は続行される」 |
+
+🔴 **`allow` を使わない理由**。Claude Code の `permissionDecision: "allow"` は「そのツール呼び出しを承認する」——つまり**許可プロンプトを飛ばす**。読み取りに `allow` を返すガードは、**そのセッションの全コネクタに通行証を配る**のと同じで、いま対話レーンを守っている唯一の門を自分で外すことになる。だから通すときは「決定しない」＝ `{}` を出す。許可票も同じで、**deny を解除するだけで、権限を与えはしない**。`ask` を使わないのは別の理由で、**無人便には聞く相手がいない**——そこでの `ask` は質問ではなく停止になる。
+
+**止める側の線引き**（`git push` 相当は承認不要という運用者の裁定に従う）:
+
+| 判断 | 例 |
+|---|---|
+| **deny** | Gmail の送信・返信・転送・下書き／Notion のページ作成・更新・コメント／Calendar の作成・更新・削除・出欠／Drive の共有・ゴミ箱／GitHub の issue・PR **コメント**／Vercel の deploy・購入・停止／Slack は**読み取り以外すべて**（名前空間ごと fail closed） |
+| **通す** | 読み取り（`get` `list` `search` `read` `fetch` `query` `download`）／`git push` 相当（`push_files` `create_or_update_file` `delete_file` `create_pull_request` `merge_pull_request`）／`Bash` を含む組み込みツール全部 |
+
+読み取りが先に判定されるのは順序の問題で、`notion-get-comments` は名前に `comment` を含む**読み取り**、`untrash_message` は `trash_message` の**取り消し**だからだ。部分一致で書くと、どちらも巻き込んで塞いでしまう。
+
 ### プラグインの入切は歯止めにならなかった（実測 2026-09-07・codex-cli 0.153.4）
 
 第2の層として自然に思いつくのは「コネクタを config で切る」ことだ。**このバージョンでは効かない。**
