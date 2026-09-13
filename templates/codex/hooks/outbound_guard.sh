@@ -70,6 +70,22 @@
 # untouched, and no other field in the envelope (cwd · session_id · model ·
 # permission_mode · transcript_path) can hold one.
 #
+# ⚠️ THE FIRST VERSION OF THIS RULE WAS BROKEN BY ONE LINE. It listed the bad
+# shapes — `tools["…"]`, `"…" + "…"`, `${…}`, `Object.values(tools)` — and an
+# adversarial review (2026-09-13) walked straight past it with
+#
+#     const t = tools; t[name](…)
+#
+# and eleven more: Reflect.get, `tools?.[n]`, destructuring, fromCharCode,
+# atob, .replace, .join(""), a prefix variable, a template literal that does
+# not start with `${`, new Function, and an ALL_TOOLS alias. All of them
+# reached the real send tools. The lesson generalises: the ways to hide a NAME
+# are unbounded, so enumerating them is always one line behind. The ways to
+# REACH the tool object are a small closed set, and all but one are dynamic.
+# The rule below is therefore inverted — one good shape is allowed and every
+# other contact with `tools` is denied — and an obfuscated name becomes inert,
+# because there is no longer a dispatch to hand it to.
+#
 # THE SHELL IS STILL OUT OF SCOPE. `exec_command` and `Bash` carry shell text,
 # a shell cannot reach a connector, and a substring rule over command text would
 # eat `git push`. Only tools that execute CODE are scanned — measured, that is
@@ -78,15 +94,26 @@
 #
 # WHAT IT COSTS, REPLAYED RATHER THAN ESTIMATED. Every distinct `exec` call in
 # ~/.codex/sessions/2026/09/ — 8,635 of them, real work — was fed to this file.
-# 8,610 passed. Of the 25 denied: 4 really were a send issued from inside exec;
-# 3 were the tool table being searched for the send tool by name; and 18 were
-# the agent EDITING THIS KIT — apply_patch text carrying outbound_guard.sh or
-# test_m_codex.sh, an `rg` for one of the literals, a probe building a fake hook
-# envelope. That is the whole false-positive class, and it is worth knowing the
-# shape of it: patching the lines below that name a send tool, from inside exec,
-# will be refused by the rule those lines install. Outside this repository's own
-# maintenance the replay denied nothing. None of the 25 came from the run-time
-# rules in part 2 — they cost zero false positives across all 8,635.
+# 8,541 passed; 94 were denied (1.09%), and the breakdown is the point:
+#
+#     79  ALL_TOOLS — listing the tool table. Refused on purpose, see below
+#      8  apply_patch text editing THIS KIT, which quotes send tools verbatim
+#      5  a real write or send, actually called from inside exec
+#      2  prose and shell text that happens to read as JavaScript
+#
+# ⚠️ LISTING THE TOOL TABLE NOW COSTS SOMETHING, AND THAT IS A DELIBERATE
+# TRADE. `ALL_TOOLS` is how an agent asks "what connectors do I have?", and it
+# is also the one object that hands out a callable without anyone writing its
+# name — `const AT = ALL_TOOLS; AT.find(…)(…)` was a working bypass. It cannot
+# be both. Enumerate the tools somewhere other than `exec`: write the list into
+# the instructions file, or keep it in a skill. An indirect READ is refused for
+# the same reason, so reads must be written as direct calls.
+#
+# The `.replace` / `.join("")` pair that the review found in bypasses is NOT
+# matched here. Measured, those two appear in 4.5% of real calls (385 of 8,635)
+# doing ordinary string work, and once dynamic dispatch is closed an obfuscated
+# name has nothing to dispatch to — so matching them would buy nothing and cost
+# seventeen times the current false-positive rate.
 #
 # ⚠️ A PERMIT NEVER OPENS A SEND INSIDE exec. The one-shot permit binds an
 # approved send to its exact arguments; inside a code string there are no
@@ -143,20 +170,53 @@ SLACK_READ_OPERATIONS='slack_get_reactions|slack_list_channel_members|slack_list
 # (mcp__codex_apps__node_repl__exec) lands here too.
 CODE_EXEC_TOOLS='exec|node_repl'
 
-# The three JavaScript quote characters, written this way so the file itself
-# stays free of a stray backtick.
-JS_QUOTES=$'"\'\x60'
-# A name split across a concatenation: "mcp__codex_apps__gmail_" + "send_email".
-RE_CONCAT_GLUE="[${JS_QUOTES}][[:space:]]*[+][[:space:]]*[${JS_QUOTES}]"
-# A name assembled at run time instead of written down: `mcp__${app}_send`.
-RE_TEMPLATE_NAME='mcp__[A-Za-z0-9_]*\$\{'
-# tools[…] indexed by anything that is not a quoted literal — tools[name].
-RE_COMPUTED_INDEX="tools\\[[[:space:]]*[^${JS_QUOTES}[:space:]]"
-# The whole table walked as data: Object.keys(tools), Object.entries(tools).
-RE_TOOLS_ENUM='Object\.(keys|values|entries)\([[:space:]]*tools'
-# A tool resolved out of ALL_TOOLS and immediately CALLED. Listing the table is
-# the normal inbound move and stays allowed; invoking the result is not.
-RE_RESOLVED_CALL='ALL_TOOLS[^;]*[])][[:space:]]*\('
+# ─── the read allowlist, for connector calls made from inside code ─────────
+# Derived from the tool catalogue, not invented: 275 distinct
+# mcp__codex_apps__* names appear across the 83 rollouts in
+# ~/.codex/sessions/2026/09/, and `codex plugin list` names the installed
+# connectors (gmail · slack · notion · github · google-drive · google-calendar).
+# A name is a read when it carries a read token AND carries no write token,
+# both as whole `_`-delimited words — `ready_for_review` is not a `read`, and
+# `postgres` is not a `post`. Checked against all 275: 137 allow, 138 deny,
+# no outbound name in the allow set and no measured read in the deny set.
+# Every token below hits at least one real name; `describe` and `count` hit
+# none and are therefore not shipped. To widen the allowlist, add a token here.
+READ_TOKENS='search|get|list|read|fetch|export|query|find'
+WRITE_TOKENS='send|post|create|update|delete|draft|reply|forward|publish|upload|import|archive|label|modify|move|copy|duplicate|invite|join|leave|schedule|edit|add|remove|complete|set|rename|restore|trash|star|pin|react|write|share|clear|append|insert|mark|merge|execute|run|rerun|enable|disable|lock|unlock|resolve|dismiss|convert|request|assign|download|bulk|apply|revoke|install|uninstall|deploy|transfer'
+RE_READ_TOKEN="(^|_)($READ_TOKENS)(_|$)"
+RE_WRITE_TOKEN="(^|_)($WRITE_TOKENS)(_|$)"
+
+# ─── what the code may do with the `tools` object ──────────────────────────
+# The ONLY permitted shape is a static member access, `tools.<name>`. Every
+# other way of touching the object is a way of reaching a name the scanner
+# cannot read, so every other way is denied.
+#
+# A1 — the reference ENDS: `tools[`, `tools)`, `tools;`, `tools,`, `tools ||`,
+#      `tools :`, or end of code. `.` is absent (that is the allowed form) and
+#      so are `/` and `-`, or every `local/tools/…` path and `--tools` flag in
+#      a shell string would be read as JavaScript.
+RE_TOOLS_LOOSE='(^|[^A-Za-z0-9_$])tools[[:space:]]*($|[][?),;}=|&+:<>*%^~!])'
+# A2 — the reference is STORED or PASSED: `= tools`, `(tools`, `, tools`. The
+#      preceding punctuator is what separates code from prose — "filesystem
+#      tools to open" is preceded by a letter and is left alone. A following
+#      identifier means a line break stood there (`const t = tools` ⏎ `t[n]`),
+#      which is JavaScript's semicolon insertion and an alias all the same.
+RE_TOOLS_ALIAS='[=(\[{,;:?!&|][[:space:]]*tools[[:space:]]*($|[^.])'
+# B — a static connector call: tools.<identifier>, captured for the allowlist.
+RE_TOOLS_DOT='(^|[^A-Za-z0-9_$])tools[[:space:]]*\.[[:space:]]*([A-Za-z_$][A-Za-z0-9_$]*)'
+# C — the tool table itself. Listing it is an ordinary inbound move, but it is
+#     also the one object that hands out a callable without naming it, and an
+#     alias (`const AT = ALL_TOOLS`) puts it back out of reach. Denied whole.
+RE_ALL_TOOLS='(^|[^A-Za-z0-9_$])ALL_TOOLS'
+# D — constructs that MAKE code or resolve a property without writing its name.
+#     These defeat any scanner by construction, so they are refused outright.
+#     `import` is deliberately NOT here. Measured over the 8,635 real calls it
+#     fires 15 times and every one is source being WRITTEN to a file — Python's
+#     `from x import (` and a TypeScript `import(url)` inside a patch — never
+#     JavaScript the sandbox evaluates. It also buys nothing: a module cannot
+#     be dispatched onto a hidden name once A has closed that door, and a
+#     data: URL carrying a literal `tools.<name>` is read by rule B anyway.
+RE_CODE_FROM_DATA='(^|[^A-Za-z0-9_$.])(eval|Function)[[:space:]]*\(|new[[:space:]]+Function|Reflect[[:space:]]*\.[[:space:]]*get|[.[:space:]]atob[[:space:]]*\(|fromCharCode'
 
 hook_dir="${BASH_SOURCE[0]%/*}"
 [[ "$hook_dir" == "${BASH_SOURCE[0]}" ]] && hook_dir='.'
@@ -183,69 +243,83 @@ deny() {  # deny <tool_name> <why>
 }
 
 # ─── the classifier for the code-executing tools ───────────────────────────
-# embedded_outbound <payload text> → prints the offending identifier, or a
-# short label for a name the code never spells out, and returns 0; prints
-# nothing and returns 1 when the code is clean.
+# embedded_outbound <payload text> → prints the offending name, or a short
+# label for a shape that hides the name, and returns 0; prints nothing and
+# returns 1 when the code is clean.
 #
-# Bash only, deliberately: the same reason the rest of the classifier is. A
-# guard that needs grep, sed or python to decide is a guard that fails OPEN on
-# a machine that is missing one of them, and fails open in silence.
+# THIS RULE IS INVERTED, AND THAT IS THE WHOLE POINT. The first version of it
+# listed bad shapes and denied those. An adversarial review (2026-09-13) broke
+# it in one line — `const t = tools; t[name](…)` — and then eleven more ways:
+# Reflect.get, optional chaining, destructuring, String.fromCharCode, atob,
+# .replace, .join(""), a prefix variable, a template literal, new Function.
+# Every one of them reached the real Gmail and Slack send tools. The lesson is
+# structural, not a missing pattern: the ways to hide a NAME are unbounded, so
+# a list of them is always one line behind. The ways to REACH the tool object
+# are not — JavaScript has a small, closed set, and all but one of them are
+# dynamic. So the rule now names the one good shape and refuses the rest:
 #
-# KNOWN BLIND SPOTS, written down rather than pretended away. A name spelled
-# with character escapes (`gmail_send_email`), or one that arrives from
-# outside the code — read from a file, returned by an earlier tool call — is
-# not visible here. This rule raises the cost of the accidental send that
-# actually happened; it is not a sandbox.
+#   ALLOWED   tools.<name>(…)   written out, called on the spot, and <name>
+#             on the read allowlist when it is a connector
+#   DENIED    everything else that touches `tools` or `ALL_TOOLS`
+#
+# An obfuscated name is then inert: you cannot dispatch on it without one of
+# the dynamic forms, and those are gone. That is why there is no rule here for
+# .replace or .join — they were measured in 4.5% of real calls, and denying
+# them buys nothing once the dispatch is closed.
+#
+# Bash only, deliberately: a guard that needs grep, sed or python to decide is
+# a guard that fails OPEN on a machine missing one of them, and fails open in
+# silence.
+#
+# WHAT IT STILL CANNOT SEE, written down rather than pretended away:
+#   · a code tool that Codex ships under a name not in CODE_EXEC_TOOLS. The
+#     measured set is exactly `exec` (9,222 of 9,222 code-executing calls); a
+#     future `run_code` would be unguarded until added here.
+#   · `spawn_agent`: a child's own tool calls are not this payload. Whether
+#     the hook fires for the child is NOT VERIFIED [未確認] — it needs a live
+#     Codex to answer, and nothing in the repository states it either way.
+#   · homoglyphs and zero-width characters inside a name. Measured on node:
+#     they either fail to parse or address a key that does not exist, so they
+#     cannot call anything — detection is unnecessary, not missing.
+#   · the shell can still run `outbound_permit.py issue`, whose only gate is
+#     the `--confirm-user-approved` flag it is asked to pass. A permit records
+#     approval; it was never a proof of one. Unchanged by this rule.
 embedded_outbound() {
-  local text="$1" unescaped joined rest id op prev iter=0
+  local text="$1" code rest name op
   local bs='\' dq='"'
 
   # Undo JSON's escaping so the text reads as the model wrote it. The doubled
-  # backslash goes first, or `\\"` is misread as an escaped quote.
-  unescaped="${text//"${bs}${bs}"/ }"
-  unescaped="${unescaped//"${bs}${dq}"/"$dq"}"
-  # A line break arrives as the two characters \ and n, which are not
-  # whitespace — so `[[:space:]]*` steps over a space but NOT over a newline,
-  # and a name split across two lines walks past the rules below. Measured
-  # before the fix: `"…gmail_" +⏎"send_email"` and a find(…) invoked on the
-  # next line both passed. Restoring the break as one space is exactly what
-  # the source said, and a space cannot glue two identifiers into one.
-  unescaped="${unescaped//"${bs}n"/ }"
-  unescaped="${unescaped//"${bs}t"/ }"
-  unescaped="${unescaped//"${bs}r"/ }"
+  # backslash goes first, or `\\"` is misread as an escaped quote. A line break
+  # arrives as the two characters \ and n, which are NOT whitespace, so
+  # `[[:space:]]*` would stop dead at one; restoring it as a single space is
+  # exactly what the source said, and a space cannot glue two identifiers.
+  code="${text//"${bs}${bs}"/ }"
+  code="${code//"${bs}${dq}"/"$dq"}"
+  code="${code//"${bs}n"/ }"
+  code="${code//"${bs}t"/ }"
+  code="${code//"${bs}r"/ }"
 
-  # Re-join a name split across a concatenation: "…gmail_" + "send_email".
-  joined="$unescaped"
-  while [[ "$joined" =~ $RE_CONCAT_GLUE ]]; do
-    prev="$joined"
-    joined="${joined/"${BASH_REMATCH[0]}"/}"
-    [[ "$joined" == "$prev" ]] && break      # never spin on a pattern that
-    (( ++iter > 500 )) && break              # refuses to shrink
+  # D — code made out of data, and property lookup that never spells the name.
+  [[ "$code" =~ $RE_CODE_FROM_DATA ]] && { printf 'code built at run time - eval/Function/Reflect.get/atob/fromCharCode'; return 0; }
+  # C — the tool table as an object: hands out a callable without naming it.
+  [[ "$code" =~ $RE_ALL_TOOLS ]] && { printf 'ALL_TOOLS'; return 0; }
+  # A — every reference to `tools` that is not a static member access.
+  [[ "$code" =~ $RE_TOOLS_LOOSE ]] && { printf 'a dynamic reference to the tools object'; return 0; }
+  [[ "$code" =~ $RE_TOOLS_ALIAS ]] && { printf 'the tools object stored or passed on'; return 0; }
+
+  # B — what is left is `tools.<name>`. A connector among them must be called
+  # on the spot and must be a read. Anything else — a write, an unknown name,
+  # or a bare reference being kept for later — is refused.
+  rest="$code"
+  while [[ "$rest" =~ $RE_TOOLS_DOT ]]; do
+    name="${BASH_REMATCH[2]}"
+    rest="${rest#*"${BASH_REMATCH[0]}"}"
+    [[ "$name" == mcp__* ]] || continue        # exec_command, web__run, …
+    [[ "$rest" =~ ^[[:space:]]*\( ]] || { printf '%s' "$name"; return 0; }
+    op="${name#mcp__}"; op="${op#*__}"         # mcp__codex_apps__gmail_x → gmail_x
+    [[ "$op" =~ $RE_READ_TOKEN ]] && ! [[ "$op" =~ $RE_WRITE_TOKEN ]] && continue
+    printf '%s' "$name"; return 0
   done
-
-  # 1) the name is there, literally — `tools.mcp__…`, `tools["mcp__…"]`,
-  #    `ALL_TOOLS.find(t => t.name === "mcp__…")`, or the glued form above.
-  rest="$joined"
-  while [[ "$rest" =~ mcp__[A-Za-z0-9_]+ ]]; do
-    id="${BASH_REMATCH[0]}"
-    rest="${rest#*"$id"}"
-    op="${id##*__}"
-    if [[ "$id" == *slack* ]]; then
-      # The desktop spelling doubles the app prefix (slack_slack_read_thread),
-      # so the read allowlist is matched with that prefix optional. Anything
-      # the list does not name fails closed, exactly as the direct path does.
-      [[ "$op" =~ ^(slack_)?($SLACK_READ_OPERATIONS)$ ]] || { printf '%s' "$id"; return 0; }
-      continue
-    fi
-    [[ "$op" =~ ($OUTBOUND_VERBS) ]] && { printf '%s' "$id"; return 0; }
-  done
-
-  # 2) the name is never written down, so rule 1 cannot see it. Reading does
-  #    not need any of these forms; reaching a verb past the guard does.
-  [[ "$unescaped" =~ $RE_TEMPLATE_NAME  ]] && { printf 'a tool name built by interpolation'; return 0; }
-  [[ "$unescaped" =~ $RE_COMPUTED_INDEX ]] && { printf 'tools[] indexed by a computed name'; return 0; }
-  [[ "$unescaped" =~ $RE_TOOLS_ENUM     ]] && { printf 'the tool table enumerated as data'; return 0; }
-  [[ "$unescaped" =~ $RE_RESOLVED_CALL  ]] && { printf 'a tool resolved from ALL_TOOLS and then called'; return 0; }
   return 1
 }
 
@@ -280,7 +354,7 @@ operation="${safe_name##*__}"
 if [[ "$operation" =~ ^($CODE_EXEC_TOOLS)$ ]]; then
   embedded="$(embedded_outbound "$payload")"
   if [[ -n "$embedded" ]]; then
-    deny "$safe_name" "the code carries an outward connector call ($embedded). Do not make outward calls from inside $operation; an approved send must be a direct connector call that a one-shot permit can bind / 外向き呼び出しは exec の中で行わず、承認済みなら直接ツールで許可票を使え"
+    deny "$safe_name" "inside $operation only a written-out read is allowed — tools.<read tool>(…) — and this code has something else: $embedded. Do not reach a connector any other way and do not send from here; an approved send must be a direct connector call that a one-shot permit can bind / exec の中で許されるのは直書きの読み取り呼び出しだけ。外向きは exec の中で行わず、承認済みなら直接ツールで許可票を使え"
   fi
 fi
 
