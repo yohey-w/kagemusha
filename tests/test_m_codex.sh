@@ -720,6 +720,180 @@ assert_eq "M9: the shell is never matched, whatever the command says" "allow" \
 assert_eq "M9: …nor is a connector merely NAMED after a verb (postgres)" "allow" \
   "$(m_decision '{"tool_name":"mcp__postgres__query","tool_input":{}}')"
 
+# ── the same send, one level down: hidden inside `exec` ───────────────────
+# MEASURED 2026-09-13 (local/state/codex_desktop_test_20260913/, test_matrix.md
+# §再測 + T7_rootcause.txt). The desktop app shows the model three tools —
+# exec · spawn_agent · wait_agent — and reaches Gmail from JavaScript INSIDE
+# exec: `tools.mcp__codex_apps__gmail_create_draft({to:"…"})`. tool_name is
+# therefore "exec", the assertions above never see a connector name, and the
+# draft was created with the hook installed and trusted. The CLI has the same
+# shape: 9,222 of 9,222 code-executing calls across 83 rollouts in
+# ~/.codex/sessions/2026/09/ are `exec`, several carrying gmail_search_emails.
+#
+# The payloads below are built with json.dumps rather than written by hand,
+# because the escaping is the interesting part: the code arrives inside a JSON
+# string, so its quotes are \" and its newlines are \n, and a fixture that
+# skips that tests a shape which never arrives.
+m_exec_payload() {  # m_exec_payload JS [TOOL_NAME] → one PreToolUse payload
+  M_JS="$1" M_TOOL="${2:-exec}" python3 -c '
+import json, os
+print(json.dumps({"tool_name": os.environ["M_TOOL"],
+                  "tool_input": {"input": os.environ["M_JS"]},
+                  "cwd": "/tmp", "session_id": "m9-exec"}), end="")'
+}
+m_exec_decision() { m_decision "$(m_exec_payload "$1" "${2:-exec}")"; }
+
+# (a) the incident itself, in the spelling that was measured
+assert_eq "M9: a draft created from inside exec is denied" "deny" \
+  "$(m_exec_decision 'const r = await tools.mcp__codex_apps__gmail_create_draft({to:"test@example.invalid",subject:"s",body:"b"}); text(r);')"
+assert_eq "M9: …and a send from inside exec, whatever its namespace spelling" "deny" \
+  "$(m_exec_decision 'await tools.mcp__codex_apps__gmail__send_email({to:"test@example.invalid"});')"
+assert_eq "M9: …and under another name for the same code tool (node_repl)" "deny" \
+  "$(m_exec_decision 'await tools.mcp__codex_apps__gmail_send_email({to:"test@example.invalid"});' node_repl)"
+# (b) reading from inside exec still works, or the guard gets switched off.
+# A read must be WRITTEN OUT and called on the spot — that is the one allowed
+# shape. The allowlist comes from the tool catalogue, not from invention: 275
+# distinct mcp__codex_apps__* names appear across the 83 rollouts in
+# ~/.codex/sessions/2026/09/, and 137 of them are reads.
+for m_exec_read in \
+  'text(await tools.mcp__codex_apps__gmail_search_emails({query:"after:2026/09/04",max_results:30}));' \
+  'text(await tools.mcp__codex_apps__gmail_read_email_thread({thread_id:"t1"}));' \
+  'const r = await tools.mcp__codex_apps__slack_slack_read_thread({channel_id:"C1",limit:8}); text(r);' \
+  'text(await tools.mcp__codex_apps__google_drive_get_spreadsheet_range({id:"x"}));' \
+  'text(await tools.mcp__codex_apps__notion_fetch({id:"x"}));' ; do
+  assert_eq "M9: a written-out connector read from inside exec is allowed" "allow" \
+    "$(m_exec_decision "$m_exec_read")"
+done
+# the shell and the built-ins are not connectors, so the allowlist ignores them
+assert_eq "M9: the shell inside exec is still the shell (git push, rm)" "allow" \
+  "$(m_exec_decision 'text(await tools.exec_command({cmd:"git push && rm -rf ./tmp && echo post"}));')"
+assert_eq "M9: …and a non-connector built-in passes untouched (web__run)" "allow" \
+  "$(m_exec_decision 'text(await tools.web__run({search_query:"codex hooks"}));')"
+assert_eq "M9: a shell command that merely mentions create_draft is allowed" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"grep -rn create_draft .codex/hooks"}); text(r);')"
+# `tools` the word is not `tools` the object. A path and a sentence must live.
+assert_eq "M9: a path containing /tools/ is not a reference to the object" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"python3 /srv/local/tools/codd/run.py"}); text(r);')"
+assert_eq "M9: …nor is the English word inside a help string" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"claude --help | rg tools"}); text(r);')"
+assert_eq "M9: …nor an ordinary multi-line read that happens to use .join()" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"ls"});
+const s = ["a","b"].join("");
+text({r,s});')"
+
+# (c) ALLOWLIST-FIRST: a connector that is not a read is refused whether or not
+# its name carries a verb anyone listed, and so is a name nobody knows.
+for m_exec_write in mcp__codex_apps__slack_slack_send_message \
+                    mcp__codex_apps__slack_slack_add_reaction \
+                    mcp__codex_apps__notion_notion_create_pages \
+                    mcp__codex_apps__google_drive_upload_file \
+                    mcp__codex_apps__gmail_archive_emails \
+                    mcp__other__frobnicate; do
+  assert_eq "M9: $m_exec_write from inside exec is denied" "deny" \
+    "$(m_exec_decision "await tools.${m_exec_write}({to:\"test@example.invalid\"});")"
+done
+assert_eq "M9: a connector kept as a reference instead of called is denied" "deny" \
+  "$(m_exec_decision 'const f = tools.mcp__codex_apps__gmail_search_emails; f({});')"
+
+# (d) THE INVERSION, AND THE TWELVE BYPASSES THAT FORCED IT.
+# The first version of this rule listed bad shapes and denied those. An
+# adversarial review (2026-09-13, local/reports/pr17_review_20260913.md) walked
+# past it with `const t = tools; t[name](…)` and eleven more, verifying on node
+# that each one reached the REAL Gmail and Slack send tools. The lesson is
+# structural: the ways to hide a NAME are unbounded, the ways to REACH the tool
+# object are a small closed set, and all but one of them are dynamic. So the
+# rule now allows one shape and refuses every other contact with the object —
+# which makes an obfuscated name inert, because no dispatch survives to take
+# it. Every assertion below is one of the review's demonstrated bypasses.
+assert_eq "M9: bypass 3 — an alias, then a computed index" "deny" \
+  "$(m_exec_decision 'const t = tools; const n = "mcp__codex_apps__gmail_create_draft"; t[n]({});')"
+assert_eq "M9: bypass 3b — the alias split by a line break (semicolon insertion)" "deny" \
+  "$(m_exec_decision 'const t = tools
+t["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: bypass 4 — String.fromCharCode with Reflect.get" "deny" \
+  "$(m_exec_decision 'const n = String.fromCharCode(109,99,112); Reflect.get(tools,n)({});')"
+assert_eq "M9: bypass 5 — optional chaining, tools?.[n]" "deny" \
+  "$(m_exec_decision 'const n = "mcp__codex_apps__gmail_create_draft"; tools?.[n]({});')"
+assert_eq "M9: bypass 6 — a destructured computed key" "deny" \
+  "$(m_exec_decision 'const n = "mcp__codex_apps__gmail_create_draft"; const {[n]:f} = tools; f({});')"
+assert_eq "M9: bypass 7 — atob() with an alias" "deny" \
+  "$(m_exec_decision 'const t = tools; const n = atob("bWNwX18="); t[n]({});')"
+assert_eq "M9: bypass 8 — join(\"\") builds the name without a plus" "deny" \
+  "$(m_exec_decision 'const t = tools; const n = ["mcp__codex_apps__gmail_","create_draft"].join(""); t[n]({});')"
+assert_eq "M9: bypass 10 — replace() swaps a placeholder into the name" "deny" \
+  "$(m_exec_decision 'const t = tools; const n = "XXXX_draft".replace("XXXX","create"); t[n]({});')"
+assert_eq "M9: bypass 11 — a prefix variable, so no quote meets a plus" "deny" \
+  "$(m_exec_decision 'const p = "mcp__codex_apps__gmail_"; const t = tools; t[p+"create_draft"]({});')"
+assert_eq "M9: bypass 12 — a template literal that does not open with \${" "deny" \
+  "$(m_exec_decision 'const pre = "mcp__codex_apps__gmail"; const t = tools; t[`${pre}_create_draft`]({});')"
+assert_eq "M9: bypass 13 — new Function returns the table" "deny" \
+  "$(m_exec_decision 'const t = tools; const f = new Function("t","n","return t[n]"); f(t,"x")({});')"
+assert_eq "M9: bypass 14 — an ALL_TOOLS alias, then find(…)(…)" "deny" \
+  "$(m_exec_decision 'const AT = ALL_TOOLS; AT.find(x=>/create_draft/.test(x.name))({});')"
+assert_eq "M9: bypass 15 — eval() with the call inside a string" "deny" \
+  "$(m_exec_decision 'eval("tools.mcp__codex_apps__gmail_create_draft({})");')"
+# the same closed set, reached the other ways JavaScript allows
+assert_eq "M9: …the object passed as an argument" "deny" \
+  "$(m_exec_decision '(function(t){ t["mcp__codex_apps__gmail_create_draft"]({}); })(tools);')"
+assert_eq "M9: …returned out of a function" "deny" \
+  "$(m_exec_decision 'function g(){ return tools; } g()["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: …kept behind a logical or" "deny" \
+  "$(m_exec_decision 'const t = tools || null; t["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: …behind a ternary" "deny" \
+  "$(m_exec_decision 'const t = ok ? tools : null; t["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: …or opened with a with-statement" "deny" \
+  "$(m_exec_decision 'with(tools){ mcp__codex_apps__gmail_create_draft({}); }')"
+assert_eq "M9: tools[] indexed by a computed name is denied, read or not" "deny" \
+  "$(m_exec_decision 'const f = tools[pickedName]; await f({});')"
+assert_eq "M9: the tool table enumerated as data is denied" "deny" \
+  "$(m_exec_decision 'const t = Object.values(tools).find(f=>f.length===1); await t({});')"
+# ⚠️ THIS ONE IS A DELIBERATE COST, not an oversight. Listing the table is how
+# an agent asks what connectors it has — and it is also the one object that
+# hands out a callable nobody named. It cannot be both, so `exec` loses it.
+# Enumerate tools in the instructions file or a skill instead.
+assert_eq "M9: listing the tool table from inside exec is refused, by design" "deny" \
+  "$(m_exec_decision 'text(ALL_TOOLS.filter(x=>/slack/.test(x.name)).map(x=>x.name));')"
+
+# (e) the same object, reached through the GLOBAL SCOPE rather than by name.
+# Rules A1/A2 read the text around the identifier `tools`, and in
+# `globalThis["tools"]` that identifier sits inside a string with a quote on
+# each side, so neither of them fires. Found by review 2026-09-13 on the
+# inverted rule. Whether the sandbox actually resolves these is [未確認] — the
+# lock is fitted anyway, because an untested door is still a door.
+assert_eq "M9: globalThis[\"tools\"] is denied" "deny" \
+  "$(m_exec_decision 'globalThis["tools"]["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: this[\"tools\"] is denied" "deny" \
+  "$(m_exec_decision 'this["tools"]["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: globalThis.tools is denied" "deny" \
+  "$(m_exec_decision 'const t = globalThis.tools; t["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: this.tools is denied" "deny" \
+  "$(m_exec_decision 'this.tools["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: self.tools and window.tools are denied" "deny" \
+  "$(m_exec_decision 'self.tools["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: …window too, and with spaces around the index" "deny" \
+  "$(m_exec_decision 'window [ "tools" ] ["mcp__codex_apps__gmail_create_draft"]({});')"
+# and the neighbours that must NOT be swept up with them
+assert_eq "M9: a property merely named toolsList is not the tool table" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"echo hi"}); this.toolsList = r; text(r);')"
+
+# the reason must route to the queue and must NOT quote the code back: the
+# reason is interpolated into JSON with no escaping, and the code holds the
+# message body.
+M_EXEC_REASON="$(M_G_OUT="$(m_guard "$(m_exec_payload 'await tools.mcp__codex_apps__gmail_create_draft({to:"test@example.invalid",body:"secret body"});')")" \
+  python3 -c 'import json,os;print(json.loads(os.environ["M_G_OUT"])["hookSpecificOutput"]["permissionDecisionReason"],end="")')"
+assert_grep_str "M9: the exec deny names where the message goes instead" \
+  "approval_queue.md" "$M_EXEC_REASON"
+assert_grep_str "M9: …and names the connector it caught" \
+  "gmail_create_draft" "$M_EXEC_REASON"
+assert_no_grep_str "M9: …and never quotes the code (the body would land in the JSON)" \
+  "secret body" "$M_EXEC_REASON"
+
+# fail OPEN on code it cannot read, by design and by symmetry: nothing here
+# parses JSON, and on the desktop app exec is the ONLY tool the model has, so a
+# rule that denied whatever it could not recognise would be an off switch.
+assert_eq "M9: an exec whose code the guard cannot find is still allowed" "allow" \
+  "$(m_decision '{"tool_name":"exec"}')"
+
 # fail CLOSED on an unreadable payload: loudly wrong is recoverable, quietly
 # absent is the failure this file exists to prevent.
 assert_eq "M9: an input with no tool_name is denied, not waved through" "deny" \
