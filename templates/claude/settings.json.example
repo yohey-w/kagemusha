@@ -2,13 +2,16 @@
   "_comment": [
     ".claude/settings.json — the per-repository settings Claude Code reads.",
     "  cp templates/claude/settings.json.example .claude/settings.json",
+    "  cp templates/claude/hooks/outbound_guard.sh .claude/hooks/",
+    "  cp templates/hooks/outbound_permit.py     .claude/hooks/",
+    "  chmod +x .claude/hooks/outbound_guard.sh .claude/hooks/outbound_permit.py",
     "",
     "This is the Claude Code half of the pair whose Codex half is",
-    "templates/codex/config.toml.example. The two files configure the SAME two",
-    "things — a date stamp on every turn, and where memory is kept — because",
-    "those are the two places where a CLI's own defaults quietly change what",
-    "your agent believes. Everything else about this kit is CLI-agnostic on",
-    "purpose (see AGENTS.md).",
+    "templates/codex/config.toml.example. The two files configure the SAME",
+    "three things — a date stamp on every turn, where memory is kept, and the",
+    "brake on outward sends — because those are the places where a CLI's own",
+    "defaults quietly change what your agent believes or is able to do.",
+    "Everything else about this kit is CLI-agnostic on purpose (see AGENTS.md).",
     "",
     "JSON has no comments, so this key is the comment. Claude Code ignores",
     "unknown keys; leaving it in place costs nothing.",
@@ -20,6 +23,34 @@
     "An agent that guesses today's date writes a deadline on the wrong weekday,",
     "and a wrong '(Mon)' does not look wrong on re-reading — the only way to",
     "catch it is to compare against a clock outside the model. So state it.",
+    "",
+    "hooks.PreToolUse: the outward brake. The instructions file says 'outward =",
+    "ask first'; that sentence is a request, and a request is not a control.",
+    "The hook is the control — it runs before every connector call and denies",
+    "the outward ones, answering 'queue it in approval_queue.md' instead. Read",
+    "templates/claude/hooks/outbound_guard.sh for what it stops and why, and",
+    "docs/outbound-permits.md for how one approved message is let through.",
+    "",
+    "  · matcher 'mcp__.*' is a REGULAR EXPRESSION, and the '.*' is load-",
+    "    bearing. A matcher of only letters, digits, _, -, spaces, ',' and '|'",
+    "    is compared as an exact string — so a bare 'mcp__' would match no tool",
+    "    at all, and the hook would never run. It would also never say so.",
+    "  · ${CLAUDE_PROJECT_DIR} is exported to the hook process and expands to",
+    "    the project root. Use it rather than a relative path: a relative path",
+    "    resolves against the directory the CLI was STARTED in, which under",
+    "    cron is your home directory, and a hook that cannot be executed is a",
+    "    hook that silently is not there.",
+    "  · THE HOST FAILS OPEN. A missing or unexecutable hook lets the call",
+    "    proceed with a non-blocking notice; unparseable stdout does the same.",
+    "    A broken guard and an absent guard look identical from outside, which",
+    "    is why tests/test_o_claude_guard.sh runs the script against synthetic",
+    "    payloads instead of reading it. Run ./scripts/test.sh after any edit.",
+    "  · THE GUARD NEVER ANSWERS permissionDecision 'allow'. Claude Code",
+    "    accepts it, and it is an ELEVATION: it approves the call and skips the",
+    "    permission prompt that otherwise guards your interactive session. The",
+    "    guard's pass is the empty document '{}', which leaves the normal",
+    "    permission flow exactly as it was. 'ask' is unused too — an",
+    "    unattended cron run has nobody to ask, so 'ask' there is a hang.",
     "",
     "autoMemoryDirectory: where this CLI keeps its own memory. Read AGENTS.md",
     "on what that memory is allowed to be: a CACHE. The single source of truth",
@@ -36,6 +67,17 @@
           {
             "type": "command",
             "command": "date '+[now] %Y-%m-%d (%a) %H:%M %Z'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/outbound_guard.sh"
           }
         ]
       }
