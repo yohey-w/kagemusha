@@ -240,9 +240,15 @@ if [[ -n "$WITH_CODEX" ]]; then
   # The guard and its one-shot permit helper are the control behind that
   # config's PreToolUse hook. Copy both even when the config already exists:
   # a hook or helper missing at send time must never become a silent bypass.
-  for codex_hook_name in outbound_guard.sh outbound_permit.py; do
-    CODEX_HOOK_SRC="$REPO_ROOT/templates/codex/hooks/$codex_hook_name"
-    CODEX_HOOK_DST="$TARGET/.codex/hooks/$codex_hook_name"
+  # The permit helper is SHARED with the Claude Code guard (templates/hooks/),
+  # because the binding it enforces — exact arguments, project, session, expiry,
+  # one claim — is the part that must not drift between the two CLIs. Only the
+  # classifier beside it is dialect-specific.
+  for codex_hook_row in \
+    "templates/codex/hooks/outbound_guard.sh:outbound_guard.sh" \
+    "templates/hooks/outbound_permit.py:outbound_permit.py"; do
+    CODEX_HOOK_SRC="$REPO_ROOT/${codex_hook_row%%:*}"
+    CODEX_HOOK_DST="$TARGET/.codex/hooks/${codex_hook_row##*:}"
     if [[ ! -f "$CODEX_HOOK_SRC" ]]; then
       die "missing template: $CODEX_HOOK_SRC"
     elif [[ -e "$CODEX_HOOK_DST" ]]; then

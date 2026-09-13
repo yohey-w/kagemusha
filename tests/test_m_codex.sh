@@ -645,7 +645,7 @@ assert_no_grep_str "M8: …and does NOT carry Codex's JSON envelope" \
 # thing that can tell them apart, and they run the script rather than reading
 # it, because the failure that is easy to introduce here is a typo in a printf.
 M_GUARD_TEMPLATE="$REPO_ROOT/templates/codex/hooks/outbound_guard.sh"
-M_PERMIT_TEMPLATE="$REPO_ROOT/templates/codex/hooks/outbound_permit.py"
+M_PERMIT_TEMPLATE="$REPO_ROOT/templates/hooks/outbound_permit.py"
 assert_file "M9: the outbound guard ships in the kit" "$M_GUARD_TEMPLATE"
 assert_ok "M9: …and is syntactically valid bash" bash -n "$M_GUARD_TEMPLATE"
 assert_ok "M9: …and is executable in the tree" test -x "$M_GUARD_TEMPLATE"
