@@ -159,11 +159,22 @@ OUTBOUND_EXACT='^mcp__claude_ai_Gmail__(send_message|reply|forward|create_draft|
 # `notion-duplicate-page` and `notion-move-pages` — which put content in the
 # same shared workspace — went straight through. A list that denies one verb
 # and leaves its synonym open is not a control.
+#
+# `create-file-upload` and `convert-page-to-skill` were added after an
+# INDEPENDENT adversarial review swept a wider roster than the author's and
+# found them still open, next to a `create-attachment` that was already denied.
+# Two sweeps, two more holes: an enumerated blocklist is structurally weak
+# against the entry nobody thought of, and the fallback in step 8 does not
+# carry the general write verbs (`create` `update` `upload` `add` `convert`
+# `move`) because those also name a great many harmless reads and local
+# operations. So the honest description of this design is: the list catches
+# what someone has swept for, and the sweep is the part that must be repeated
+# when a connector gains operations.
 OUTBOUND_NEIGHBOURS='^mcp__github__(add_reply_to_pull_request_comment|add_comment_to_pending_review|sub_issue_write|request_copilot_review)$
 ^mcp__github__(create_repository|delete_repository|fork_repository)$
 ^mcp__plugin_vercel_vercel__(unpause_project|create_git_project|update_project_deployment_protection)$
 ^mcp__plugin_vercel_vercel__(reply_to_toolbar_thread|edit_toolbar_message|add_toolbar_reaction|change_toolbar_thread_resolve_status)$
-^mcp__claude_ai_Notion__notion-(duplicate-page|move-pages|create-attachment)$
+^mcp__claude_ai_Notion__notion-(duplicate-page|move-pages|create-attachment|create-file-upload|convert-page-to-skill)$
 ^mcp__claude_ai_Notion__notion-(create-database|create-view|create-folder|update-view|update-folder|update-data-source)$
 ^mcp__claude_ai_Notion__notion-(spawn-session|stop-session)$'
 

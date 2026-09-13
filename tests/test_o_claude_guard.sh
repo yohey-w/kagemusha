@@ -117,6 +117,16 @@ for o_notion_near in duplicate-page move-pages create-database create-view \
   assert_eq "O3: Notion $o_notion_near is denied as the same class" "deny" \
     "$(o_decide "mcp__claude_ai_Notion__notion-$o_notion_near")"
 done
+# Found by an independent adversarial review of this guard (2026-09-13), by
+# sweeping a WIDER roster than the author's: both slipped through while
+# `notion-create-attachment`, which is the same act, was denied. An enumerated
+# blocklist is structurally weak against the entry nobody thought to list —
+# which is the argument for sweeping the whole roster rather than re-reading
+# the list.
+assert_eq "O3: Notion create-file-upload is denied (same class as create-attachment)" "deny" \
+  "$(o_decide 'mcp__claude_ai_Notion__notion-create-file-upload')"
+assert_eq "O3: Notion convert-page-to-skill is denied (it takes a page out of the workspace)" "deny" \
+  "$(o_decide 'mcp__claude_ai_Notion__notion-convert-page-to-skill')"
 for o_cal in create_event update_event delete_event respond_to_event; do
   assert_eq "O3: Calendar $o_cal is denied" "deny" "$(o_decide "mcp__claude_ai_Google_Calendar__$o_cal")"
 done
@@ -459,10 +469,90 @@ assert_eq "O10: …not even the reply beside it" "deny" \
 assert_eq "O10: …and only the exact Gmail send can claim it" "pass" \
   "$(o_claim "$(o_envelope "$O_SEND" sess-tool "$O_ROOT")")"
 
-o_issue "$O_SEND" sess-expiry 1
-assert_ok "O10: an expired permit is refused" env O_P="$O_PERMIT" O_R="$O_ROOT" \
-  bash -c 'sleep 2; printf "%s" "$0" | python3 "$O_P" claim --cli claude --project-root "$O_R" 2>/dev/null && exit 1; exit 0' \
-  "$(o_envelope "$O_SEND" sess-expiry "$O_ROOT")"
+# ── expiry, WITHOUT asking this machine what time it is ──────────────────
+# THIS TEST USED TO ISSUE A 1-SECOND PERMIT AND `sleep 2`. It failed about once
+# in 25 runs, and an independent review found out why: on this host (WSL2)
+# `sleep 2` sometimes returns after ~0.37s — measured 3 times in 40 — so the
+# permit had not expired when the claim arrived and the claim rightly
+# succeeded. The test was asserting the clock, not the code.
+#
+# So: issue a NORMAL permit, then move its timestamps into the past by
+# rewriting the record. `created_at`/`expires_at` are the only things changed,
+# the lifetime stays inside the helper's accepted range, and no test anywhere
+# has to wait for a second to go by. A sleeping test on a machine whose sleep
+# is unreliable is a coin toss wearing a lab coat.
+o_repoint() {  # o_repoint SESSION CREATED_DELTA EXPIRES_DELTA — seconds from now
+  O_R="$O_ROOT" O_S="$1" O_C="$2" O_E="$3" python3 -c '
+import json, os, time, pathlib
+root = pathlib.Path(os.environ["O_R"]) / ".claude" / "outbound-permits" / "pending"
+now = int(time.time())
+hits = 0
+for path in root.glob("*.json"):
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if record["session_id"] != os.environ["O_S"]:
+        continue
+    record["created_at"] = now + int(os.environ["O_C"])
+    record["expires_at"] = now + int(os.environ["O_E"])
+    path.write_text(json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8")
+    hits += 1
+print(hits)'
+}
+o_issue "$O_SEND" sess-expiry 300
+assert_eq "O10: the permit to age is on disk before it is aged" "1" \
+  "$(o_repoint sess-expiry -1000 -700)"
+assert_eq "O10: an expired permit is refused (no sleep, no clock dependency)" "deny" \
+  "$(o_claim "$(o_envelope "$O_SEND" sess-expiry "$O_ROOT")")"
+# the control: same shape, same code path, still in date → still passes. Without
+# this, a guard that denied everything would also make the line above green.
+o_issue "$O_SEND" sess-fresh 300
+assert_eq "O10: …while an unexpired permit of the same shape still passes" "pass" \
+  "$(o_claim "$(o_envelope "$O_SEND" sess-fresh "$O_ROOT")")"
+
+# ── the flake's mechanism, pinned so a fix is a DELIBERATE change ─────────
+# DOCUMENTS CURRENT BEHAVIOUR, and current behaviour is a known weakness.
+# `validate_permit` RAISES from inside the scan loop, so one unusable permit in
+# `pending/` aborts the whole scan and denies every permit the scan had not
+# reached yet — including a perfectly good one. A backwards step of the system
+# clock makes `created_at > now` true and produces exactly that.
+#
+# AND THIS IS WHY THE FLAKE WAS INTERMITTENT RATHER THAN CONSTANT: the scan is
+# `sorted(pending.glob("*.json"))`, and the filename is a RANDOM permit id. A
+# bad permit only harms a good one when its name happens to sort FIRST. Writing
+# this test the obvious way produced a test that passed or failed by coin toss
+# — so the bad permit is renamed here to sort first, which is the only way to
+# assert the mechanism deterministically.
+#
+# The direction is safe (deny), which is why this was never urgent. If the
+# helper is ever changed to skip a bad permit and continue, THIS ASSERTION
+# SHOULD FLIP — that is the point of pinning it.
+o_issue "$O_SEND" sess-poison 300
+assert_eq "O10: a permit dated in the future is on disk" "1" \
+  "$(o_repoint sess-poison 600 900)"
+assert_eq "O10: …and is renamed to sort first (the scan is ordered by filename)" "1" \
+  "$(O_R="$O_ROOT" python3 -c '
+import json, os, pathlib
+root = pathlib.Path(os.environ["O_R"]) / ".claude" / "outbound-permits" / "pending"
+moved = 0
+for path in sorted(root.glob("*.json")):
+    if json.loads(path.read_text(encoding="utf-8"))["session_id"] == "sess-poison":
+        path.rename(root / ("0" * 32 + ".json")); moved += 1
+print(moved)')"
+o_issue "$O_SEND" sess-victim 300
+assert_eq "O10: [known weakness] an unusable permit scanned first denies a good one" "deny" \
+  "$(o_claim "$(o_envelope "$O_SEND" sess-victim "$O_ROOT")")"
+# clear the poisoned record so the rest of the group is unaffected
+assert_eq "O10: …and the poisoned record can be removed" "1" \
+  "$(O_R="$O_ROOT" python3 -c '
+import json, os, pathlib
+root = pathlib.Path(os.environ["O_R"]) / ".claude" / "outbound-permits" / "pending"
+gone = 0
+for path in list(root.glob("*.json")):
+    if json.loads(path.read_text(encoding="utf-8"))["session_id"] == "sess-poison":
+        path.unlink(); gone += 1
+print(gone)')"
+assert_eq "O10: …after which the good permit claims normally" "pass" \
+  "$(o_claim "$(o_envelope "$O_SEND" sess-victim "$O_ROOT")")"
 
 # Slack: the exact wire name, the exact argument set
 O_SLACK="$O_ROOT/slack-input.json"
@@ -515,3 +605,71 @@ assert_grep_str "O11: …by the documented project-dir placeholder, not a relati
   'CLAUDE_PROJECT_DIR' "$O_HOOKS"
 assert_grep "O11: the template says the pass is never \"allow\"" \
   "permissionDecision" "$O_SETTINGS"
+
+# ─── O12. the guard reaches a worktree, or it does not exist there ─────────
+# A git worktree receives only TRACKED files, and the two files that ARM the
+# guard (.claude/settings.json, .codex/config.toml) are instance data, kept out
+# of the repository on purpose. So `git worktree add` arms nothing, and the
+# agent in that worktree has no brake — while the checkout beside it does.
+# Measured 2026-09-13: six worktrees existed on the author's machine and not
+# one had a .claude/ or .codex/ directory. An independent review reproduced it
+# from inside the worktree it was reviewing in.
+O_WT_SCRIPT="$REPO_ROOT/scripts/worktree_guard_copy.sh"
+assert_file "O12: the worktree arming script ships" "$O_WT_SCRIPT"
+assert_ok "O12: …and is syntactically valid bash" bash -n "$O_WT_SCRIPT"
+assert_ok "O12: …and is executable in the tree" test -x "$O_WT_SCRIPT"
+assert_exit "O12: …and prints its own help" 0 bash "$O_WT_SCRIPT" --help
+
+# a synthetic checkout, armed, and an empty worktree beside it. The script
+# derives the source from its OWN location, so it has to live in the fixture.
+O_WT_SRC="$TEST_TMP/o_wt_src"
+O_WT_DST="$TEST_TMP/o_wt_dst"
+mkdir -p "$O_WT_SRC/scripts" "$O_WT_SRC/.claude/hooks" "$O_WT_SRC/.codex/hooks" "$O_WT_DST"
+cp "$O_WT_SCRIPT" "$O_WT_SRC/scripts/"
+chmod +x "$O_WT_SRC/scripts/worktree_guard_copy.sh"
+printf '{"hooks":{"PreToolUse":[{"matcher":"mcp__.*"}]}}\n' > "$O_WT_SRC/.claude/settings.json"
+printf '#!/usr/bin/env bash\nprintf "{}"\n' > "$O_WT_SRC/.claude/hooks/outbound_guard.sh"
+printf 'command = "%s/.codex/hooks/outbound_guard.sh"\n' "$O_WT_SRC" > "$O_WT_SRC/.codex/config.toml"
+printf '#!/usr/bin/env bash\nprintf "{}"\n' > "$O_WT_SRC/.codex/hooks/outbound_guard.sh"
+O_WT_RUN="$O_WT_SRC/scripts/worktree_guard_copy.sh"
+
+# --dry-run must write NOTHING. A dry run that creates the directory it is
+# only supposed to describe would leave a half-armed worktree looking armed.
+O_WT_DRY="$(bash "$O_WT_RUN" --dry-run "$O_WT_DST" 2>&1)"
+assert_grep_str "O12: --dry-run says what it would copy" "would copy" "$O_WT_DRY"
+assert_grep_str "O12: …and says it wrote nothing" "nothing written" "$O_WT_DRY"
+assert_absent "O12: …and really did not write .claude/" "$O_WT_DST/.claude"
+assert_absent "O12: …nor .codex/" "$O_WT_DST/.codex"
+
+assert_exit "O12: the real run exits 0" 0 bash "$O_WT_RUN" "$O_WT_DST"
+assert_file "O12: the PreToolUse registration lands" "$O_WT_DST/.claude/settings.json"
+assert_file "O12: …with the hook beside it" "$O_WT_DST/.claude/hooks/outbound_guard.sh"
+assert_file "O12: …and the Codex config" "$O_WT_DST/.codex/config.toml"
+assert_file "O12: …and its hook" "$O_WT_DST/.codex/hooks/outbound_guard.sh"
+
+# The Codex hook path is absolute. Copied verbatim, the worktree's agent would
+# run the SOURCE checkout's hook and write permits into the source tree.
+assert_grep "O12: the Codex hook path is repointed at the worktree" \
+  "$O_WT_DST/.codex/hooks/outbound_guard.sh" "$O_WT_DST/.codex/config.toml"
+assert_no_grep "O12: …and no longer names the checkout it came from" \
+  "$O_WT_SRC/.codex/hooks" "$O_WT_DST/.codex/config.toml"
+
+# NEVER overwrite: an entry already there is somebody's, not ours.
+printf 'MINE\n' > "$O_WT_DST/.claude/settings.json"
+O_WT_AGAIN="$(bash "$O_WT_RUN" "$O_WT_DST" 2>&1)"
+assert_grep_str "O12: a second run skips what already exists" "skip (exists)" "$O_WT_AGAIN"
+assert_grep "O12: …and does not touch it" "MINE" "$O_WT_DST/.claude/settings.json"
+
+# an unarmed SOURCE must say so rather than silently copy nothing
+O_WT_BARE="$TEST_TMP/o_wt_bare"
+O_WT_BARE_DST="$TEST_TMP/o_wt_bare_dst"
+mkdir -p "$O_WT_BARE/scripts" "$O_WT_BARE_DST"
+cp "$O_WT_SCRIPT" "$O_WT_BARE/scripts/"
+O_WT_BARE_OUT="$(bash "$O_WT_BARE/scripts/worktree_guard_copy.sh" "$O_WT_BARE_DST" 2>&1)"
+assert_grep_str "O12: an unarmed source reports each absent piece" "absent (source)" "$O_WT_BARE_OUT"
+assert_grep_str "O12: …and says to arm the source first" "Arm it there first" "$O_WT_BARE_OUT"
+
+assert_exit "O12: no argument is refused, not assumed" 2 bash "$O_WT_RUN"
+assert_exit "O12: an unknown flag is refused" 2 bash "$O_WT_RUN" --nope "$O_WT_DST"
+assert_exit "O12: a missing directory is refused" 2 bash "$O_WT_RUN" "$TEST_TMP/o_wt_nothing_here"
+assert_exit "O12: copying a checkout onto itself is refused" 2 bash "$O_WT_RUN" "$O_WT_SRC"

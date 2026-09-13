@@ -41,6 +41,23 @@ Each guard's classifier reads `tool_name` with a regex over the raw payload and 
 Every observed payload and every published example puts `tool_name` ahead of `tool_input`, but JSON member order is the producer's choice.
 The send path is not exposed to this, because the helper parses the whole envelope with a strict JSON parser before it will claim anything; only the classifier is.
 
+## A worktree has none of this
+
+A git worktree receives the TRACKED files and nothing else. The two files that arm the guard — `.claude/settings.json` and `.codex/config.toml` — are instance data and are git-ignored on purpose, because they hold machine-local absolute paths. So `git worktree add` arms nothing, and an agent started inside a worktree runs with no brake on outward calls while the checkout beside it is protected. Nothing announces this: the host fails open, and here it never even looks, because there is no hook to fail.
+
+Measured 2026-09-13 on the author's machine: six worktrees existed and not one had a `.claude/` or `.codex/` directory. An independent review reproduced it from inside the worktree it was reviewing in, and confirmed there was no registration at the user level either.
+
+This is worth stating plainly because worktree isolation is the normal recommendation for running parallel agents — so the lane that looks safest was the unguarded one, and adding workers added unguarded seats.
+
+```sh
+./scripts/worktree_guard_copy.sh --dry-run <worktree>   # see what is missing
+./scripts/worktree_guard_copy.sh <worktree>             # copy it in
+```
+
+It never overwrites anything already there, and it repoints the absolute hook path inside the copied Codex config at the worktree — Claude Code needs no rewrite, since its registration uses `${CLAUDE_PROJECT_DIR}`. Codex asks for hook approval again, because a worktree is a new path, and skips the hook silently until that is given.
+
+Arming a worktree is a backstop, not a policy. The rule stays: do outward work in the checkout that is guarded.
+
 ## Prepare the exact input
 
 Create a JSON object containing every argument for the single `send_email` call.
