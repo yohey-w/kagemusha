@@ -38,6 +38,64 @@
 # a story about the model finding the neighbouring verb. Shorten the list only
 # with that in mind. To change it, edit OUTBOUND_VERBS below.
 #
+# ─── the same verb, one level down: a send hidden inside `exec` ────────────
+# MEASURED 2026-09-13 (local/state/codex_desktop_test_20260913/, test_matrix.md
+# §再測 and T7_rootcause.txt; the desktop app on GPT-5.6 Sol). The app shows the
+# model exactly three tools — `exec` · `spawn_agent` · `wait_agent` — and a
+# connector is reached from JavaScript INSIDE exec:
+#
+#     tools.mcp__codex_apps__gmail_create_draft({to:"…", subject:"…", …})
+#
+# So PreToolUse is handed tool_name `exec`, the "connector and MCP calls only"
+# line below waved it through, and the draft to the address in the prompt was
+# created — with the hook installed, trusted, and its trusted_hash written to
+# the user config. The CLI is the same shape: across 83 rollouts under
+# ~/.codex/sessions/2026/09/, every one of 9,222 code-executing calls is `exec`
+# (`custom_tool_call`, name `exec`), several carrying
+# `tools.mcp__codex_apps__gmail_search_emails(…)` — e.g.
+# rollout-2026-09-07T13-46-52-01a07a30-*.jsonl. The A7 re-test of 2026-09-07
+# denied its send because that one WAS a direct MCP call
+# (`mcp__codex_apps__gmail__create_draft`); both spellings still deny.
+#
+# The verb list was never the hole. The hole was that on this path the outward
+# call never appears in tool_name at all.
+#
+# WHAT IS SCANNED, AND WHY THE WHOLE DOCUMENT. For a code-executing tool the
+# classifier reads the ENTIRE payload text rather than one field, because the
+# key the code string arrives under is [未計測] — the rollout records it as
+# `custom_tool_call.input`, but no PreToolUse payload for `exec` has been
+# captured, so `code` / `cmd` / `command` / `input` are all guesses. Reading the
+# raw document removes the guess and costs nothing: an `mcp__…` identifier
+# contains no character that JSON escapes, so it survives `\"` and `\n`
+# untouched, and no other field in the envelope (cwd · session_id · model ·
+# permission_mode · transcript_path) can hold one.
+#
+# THE SHELL IS STILL OUT OF SCOPE. `exec_command` and `Bash` carry shell text,
+# a shell cannot reach a connector, and a substring rule over command text would
+# eat `git push`. Only tools that execute CODE are scanned — measured, that is
+# `exec`; `node_repl` rides along because T7 found exec's implementation to be
+# the MCP server node_repl.exe, and a renamed door should not reopen this.
+#
+# WHAT IT COSTS, REPLAYED RATHER THAN ESTIMATED. Every distinct `exec` call in
+# ~/.codex/sessions/2026/09/ — 8,635 of them, real work — was fed to this file.
+# 8,610 passed. Of the 25 denied: 4 really were a send issued from inside exec;
+# 3 were the tool table being searched for the send tool by name; and 18 were
+# the agent EDITING THIS KIT — apply_patch text carrying outbound_guard.sh or
+# test_m_codex.sh, an `rg` for one of the literals, a probe building a fake hook
+# envelope. That is the whole false-positive class, and it is worth knowing the
+# shape of it: patching the lines below that name a send tool, from inside exec,
+# will be refused by the rule those lines install. Outside this repository's own
+# maintenance the replay denied nothing. None of the 25 came from the run-time
+# rules in part 2 — they cost zero false positives across all 8,635.
+#
+# ⚠️ A PERMIT NEVER OPENS A SEND INSIDE exec. The one-shot permit binds an
+# approved send to its exact arguments; inside a code string there are no
+# arguments to bind, only source text that can build them at run time. An
+# approved send must therefore travel as a direct connector call — which on the
+# desktop app is currently not offered at all (exec is the only tool it shows,
+# and its namespace has one `_` where the permit keys below have two). That is
+# a real limit of this control, recorded here rather than papered over.
+#
 # ─── the wire format, measured, not guessed ────────────────────────────────
 # stdin  — `pre-tool-use.command.input`, a JSON schema embedded in the codex
 #          binary. `additionalProperties: false`; required keys include
@@ -79,6 +137,27 @@ OUTBOUND_VERBS='send|post|create_draft|update_draft|reply|forward|publish|delete
 GMAIL_PERMITTED_TOOL='mcp__codex_apps__gmail__send_email'
 SLACK_PERMITTED_TOOL='mcp__codex_apps__slack__slack_send_message'
 SLACK_READ_OPERATIONS='slack_get_reactions|slack_list_channel_members|slack_list_starred_items|slack_list_user_channels|slack_list_user_conversations|slack_list_user_groups|slack_list_workspaces|slack_read_canvas|slack_read_channel|slack_read_file|slack_read_thread|slack_read_user_profile|slack_search_channels|slack_search_emojis|slack_search_public|slack_search_public_and_private|slack_search_users'
+
+# Tools that run CODE, and can therefore reach a connector from inside their
+# argument. Matched against the operation segment, so a namespaced spelling
+# (mcp__codex_apps__node_repl__exec) lands here too.
+CODE_EXEC_TOOLS='exec|node_repl'
+
+# The three JavaScript quote characters, written this way so the file itself
+# stays free of a stray backtick.
+JS_QUOTES=$'"\'\x60'
+# A name split across a concatenation: "mcp__codex_apps__gmail_" + "send_email".
+RE_CONCAT_GLUE="[${JS_QUOTES}][[:space:]]*[+][[:space:]]*[${JS_QUOTES}]"
+# A name assembled at run time instead of written down: `mcp__${app}_send`.
+RE_TEMPLATE_NAME='mcp__[A-Za-z0-9_]*\$\{'
+# tools[…] indexed by anything that is not a quoted literal — tools[name].
+RE_COMPUTED_INDEX="tools\\[[[:space:]]*[^${JS_QUOTES}[:space:]]"
+# The whole table walked as data: Object.keys(tools), Object.entries(tools).
+RE_TOOLS_ENUM='Object\.(keys|values|entries)\([[:space:]]*tools'
+# A tool resolved out of ALL_TOOLS and immediately CALLED. Listing the table is
+# the normal inbound move and stays allowed; invoking the result is not.
+RE_RESOLVED_CALL='ALL_TOOLS[^;]*[])][[:space:]]*\('
+
 hook_dir="${BASH_SOURCE[0]%/*}"
 [[ "$hook_dir" == "${BASH_SOURCE[0]}" ]] && hook_dir='.'
 HOOK_DIR="$(cd "$hook_dir" 2>/dev/null && pwd -P)"
@@ -103,6 +182,67 @@ deny() {  # deny <tool_name> <why>
   exit 0
 }
 
+# ─── the classifier for the code-executing tools ───────────────────────────
+# embedded_outbound <payload text> → prints the offending identifier, or a
+# short label for a name the code never spells out, and returns 0; prints
+# nothing and returns 1 when the code is clean.
+#
+# Bash only, deliberately: the same reason the rest of the classifier is. A
+# guard that needs grep, sed or python to decide is a guard that fails OPEN on
+# a machine that is missing one of them, and fails open in silence.
+#
+# KNOWN BLIND SPOTS, written down rather than pretended away. A name spelled
+# with character escapes (`gmail_send_email`), or one that arrives from
+# outside the code — read from a file, returned by an earlier tool call — is
+# not visible here. This rule raises the cost of the accidental send that
+# actually happened; it is not a sandbox.
+embedded_outbound() {
+  local text="$1" unescaped joined rest id op prev iter=0
+  local bs='\' dq='"'
+
+  # Undo JSON's escaping so the text reads as the model wrote it. The doubled
+  # backslash goes first, or `\\"` is misread as an escaped quote. Nothing else
+  # is touched: \n, \t and \uXXXX keep their backslash, which is not an
+  # identifier character, so they can only BREAK a name apart — never glue two
+  # unrelated ones into a verb that was not called.
+  unescaped="${text//"${bs}${bs}"/ }"
+  unescaped="${unescaped//"${bs}${dq}"/"$dq"}"
+
+  # Re-join a name split across a concatenation: "…gmail_" + "send_email".
+  joined="$unescaped"
+  while [[ "$joined" =~ $RE_CONCAT_GLUE ]]; do
+    prev="$joined"
+    joined="${joined/"${BASH_REMATCH[0]}"/}"
+    [[ "$joined" == "$prev" ]] && break      # never spin on a pattern that
+    (( ++iter > 500 )) && break              # refuses to shrink
+  done
+
+  # 1) the name is there, literally — `tools.mcp__…`, `tools["mcp__…"]`,
+  #    `ALL_TOOLS.find(t => t.name === "mcp__…")`, or the glued form above.
+  rest="$joined"
+  while [[ "$rest" =~ mcp__[A-Za-z0-9_]+ ]]; do
+    id="${BASH_REMATCH[0]}"
+    rest="${rest#*"$id"}"
+    op="${id##*__}"
+    if [[ "$id" == *slack* ]]; then
+      # The desktop spelling doubles the app prefix (slack_slack_read_thread),
+      # so the read allowlist is matched with that prefix optional. Anything
+      # the list does not name fails closed, exactly as the direct path does.
+      [[ "$op" =~ ^(slack_)?($SLACK_READ_OPERATIONS)$ ]] || { printf '%s' "$id"; return 0; }
+      continue
+    fi
+    [[ "$op" =~ ($OUTBOUND_VERBS) ]] && { printf '%s' "$id"; return 0; }
+  done
+
+  # 2) the name is never written down, so rule 1 cannot see it. Reading does
+  #    not need any of these forms; reaching a verb past the guard does.
+  [[ "$unescaped" =~ $RE_TEMPLATE_NAME  ]] && { printf 'a tool name built by interpolation'; return 0; }
+  [[ "$unescaped" =~ $RE_COMPUTED_INDEX ]] && { printf 'tools[] indexed by a computed name'; return 0; }
+  [[ "$unescaped" =~ $RE_TOOLS_ENUM     ]] && { printf 'the tool table enumerated as data'; return 0; }
+  [[ "$unescaped" =~ $RE_RESOLVED_CALL  ]] && { printf 'a tool resolved from ALL_TOOLS and then called'; return 0; }
+  return 1
+}
+
 payload="$(</dev/stdin)"
 
 # tool_name is an identifier. Matching its closing quote as well as its safe
@@ -117,6 +257,25 @@ fi
 # the failure this whole file exists to prevent.
 if [[ -z "$safe_name" ]]; then
   deny "unknown-tool" "the hook could not read tool_name from its input"
+fi
+
+operation="${safe_name##*__}"
+
+# A tool that runs CODE can reach a connector from inside its argument, where
+# tool_name never mentions it. Scan the code before the classifier below waves
+# `exec` through as "not an MCP call". Clean code falls through to the ordinary
+# path; it is not allowed early, so a namespaced exec still meets every rule.
+#
+# The pass stays fail-OPEN by design and by symmetry with the rest of the file:
+# nothing here parses JSON, so there is no parse to fail, and code the scanner
+# does not recognise prints the empty document exactly as before. On the
+# desktop app `exec` is the ONLY tool the model has, so a rule that denied
+# whatever it could not read would not be a guard — it would be an off switch.
+if [[ "$operation" =~ ^($CODE_EXEC_TOOLS)$ ]]; then
+  embedded="$(embedded_outbound "$payload")"
+  if [[ -n "$embedded" ]]; then
+    deny "$safe_name" "the code carries an outward connector call ($embedded). Do not make outward calls from inside $operation; an approved send must be a direct connector call that a one-shot permit can bind / 外向き呼び出しは exec の中で行わず、承認済みなら直接ツールで許可票を使え"
+  fi
 fi
 
 # Connector and MCP calls only. Bash and the built-in tools pass untouched.
@@ -137,8 +296,6 @@ if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITT
   fi
   deny "$safe_name" "no valid one-shot permit matched the complete send arguments, project, session, and expiry"
 fi
-
-operation="${safe_name##*__}"
 
 # The Slack connector includes write operations whose names do not contain one
 # of the generic outbound verbs (add_reaction, join_conversation, upload, …).
