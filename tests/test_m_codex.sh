@@ -854,6 +854,28 @@ assert_eq "M9: the tool table enumerated as data is denied" "deny" \
 assert_eq "M9: listing the tool table from inside exec is refused, by design" "deny" \
   "$(m_exec_decision 'text(ALL_TOOLS.filter(x=>/slack/.test(x.name)).map(x=>x.name));')"
 
+# (e) the same object, reached through the GLOBAL SCOPE rather than by name.
+# Rules A1/A2 read the text around the identifier `tools`, and in
+# `globalThis["tools"]` that identifier sits inside a string with a quote on
+# each side, so neither of them fires. Found by review 2026-09-13 on the
+# inverted rule. Whether the sandbox actually resolves these is [未確認] — the
+# lock is fitted anyway, because an untested door is still a door.
+assert_eq "M9: globalThis[\"tools\"] is denied" "deny" \
+  "$(m_exec_decision 'globalThis["tools"]["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: this[\"tools\"] is denied" "deny" \
+  "$(m_exec_decision 'this["tools"]["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: globalThis.tools is denied" "deny" \
+  "$(m_exec_decision 'const t = globalThis.tools; t["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: this.tools is denied" "deny" \
+  "$(m_exec_decision 'this.tools["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: self.tools and window.tools are denied" "deny" \
+  "$(m_exec_decision 'self.tools["mcp__codex_apps__gmail_create_draft"]({});')"
+assert_eq "M9: …window too, and with spaces around the index" "deny" \
+  "$(m_exec_decision 'window [ "tools" ] ["mcp__codex_apps__gmail_create_draft"]({});')"
+# and the neighbours that must NOT be swept up with them
+assert_eq "M9: a property merely named toolsList is not the tool table" "allow" \
+  "$(m_exec_decision 'const r = await tools.exec_command({cmd:"echo hi"}); this.toolsList = r; text(r);')"
+
 # the reason must route to the queue and must NOT quote the code back: the
 # reason is interpolated into JSON with no escaping, and the code holds the
 # message body.

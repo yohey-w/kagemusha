@@ -204,6 +204,15 @@ RE_TOOLS_LOOSE='(^|[^A-Za-z0-9_$])tools[[:space:]]*($|[][?),;}=|&+:<>*%^~!])'
 RE_TOOLS_ALIAS='[=(\[{,;:?!&|][[:space:]]*tools[[:space:]]*($|[^.])'
 # B — a static connector call: tools.<identifier>, captured for the allowlist.
 RE_TOOLS_DOT='(^|[^A-Za-z0-9_$])tools[[:space:]]*\.[[:space:]]*([A-Za-z_$][A-Za-z0-9_$]*)'
+# A3 — the same object reached through the global scope instead of by name:
+#      `globalThis["tools"]`, `this.tools`, `self`/`window`/`global`. Rules A1
+#      and A2 both read the text around the identifier `tools`, and in
+#      `globalThis["tools"]` that identifier sits inside a string, with a quote
+#      on each side — neither rule fires. Found by review, 2026-09-13. Whether
+#      the sandbox actually resolves it is NOT VERIFIED [未確認]; it is closed
+#      because a door whose lock is untested is still a door.
+JS_QUOTES=$'"\'\x60'
+RE_GLOBAL_TOOLS="(^|[^A-Za-z0-9_.\$])(globalThis|this|self|window|global)[[:space:]]*([.]|\\[[[:space:]]*[${JS_QUOTES}])[[:space:]]*tools([^A-Za-z0-9_\$]|\$)"
 # C — the tool table itself. Listing it is an ordinary inbound move, but it is
 #     also the one object that hands out a callable without naming it, and an
 #     alias (`const AT = ALL_TOOLS`) puts it back out of reach. Denied whole.
@@ -304,8 +313,9 @@ embedded_outbound() {
   # C — the tool table as an object: hands out a callable without naming it.
   [[ "$code" =~ $RE_ALL_TOOLS ]] && { printf 'ALL_TOOLS'; return 0; }
   # A — every reference to `tools` that is not a static member access.
-  [[ "$code" =~ $RE_TOOLS_LOOSE ]] && { printf 'a dynamic reference to the tools object'; return 0; }
-  [[ "$code" =~ $RE_TOOLS_ALIAS ]] && { printf 'the tools object stored or passed on'; return 0; }
+  [[ "$code" =~ $RE_TOOLS_LOOSE  ]] && { printf 'a dynamic reference to the tools object'; return 0; }
+  [[ "$code" =~ $RE_TOOLS_ALIAS  ]] && { printf 'the tools object stored or passed on'; return 0; }
+  [[ "$code" =~ $RE_GLOBAL_TOOLS ]] && { printf 'the tools object reached through the global scope'; return 0; }
 
   # B — what is left is `tools.<name>`. A connector among them must be called
   # on the spot and must be a read. Anything else — a write, an unknown name,
