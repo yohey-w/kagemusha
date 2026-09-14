@@ -318,29 +318,69 @@ class SourceSelection(unittest.TestCase):
 
 
 class SinceWindow(unittest.TestCase):
+    """The window is read off the FILES' mtimes, so every age these tests
+    depend on has to be set here — none of it may be inherited from the
+    checkout.
+
+    shutil.copytree copies with copy2, which carries mtime across. A plain
+    copy therefore handed these tests whatever date the working tree happened
+    to be written, and once that date fell outside the cutoff the two files
+    that are supposed to be INSIDE the window dropped out of it: red with no
+    code change, on nothing but the calendar. CI never saw it because
+    actions/checkout rewrites the tree on every run. _stage() closes that by
+    pinning every copied file to "now" and ageing by hand only the one file
+    the assertions want stale.
+    """
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
-        self.tree = os.path.join(self.tmp, "sessions")
-        shutil.copytree(FIXTURES, self.tree)
-        self.paths = sorted(
-            os.path.join(dp, fn)
-            for dp, _, fns in os.walk(self.tree) for fn in fns)
-        old = datetime.datetime.now().timestamp() - 40 * 86400
-        os.utime(self.paths[0], (old, old))
+        self.tree, self.paths = self._stage()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    def _stage(self, source=FIXTURES, name="sessions"):
+        """Copy the fixtures and OWN their mtimes: all fresh, then one stale."""
+        tree = os.path.join(self.tmp, name)
+        shutil.copytree(source, tree)
+        paths = sorted(
+            os.path.join(dp, fn)
+            for dp, _, fns in os.walk(tree) for fn in fns)
+        now = datetime.datetime.now().timestamp()
+        for path in paths:              # discard whatever age came along
+            os.utime(path, (now, now))
+        old = now - 40 * 86400          # exactly one file, deliberately stale
+        os.utime(paths[0], (old, old))
+        return tree, paths
+
+    @staticmethod
+    def _cutoff(days):
+        return datetime.datetime.now(datetime.timezone.utc) - \
+            datetime.timedelta(days=days)
+
     def test_mtime_cutoff_drops_the_stale_file(self):
         src = log_sources.CodexSessionsSource([self.tree])
-        cutoff = datetime.datetime.now(datetime.timezone.utc) - \
-            datetime.timedelta(days=7)
         self.assertEqual(len(list(src.iter_files())), 3)
-        self.assertEqual(len(list(src.iter_files(cutoff))), 2)
+        self.assertEqual(len(list(src.iter_files(self._cutoff(7)))), 2)
 
     def test_no_cutoff_reads_everything(self):
         src = log_sources.CodexSessionsSource([self.tree])
         self.assertEqual(len(list(src.iter_files(None))), 3)
+
+    def test_the_window_does_not_depend_on_the_checkouts_age(self):
+        # the regression itself: stage from a source tree that was written a
+        # month ago. Without the pinning loop the copy inherits those mtimes
+        # and a 7-day cutoff keeps 0 files instead of 2.
+        stale = os.path.join(self.tmp, "stale_checkout")
+        shutil.copytree(FIXTURES, stale)
+        month_ago = datetime.datetime.now().timestamp() - 30 * 86400
+        for dirpath, _, names in os.walk(stale):
+            for name in names:
+                os.utime(os.path.join(dirpath, name), (month_ago, month_ago))
+        tree, _ = self._stage(source=stale, name="from_a_stale_checkout")
+        src = log_sources.CodexSessionsSource([tree])
+        self.assertEqual(len(list(src.iter_files())), 3)
+        self.assertEqual(len(list(src.iter_files(self._cutoff(7)))), 2)
 
 
 class SinceParsing(unittest.TestCase):
