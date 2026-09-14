@@ -17,6 +17,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | Catch what the world sends you | [`inbound-loop.md`](inbound-loop.md) · the watcher pattern behind it: [`fixed-point-sweep.md`](fixed-point-sweep.md) |
 | Hand a decision to a human well | [`decision-cards.md`](decision-cards.md) |
 | Run it on Windows | [`windows.md`](windows.md) |
+| Run it from a desktop app (Claude Desktop · the ChatGPT app's Codex) | [`desktop-apps.md`](desktop-apps.md) — the four faces, what each one carries, and the two limits measured on Codex Desktop |
 | Ask the questions everyone asks | [`faq.md`](faq.md) |
 | See where each idea entered the kit | [`provenance.md`](provenance.md) · moved paths: [`path-migrations.md`](path-migrations.md) |
 
@@ -63,6 +64,7 @@ The README answers five things and stops: what this is, whether it is for you, h
 | **`docs/norms-loop.md`** / **`ssot/norms/`** | **Making your edits compound** — where a correction to a *deliverable* goes. Burn it into the detector and you only get faster at finding the same failure (linear); burn it into the brief the first draft is written from and it stops happening (compounding). The distillation of a revision, the promotion ladder (only the top rungs enter the next brief, so one deliverable's quirk is not transferred onto all of them), the instrument (first-pass findings over time), and the overfit guards. The shelf ships **empty** — a README and one blank `.example`; your entries are uncommittable by the same allowlist that protects the rest of `ssot/`. |
 | **`docs/provenance.md`** | Provenance table — which idea entered the kit, in which file, in which commit, and what set it off. Every trigger cell carries a tag saying how strongly it is sourced. |
 | `docs/windows.md` / `docs/faq.md` | Task Scheduler alternative; FAQ. |
+| `docs/desktop-apps.md` | Claude Desktop and Codex Desktop: where each keeps its head, and what to carry there. |
 | **[`cookbook/author/evidence/`](../cookbook/author/evidence/README.md)** | **Proof the loop actually runs** — on the **sample shelf**: hand-redacted excerpts from the author's live instance, one unattended weekly-distillation run, and the two dated journal entries that bracket a correction ending up as a rewritten principle in the judgment model. Scope and limits stated in [`cookbook/author/evidence/README.md`](../cookbook/author/evidence/README.md). |
 | **[`docs/getting-started.md`](getting-started.md)** | **Try it, then install it** — the 10-minute demo in full (with the three screenshots), the additive prerequisite table, the copy-paste steps, and the optional verifier from a different model lineage. |
 | **[`docs/operations.md`](operations.md)** | **Your day and your week** once the loop runs — the morning pass, the weekly ruling, who keeps the ledger of promises / deadlines / whose ball (the agent, not you), several projects at once (charter + system map), and the G/S/D/V/I/R codebook for counting where your own time goes. |
@@ -107,6 +109,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | 世界からの入力を捕まえる | [`inbound-loop.md`](inbound-loop.md)・その背後の監視パターン: [`fixed-point-sweep.md`](fixed-point-sweep.md) |
 | 人間にうまく判断を渡す | [`decision-cards.md`](decision-cards.md) |
 | Windows で回す | [`windows.md`](windows.md) |
+| デスクトップ版で回す（Claude Desktop・ChatGPT アプリの Codex） | [`desktop-apps.md`](desktop-apps.md)——4面の対応表・面ごとに運ぶ物・Codex Desktop の実測された2つの限界 |
 | よくある疑問 | [`faq.md`](faq.md) |
 | どの思想がいつ入ったか | [`provenance.md`](provenance.md)・移動したパス: [`path-migrations.md`](path-migrations.md) |
 
@@ -153,6 +156,7 @@ README が答えるのは5つだけで、そこで止まる——これは何か
 | **`docs/norms-loop.md`** / **`ssot/norms/`** | **作業改善を複利にする**——成果物への**直しをどこへ戻すか**。検出器（検査する工程）へ戻すと同じ失敗を見つけるのが速くなるだけ（線形）、生成側（初稿を書くときの指示文）へ戻すと最初から起きなくなる（複利）。改稿の蒸留・昇格階段（上の段だけが次の指示文に入る＝1本の癖を全成果物へ転写しないための敷居）・複利の計器（1巡目の確定指摘数の推移）・過剰適合のガード。**棚は空で出荷される**——README と空の `.example` だけで、あなたのエントリは `ssot/` の他と同じ許可リストによりコミット不能。 |
 | **`docs/provenance.md`** | 来歴表——どの思想が・どのファイルに・どのコミットで・何をきっかけに入ったか。きっかけ欄には「どこまで裏が取れているか」の出所タグが必ず付く。 |
 | `docs/windows.md` / `docs/faq.md` | タスクスケジューラ代替／FAQ。 |
+| `docs/desktop-apps.md` | Claude Desktop と Codex Desktop——頭の置き場と、そこへ運ぶ物。 |
 | **[`cookbook/author/evidence/`](../cookbook/author/evidence/README.md)** | **一周が実走している証拠**——**標本棚**にある、著者の実走インスタンスから取った匿名化抜粋。無人発火した週次蒸留の実ログ1本と、訂正が価値判断モデルの本文差し替えに至るまでを日付で追える台帳2件。射程と限界は [`cookbook/author/evidence/README.md`](../cookbook/author/evidence/README.md) に明記。 |
 | **[`docs/getting-started.md`](getting-started.md)** | **試す→入れる**——10分デモの全文（スクショ3枚つき）・積み上げ式の前提表・コピペ手順・任意の血統違い検算器。 |
 | **[`docs/operations.md`](operations.md)** | **走り出したあとの毎日と毎週**——朝の一周・週次の裁定・**約束と期限とボールの台帳は誰が持つか**（あなたではなくエージェント）・複数案件（憲章＋システム地図）・自分の時間を数える G/S/D/V/I/R のコードブック。 |
