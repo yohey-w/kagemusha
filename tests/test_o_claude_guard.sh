@@ -145,6 +145,22 @@ assert_eq "O3: an unknown connector's publish operation is denied" "deny" \
 assert_eq "O3: …and an unknown connector's send operation" "deny" \
   "$(o_decide 'mcp__some_new_vendor__send_invoice')"
 
+# ONE UNDERSCORE AFTER `mcp` IS STILL A CONNECTOR (issue #21).
+# The prefix gate asked for `mcp__` and passed everything else, so a name whose
+# first separator is a single underscore never reached a rule at all — the
+# header said "not an mcp__ tool → pass", meaning Bash and the built-ins, and a
+# connector spelled `mcp_…` is neither. The gate now asks for `mcp`.
+# NOTE the asymmetry with the Codex twin: the anchored `^mcp__…` lists (steps
+# 4-6) still miss a one-underscore name, so what closes here is exactly the
+# verb-carrying subset that step 8 catches. Verbless writes under that spelling
+# remain open, as they were before. [未検証 — no such call has been measured]
+assert_eq "O3: a one-underscore connector send is denied (issue #21)" "deny" \
+  "$(o_decide 'mcp_claude_ai_Gmail__send_message')"
+assert_eq "O3: …and one whose namespace carries no separator at all" "deny" \
+  "$(o_decide 'mcpslack__slack_post_message')"
+assert_eq "O3: …while the one-underscore READ stays available" "pass" \
+  "$(o_decide 'mcp_claude_ai_Gmail__search_threads')"
+
 # ─── O4. reading is not sending ────────────────────────────────────────────
 # A guard that also blocks the inbound sweep gets switched off, and a guard
 # that is switched off protects nothing.

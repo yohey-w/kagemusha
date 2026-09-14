@@ -696,6 +696,21 @@ assert_eq "M9: an unknown Slack operation fails closed" "deny" \
 assert_eq "M9: a connector publish operation is denied" "deny" \
   "$(m_decision '{"tool_name":"mcp__example__publish_page","tool_input":{}}')"
 
+# ONE UNDERSCORE AFTER `mcp` IS STILL A CONNECTOR (issue #21).
+# The desktop tool catalogue spells the same call two ways on one machine
+# (see same_permit_tool above): `mcp__codex_apps__gmail__create_draft` and
+# `mcp__codex_apps__gmail_create_draft`. The prefix gate asked for `mcp__` and
+# waved everything else through, so a name whose FIRST separator is a single
+# underscore would never have reached the verb rule at all — the comment said
+# "connector and MCP calls only", the code said "names starting with mcp__
+# only". The gate now asks for `mcp` and lets the verb rule decide.
+assert_eq "M9: a one-underscore connector send is denied (issue #21)" "deny" \
+  "$(m_decision '{"tool_name":"mcp_codex_apps__gmail_send_email","tool_input":{}}')"
+assert_eq "M9: …and so is one whose namespace carries no separator at all" "deny" \
+  "$(m_decision '{"tool_name":"mcpcodex_apps__slack_post_message","tool_input":{}}')"
+assert_eq "M9: …while the one-underscore READ stays available" "allow" \
+  "$(m_decision '{"tool_name":"mcp_codex_apps__gmail_search_emails","tool_input":{}}')"
+
 # reading is not sending. A guard that also blocks the sweep gets switched off,
 # and a guard that is switched off protects nothing.
 assert_eq "M9: gmail.search_emails is allowed" "allow" \
@@ -794,6 +809,12 @@ for m_exec_write in mcp__codex_apps__slack_slack_send_message \
 done
 assert_eq "M9: a connector kept as a reference instead of called is denied" "deny" \
   "$(m_exec_decision 'const f = tools.mcp__codex_apps__gmail_search_emails; f({});')"
+# …and the same one-underscore spelling INSIDE exec, where the scanner has its
+# own copy of the prefix gate (issue #21, second site).
+assert_eq "M9: a one-underscore connector write from inside exec is denied (issue #21)" "deny" \
+  "$(m_exec_decision 'await tools.mcp_codex_apps__gmail_send_email({to:"test@example.invalid"});')"
+assert_eq "M9: …while the one-underscore read from inside exec stays allowed" "allow" \
+  "$(m_exec_decision 'text(await tools.mcp_codex_apps__gmail_search_emails({query:"x"}));')"
 
 # (d) THE INVERSION, AND THE TWELVE BYPASSES THAT FORCED IT.
 # The first version of this rule listed bad shapes and denied those. An

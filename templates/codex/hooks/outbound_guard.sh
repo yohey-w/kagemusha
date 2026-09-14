@@ -329,7 +329,9 @@ embedded_outbound() {
   while [[ "$rest" =~ $RE_TOOLS_DOT ]]; do
     name="${BASH_REMATCH[2]}"
     rest="${rest#*"${BASH_REMATCH[0]}"}"
-    [[ "$name" == mcp__* ]] || continue        # exec_command, web__run, …
+    [[ "$name" == mcp* ]] || continue          # exec_command, web__run, …
+    # `mcp*` for the same reason as the wire gate below: the twin spelling
+    # `tools.mcp_codex_apps__gmail_send_email` is the same connector.
     [[ "$rest" =~ ^[[:space:]]*\( ]] || { printf '%s' "$name"; return 0; }
     op="${name#mcp__}"; op="${op#*__}"         # mcp__codex_apps__gmail_x → gmail_x
     [[ "$op" =~ $RE_READ_TOKEN ]] && ! [[ "$op" =~ $RE_WRITE_TOKEN ]] && continue
@@ -404,7 +406,16 @@ if [[ "$operation" =~ ^($CODE_EXEC_TOOLS)$ ]]; then
 fi
 
 # Connector and MCP calls only. Bash and the built-in tools pass untouched.
-if [[ "$safe_name" != mcp__* ]]; then
+#
+# The test is `mcp*`, not `mcp__*`. The catalogue on this machine spells one
+# connector two ways (see same_permit_tool above), and the gate that asked for
+# exactly two underscores answered ALLOW — not "deny, unrecognised" — to every
+# other spelling. `mcp_codex_apps__gmail_send_email` therefore skipped the verb
+# rule entirely while the comment here claimed the opposite. Widening the test
+# costs nothing: the operation segment is taken after the LAST `__` either way,
+# so a one-underscore read still reads and a one-underscore send now denies.
+# No built-in tool name begins with `mcp`; the shell arrives as `exec`.
+if [[ "$safe_name" != mcp* ]]; then
   allow "$safe_name"
 fi
 
