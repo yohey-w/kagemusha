@@ -4,7 +4,7 @@
 
 Both vendors now ship a desktop app that runs the same agent as the CLI. On Windows both can put the
 agent inside WSL, and that is the only configuration this page describes. The reason to care is not
-comfort: the desktop apps sync their sessions to a phone, so they are the remote control the CLI does
+comfort: the ChatGPT app syncs its sessions to a phone, so it is a remote control the Codex CLI does
 not have.
 
 **The one-sentence difference.** Claude Desktop in WSL mode *is* the CLI — same `~/.claude`, same
@@ -21,7 +21,7 @@ Machine-specific paths are written `<user>` and `<project>`.
 | | Claude Code (CLI) | Claude Desktop (Code tab, WSL) | Codex CLI | Codex Desktop (ChatGPT app, WSL mode) |
 |---|---|---|---|---|
 | where the head lives | `~/.claude` | **same `~/.claude`** — HOME is `/home/<user>` | `~/.codex` | **`C:\Users\<user>\.codex`**, even in WSL mode (injected by the app through `WSLENV`) |
-| hooks | `.claude/settings.json` | same file, same behaviour | `.codex/config.toml`, project must be trusted | fires **only if** the Windows-side `config.toml` carries a **Linux-spelled** `[hooks.state]` key. `PreToolUse` works; `UserPromptSubmit` is silently skipped |
+| hooks | `.claude/settings.json` | same file. `PreToolUse` measured firing; the `UserPromptSubmit` stamp is 〔unverified〕 — it was never tested separately | `.codex/config.toml`, project must be trusted | fires **only if** the Windows-side `config.toml` carries a **Linux-spelled** `[hooks.state]` key. `PreToolUse` works; `UserPromptSubmit` is silently skipped |
 | skills | `~/.claude/skills/` | same directory | `~/.codex/skills/` | `C:\Users\<user>\.codex\skills\` — the WSL copy is invisible, so it has to be copied over |
 | memory | auto-memory directory | same | memories | Windows-side; **not canon either way** — canon is the repository's plain files |
 | history (for distillation) | `~/.claude/projects/*.jsonl` | same files | `~/.codex/sessions/**` | `C:\Users\<user>\.codex\sessions\**` — add it to `CODEX_SESSIONS_DIR` |
@@ -132,8 +132,9 @@ Send these to the app and compare against the machine, rather than believing the
    send.* — expect a refusal naming the `PreToolUse` hook, **and** verify from outside that no draft
    exists. A reserved `.invalid` address cannot be delivered to, which is why it is the address to use.
 2. **The date.** *What is the date and time now, and did the prompt I just sent carry a line starting
-   with `[now]`? Quote it verbatim or say there was none.* — Claude Desktop: expect the line. Codex
-   Desktop: expect "none", per the limit above.
+   with `[now]`? Quote it verbatim or say there was none.* — Codex Desktop: expect "none", per
+   the limit above. Claude Desktop: the line is expected but has **not** been measured 〔unverified〕,
+   so treat this question as the test that settles it.
 3. **The skills.** *List your available skills, say how many there are, and print the absolute path of
    the directory you read them from.* — the path is the answer that matters; the count drifts.
 4. **The files.** *Quote the first rule of the core disciplines in `AGENTS.md`, verbatim.* — proves the
@@ -145,8 +146,8 @@ Send these to the app and compare against the machine, rather than believing the
 
 両社ともデスクトップ版アプリを出していて、中身は CLI と同じエージェントです。Windows ではどちらも
 エージェントを WSL の中で走らせられて、このページが扱うのはその構成だけです。気にする理由は快適さ
-ではありません——**デスクトップ版はセッションがスマホに同期するので、CLI には無い「遠隔操作の入口」に
-なる**からです。
+ではありません——**ChatGPT アプリはセッションがスマホに同期するので、Codex CLI には無い「遠隔操作の
+入口」になる**からです。
 
 **違いを1文で。** WSL モードの Claude Desktop は **CLI そのもの**です（`~/.claude` もスキルもフックも
 同じ・入れる物は何もない）。ChatGPT アプリの Codex は**シェルは WSL・頭は Windows 側**なので、
@@ -161,7 +162,7 @@ Send these to the app and compare against the machine, rather than believing the
 | | Claude Code (CLI) | Claude Desktop（Code タブ・WSL） | Codex CLI | Codex Desktop（ChatGPT アプリ・WSL モード） |
 |---|---|---|---|---|
 | 頭の置き場 | `~/.claude` | **同じ `~/.claude`**（HOME は `/home/<user>`） | `~/.codex` | **`C:\Users\<user>\.codex`**。WSL モードでも Windows 側（アプリが `WSLENV` で注入する） |
-| フック | `.claude/settings.json` | 同じファイル・同じ挙動 | `.codex/config.toml`（プロジェクトの信頼が要る） | Windows 側 `config.toml` に **Linux 綴りの** `[hooks.state]` 鍵がある時だけ発火。`PreToolUse` は効く／`UserPromptSubmit` は黙って素通り |
+| フック | `.claude/settings.json` | 同じファイル。`PreToolUse` の発火は実測。`UserPromptSubmit` の日時印は〔未確認〕——単独で測っていない | `.codex/config.toml`（プロジェクトの信頼が要る） | Windows 側 `config.toml` に **Linux 綴りの** `[hooks.state]` 鍵がある時だけ発火。`PreToolUse` は効く／`UserPromptSubmit` は黙って素通り |
 | スキル | `~/.claude/skills/` | 同じ場所 | `~/.codex/skills/` | `C:\Users\<user>\.codex\skills\`。WSL 側は見えないのでコピーが要る |
 | メモリ | 自動メモリ | 同じ | memories | Windows 側。**どちらにせよ正本ではない**——正本はリポジトリの平文ファイル |
 | 履歴（蒸留の材料） | `~/.claude/projects/*.jsonl` | 同じファイル | `~/.codex/sessions/**` | `C:\Users\<user>\.codex\sessions\**`。`CODEX_SESSIONS_DIR` に足す |
@@ -267,8 +268,8 @@ export CODEX_SESSIONS_DIR="$HOME/.codex/sessions:/mnt/c/Users/<user>/.codex/sess
    ください。送信はしないこと。」→ `PreToolUse` フックの名前が出た拒否を期待し、**外から下書きが0件で
    あることも確認**する。`.invalid` は予約ドメインで配信が起こり得ないので、この宛先を使います。
 2. **日付**: 「今の日時は？ あわせて、いま送ったプロンプトに `[now]` で始まる行が付いていたかを、付いて
-   いれば逐語で、無ければ『無し』と答えてください。」→ Claude Desktop は行が出る。Codex Desktop は上の
-   限界どおり「無し」。
+   いれば逐語で、無ければ『無し』と答えてください。」→ Codex Desktop は上の限界どおり「無し」。
+   Claude Desktop は**行が出るはずだが未実測**〔未確認〕なので、この問いがその決着をつける検査です。
 3. **スキル**: 「使えるスキルの一覧と件数、そして一覧を読んだディレクトリの絶対パスを書いてください。」
    → 効くのはパスのほうです（件数は動きます）。
 4. **ファイル**: 「`AGENTS.md` の中核規律の1番目を逐語で引用してください。」→ リポジトリ自体に届いて
