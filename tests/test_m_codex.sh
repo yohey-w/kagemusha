@@ -1116,11 +1116,78 @@ M_OUT="$M_SLACK_5000" python3 -c \
 assert_ok "M9: a 5000-character Slack message remains valid" \
   python3 "$M_PERMIT" review --tool slack --tool-input "$M_SLACK_5000"
 
+# ── the same send, spelled with one underscore instead of two ──────────────
+# MEASURED 2026-09-13/14 on the desktop app: ONE connector answers to TWO
+# spellings. The JavaScript wrapper inside `exec` is
+# `tools.mcp__codex_apps__gmail_create_draft` (one `_`), while the PreToolUse
+# envelope for that very call carries `mcp__codex_apps__gmail__create_draft`
+# (two). Both were seen on the same machine on the same day, and the tool
+# catalogue in the desktop rollout lists `mcp__codex_apps__gmail_send_email`
+# with one. The verb rule matches either, so the DENY side was never at risk.
+# The permit key was: it is an exact string, so it opens one spelling and
+# silently fails to recognise its twin — which does not leak a send, but does
+# mean an approved, reviewed, operator-signed send is refused for a reason
+# nobody can see. Only the `__`/`_` difference is absorbed; nothing else is.
 m_issue "$M_SLACK_INPUT" slack-js 300 slack
-assert_eq "M9: the JavaScript Slack spelling cannot claim a wire permit" "deny" \
+assert_eq "M9: the one-underscore Slack spelling claims the same wire permit" "allow" \
   "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-js "$M_PERMIT_ROOT" "$M_SLACK_JS_TOOL")")"
+m_issue "$M_SLACK_INPUT" slack-js2 300 slack
 assert_eq "M9: …and the exact wire call can still claim it" "allow" \
-  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-js "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+  "$(m_decision "$(m_envelope "$M_SLACK_INPUT" slack-js2 "$M_PERMIT_ROOT" "$M_SLACK_TOOL")")"
+
+M_GMAIL_JS_TOOL='mcp__codex_apps__gmail_send_email'
+m_issue "$M_SEND_INPUT" sess-oneunderscore
+assert_eq "M9: the one-underscore Gmail spelling claims the same wire permit" "allow" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-oneunderscore "$M_PERMIT_ROOT" "$M_GMAIL_JS_TOOL")")"
+assert_eq "M9: …and the permit is spent by it, exactly once" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-oneunderscore "$M_PERMIT_ROOT" "$M_GMAIL_JS_TOOL")")"
+
+# A permit still opens ONE act. Absorbing a spelling must not absorb a verb.
+m_issue "$M_SEND_INPUT" sess-otherverb
+assert_eq "M9: a one-underscore DRAFT is still not the approved send" "deny" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-otherverb "$M_PERMIT_ROOT" mcp__codex_apps__gmail_create_draft)")"
+assert_eq "M9: …and the approved send itself is untouched by that attempt" "allow" \
+  "$(m_decision "$(m_envelope "$M_SEND_INPUT" sess-otherverb "$M_PERMIT_ROOT" "$M_GMAIL_JS_TOOL")")"
+
+# …and `__`/`_` is the ONLY difference absorbed. A hyphen, a missing separator
+# and a different connector namespace are three different tools, not spellings.
+for m_lookalike in mcp__codex_apps__gmail-send-email \
+                   mcp__codex_apps__gmailsend_email \
+                   mcp__codex_apps__gmail__send_email_now \
+                   mcp__other_apps__gmail_send_email \
+                   mcp__codex_apps__slack_send_message; do
+  m_issue "$M_SEND_INPUT" "sess-lookalike-$m_lookalike"
+  assert_eq "M9: $m_lookalike is a different tool, permit or no permit" "deny" \
+    "$(m_decision "$(m_envelope "$M_SEND_INPUT" "sess-lookalike-$m_lookalike" "$M_PERMIT_ROOT" "$m_lookalike")")"
+  assert_eq "M9: …and it did not consume the permit ($m_lookalike)" "allow" \
+    "$(m_decision "$(m_envelope "$M_SEND_INPUT" "sess-lookalike-$m_lookalike" "$M_PERMIT_ROOT" "$M_GMAIL_JS_TOOL")")"
+done
+
+# The helper's own answer, independent of the guard: both spellings resolve to
+# the one canonical name a permit is written under, and nothing else does.
+M_CANON_OUT="$(M_PERMIT="$M_PERMIT" python3 -c '
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("permit", os.environ["M_PERMIT"])
+mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+allowed = frozenset(mod.CLI_TOOL_NAMES["codex"].values())
+for raw in ("mcp__codex_apps__gmail__send_email", "mcp__codex_apps__gmail_send_email",
+            "mcp__codex_apps__slack__slack_send_message", "mcp__codex_apps__slack_slack_send_message",
+            "mcp__codex_apps__gmail-send-email", "mcp__other_apps__gmail_send_email",
+            "mcp__codex_apps__gmail__create_draft"):
+    print(raw, mod.canonical_tool_name(raw, allowed))
+')"
+assert_grep_str "M9: the helper canonicalises the two-underscore Gmail name" \
+  "mcp__codex_apps__gmail__send_email mcp__codex_apps__gmail__send_email" "$M_CANON_OUT"
+assert_grep_str "M9: …and the one-underscore name onto the same canonical" \
+  "mcp__codex_apps__gmail_send_email mcp__codex_apps__gmail__send_email" "$M_CANON_OUT"
+assert_grep_str "M9: …and the one-underscore Slack name onto the Slack canonical" \
+  "mcp__codex_apps__slack_slack_send_message mcp__codex_apps__slack__slack_send_message" "$M_CANON_OUT"
+assert_grep_str "M9: …while a hyphen resolves to nothing" \
+  "mcp__codex_apps__gmail-send-email None" "$M_CANON_OUT"
+assert_grep_str "M9: …and another namespace resolves to nothing" \
+  "mcp__other_apps__gmail_send_email None" "$M_CANON_OUT"
+assert_grep_str "M9: …and a different verb resolves to nothing" \
+  "mcp__codex_apps__gmail__create_draft None" "$M_CANON_OUT"
 
 m_issue "$M_SLACK_INPUT" gmail-not-slack 300 gmail
 assert_eq "M9: a Gmail permit cannot open exact Slack" "deny" \

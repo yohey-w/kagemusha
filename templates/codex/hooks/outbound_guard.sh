@@ -118,10 +118,15 @@
 # ⚠️ A PERMIT NEVER OPENS A SEND INSIDE exec. The one-shot permit binds an
 # approved send to its exact arguments; inside a code string there are no
 # arguments to bind, only source text that can build them at run time. An
-# approved send must therefore travel as a direct connector call — which on the
-# desktop app is currently not offered at all (exec is the only tool it shows,
-# and its namespace has one `_` where the permit keys below have two). That is
-# a real limit of this control, recorded here rather than papered over.
+# approved send must therefore travel as a direct connector call.
+#
+# ⚠️ AND THE DESKTOP APP DOES OFFER ONE — measured 2026-09-14, correcting what
+# this comment said before. When the JavaScript wrapper dispatches, the inner
+# call reaches PreToolUse in its own right: the hook was handed tool_name
+# `mcp__codex_apps__gmail__create_draft` and denied it there, not at `exec`.
+# The wrapper's own spelling has one `_` and the envelope's has two, so ONE
+# connector answers to two names. `same_permit_tool` below absorbs exactly
+# that difference and nothing else.
 #
 # ─── the wire format, measured, not guessed ────────────────────────────────
 # stdin  — `pre-tool-use.command.input`, a JSON schema embedded in the codex
@@ -333,6 +338,36 @@ embedded_outbound() {
   return 1
 }
 
+# ─── one connector, two spellings ──────────────────────────────────────────
+# same_permit_tool <wire name> <canonical permit name> → 0 when the two name
+# the SAME connector call.
+#
+# MEASURED 2026-09-13/14 on the ChatGPT desktop app. The JavaScript wrapper
+# inside `exec` is `tools.mcp__codex_apps__gmail_create_draft` — one `_` — and
+# the PreToolUse envelope for that same call carries
+# `mcp__codex_apps__gmail__create_draft` — two. The desktop tool catalogue in
+# the rollout lists `mcp__codex_apps__gmail_send_email` with one. So both
+# spellings are in circulation on one machine on one day.
+#
+# The DENY side never depended on this: the verb rule below matches the
+# operation segment either way, and both spellings deny. What broke is the
+# other direction — the permit keys are exact strings, so an approved,
+# reviewed, operator-signed send arriving under the twin spelling is refused
+# with no way to tell why. A control that fails shut on an approved act still
+# has to be repaired, or the next repair is somebody widening the verb list.
+#
+# Only the `__`/`_` difference INSIDE the operation segment is absorbed. The
+# `mcp__<server>__` prefix must match exactly, so another connector, another
+# verb, a hyphen or a missing separator all stay different tools.
+same_permit_tool() {
+  local raw="$1" canon="$2" rest raw_ns raw_op canon_ns canon_op
+  [[ "$raw" == "$canon" ]] && return 0
+  [[ "$raw" == *__*__* ]] || return 1
+  rest="${raw#*__}";   raw_ns="${raw%%__*}__${rest%%__*}__";     raw_op="${raw#"$raw_ns"}"
+  rest="${canon#*__}"; canon_ns="${canon%%__*}__${rest%%__*}__"; canon_op="${canon#"$canon_ns"}"
+  [[ -n "$raw_op" && "$raw_ns" == "$canon_ns" && "${raw_op//__/_}" == "${canon_op//__/_}" ]]
+}
+
 payload="$(</dev/stdin)"
 
 # tool_name is an identifier. Matching its closing quote as well as its safe
@@ -378,7 +413,13 @@ fi
 # atomic rename before this hook emits the empty pass document. Any failure is
 # a deny; stderr is deliberately hidden so message contents never enter the
 # hook response.
-if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" ]]; then
+permit_canonical=''
+if same_permit_tool "$safe_name" "$GMAIL_PERMITTED_TOOL"; then
+  permit_canonical="$GMAIL_PERMITTED_TOOL"
+elif same_permit_tool "$safe_name" "$SLACK_PERMITTED_TOOL"; then
+  permit_canonical="$SLACK_PERMITTED_TOOL"
+fi
+if [[ -n "$permit_canonical" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
       allow "$safe_name (one-shot permit claimed)"
@@ -390,8 +431,15 @@ fi
 # The Slack connector includes write operations whose names do not contain one
 # of the generic outbound verbs (add_reaction, join_conversation, upload, …).
 # Keep its read side as a closed allowlist and fail closed on every other Slack
-# operation. This is deliberately scoped to the measured wire namespace; the
-# JavaScript wrapper spelling has one fewer `__` and is not a permit target.
+# operation. This branch is still scoped to the exact wire namespace
+# `mcp__codex_apps__slack__`, so a one-underscore Slack name does NOT reach it
+# and falls through to the verb rule below — which catches every measured
+# Slack WRITE that carries a verb, but not the verbless ones (add_reaction,
+# join_conversation, …). Recorded as a known gap rather than widened here,
+# because widening it would also change which one-underscore Slack READS stay
+# available, and no such call has been measured. [未検証]
+# The approved Slack SEND is unaffected: it is handled above, where
+# `same_permit_tool` accepts either spelling.
 if [[ "$safe_name" == mcp__codex_apps__slack__* ]]; then
   if [[ "$operation" =~ ^($SLACK_READ_OPERATIONS)$ ]]; then
     allow "$safe_name"
