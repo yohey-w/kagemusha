@@ -52,6 +52,60 @@ ALL_TOOL_NAMES = frozenset(
     name for table in CLI_TOOL_NAMES.values() for name in table.values()
 )
 VERSION = 1
+def _namespace_and_operation(name: str):
+    """Split `mcp__<server>__<operation>` into its two halves, or (None, None).
+
+    The `mcp__<server>__` prefix is a wire convention and is stable; what
+    varies between the two observed spellings of the SAME connector call is
+    only the operation segment.
+    """
+    if not isinstance(name, str):
+        return None, None
+    head, sep, rest = name.partition("__")
+    if not sep or not head:
+        return None, None
+    server, sep, operation = rest.partition("__")
+    if not sep or not server or not operation:
+        return None, None
+    return head + "__" + server + "__", operation
+
+
+def canonical_tool_name(name, allowed_tools=ALL_TOOL_NAMES):
+    """Return the canonical permit tool name `name` refers to, else None.
+
+    ONE CONNECTOR, TWO SPELLINGS.  Measured 2026-09-13/14 on the ChatGPT
+    desktop app: the JavaScript wrapper inside `exec` is
+    `tools.mcp__codex_apps__gmail_create_draft` (one `_`), while the
+    PreToolUse envelope for that same call carries
+    `mcp__codex_apps__gmail__create_draft` (two).  The desktop tool catalogue
+    lists `mcp__codex_apps__gmail_send_email` with one.  Both forms are in
+    circulation on one machine on one day, so an exact string comparison
+    recognises one of them and silently fails to recognise its twin.
+
+    That gap never leaked a send — the guard's verb rule matches either
+    spelling and denies both.  What it broke is the other direction: a send
+    the operator reviewed, approved and issued a permit for is refused, for a
+    reason no log states.  A control that fails shut for an approved act is
+    still a control that has to be repaired, or the next repair will be
+    someone widening the verb list.
+
+    ONLY the `__`/`_` difference inside the operation segment is absorbed.
+    The namespace prefix must match exactly, and every other difference — a
+    hyphen, a missing separator, another verb, another connector — resolves to
+    None and is treated as the different tool it is.
+    """
+    if name in allowed_tools:
+        return name
+    prefix, operation = _namespace_and_operation(name)
+    if prefix is None:
+        return None
+    flattened = operation.replace("__", "_")
+    for candidate in allowed_tools:
+        c_prefix, c_operation = _namespace_and_operation(candidate)
+        if c_prefix == prefix and c_operation.replace("__", "_") == flattened:
+            return candidate
+    return None
+
 DEFAULT_TTL = 300
 MAX_TTL = 900
 PERMIT_KEYS = {
@@ -356,8 +410,12 @@ def claim(args) -> None:
     if not isinstance(envelope, dict):
         raise PermitError("hook input must be an object")
     allowed_tools = frozenset(CLI_TOOL_NAMES[args.cli].values())
-    tool_name = envelope.get("tool_name")
-    if tool_name not in allowed_tools:
+    # The wire name is canonicalised before anything else uses it, so the rest
+    # of this function — the validator lookup, the record comparison, the
+    # permit store — only ever sees the one spelling a permit is written
+    # under.  A name that does not resolve is a different tool and is refused.
+    tool_name = canonical_tool_name(envelope.get("tool_name"), allowed_tools)
+    if tool_name is None:
         raise PermitError("permit is only valid for an allowlisted exact send tool")
     session_id = envelope.get("session_id")
     cwd = envelope.get("cwd")

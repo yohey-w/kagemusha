@@ -19,7 +19,9 @@ Nothing else differs: canonicalization, the SHA-256 binding over the complete ar
 | `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `<project>/.claude/outbound-permits/` |
 
 A permit issued for one CLI cannot be claimed through the other: the wire name, the store directory and the selector all have to agree.
-The Slack JavaScript wrapper spelling `mcp__codex_apps__slack_slack_send_message` is different and cannot use a permit.
+One connector answers to two spellings, and a permit accepts both. Measured 2026-09-13/14 on the ChatGPT desktop app: the JavaScript wrapper inside `exec` writes one underscore (`mcp__codex_apps__gmail_send_email`, `mcp__codex_apps__slack_slack_send_message`) while the `PreToolUse` envelope for the same call carries two.
+Only that `__`/`_` difference inside the operation segment is absorbed; the `mcp__<server>__` prefix must match exactly, so another connector, another verb, a hyphen or a missing separator stay different tools with no permit path.
+A permit still opens one act: it is spent by whichever spelling claims it, exactly once.
 No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling.
 On the Claude side this also means `mcp__slack__slack_reply_to_thread` has no permit path: a threaded Slack reply cannot be approved through a ticket and has to go through the queue.
 Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
