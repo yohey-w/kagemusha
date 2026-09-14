@@ -147,6 +147,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 | 設計の全体を掴む | [`docs/design.md`](docs/design.md) |
 | データ境界を確かめる | [`docs/layers.md`](docs/layers.md) |
 | 却下を規律に変える | [`docs/judgment-distillation.md`](docs/judgment-distillation.md) |
+| どの思想がいつ・何をきっかけに入ったか | [`docs/provenance.md`](docs/provenance.md) |
 | それ以外・ファイル単位の全一覧 | [`docs/README.md`](docs/README.md) |
 
 <!-- contract:field-record -->

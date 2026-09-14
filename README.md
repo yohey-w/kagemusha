@@ -147,6 +147,7 @@ The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/session
 | Understand the whole design | [`docs/design.md`](docs/design.md) |
 | See where the data boundaries fall | [`docs/layers.md`](docs/layers.md) |
 | Turn rejections into rules | [`docs/judgment-distillation.md`](docs/judgment-distillation.md) |
+| See which idea entered the kit when, and what set it off | [`docs/provenance.md`](docs/provenance.md) |
 | Everything else, file by file | [`docs/README.md`](docs/README.md) |
 
 <!-- contract:field-record -->
