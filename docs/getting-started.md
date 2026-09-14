@@ -93,6 +93,11 @@ cd kagemusha
 # 3. Wire the time trigger (5 min).
 cp config.env.example config.env      # git-ignored; holds your paths + notify topic
 $EDITOR config.env                    # set PROJECT_ROOT / AGENT_CMD / NTFY_TOPIC
+#    The AGENT_FLAGS default is --dangerously-skip-permissions, because nobody
+#    is at the keyboard at 06:53 to answer a permission prompt — under cron it
+#    is a hang, not a safety net. It is NOT the outward brake: a send is stopped
+#    by the PreToolUse guard and the approval queue, which keep working with the
+#    flag on. Driving the loop by hand instead? Set AGENT_FLAGS="" .
 ./scripts/morning_brief.sh            # run once by hand (read-only, ~a few minutes)
 
 # 4. Put it on cron (or Windows Task Scheduler → docs/windows.md, or a daily
@@ -254,6 +259,11 @@ cd kagemusha
 # 3. 時刻トリガーを設定（5分）。
 cp config.env.example config.env      # git管理外。パスと通知先を持つ
 $EDITOR config.env                    # PROJECT_ROOT / AGENT_CMD / NTFY_TOPIC を自分用に
+#    AGENT_FLAGS の既定が --dangerously-skip-permissions なのは、朝6時53分の
+#    キーボードの前に誰も居ないからだ。無人の cron で承認プロンプトが出ることは
+#    安全網ではなく停止を意味する。そしてこのフラグは外向きの歯止めではない——
+#    送信を止めるのは PreToolUse の門番と承認キューで、どちらもこのフラグを
+#    付けたまま効く。手で回すなら AGENT_FLAGS="" にしてよい。
 ./scripts/morning_brief.sh            # 手で1回試す（読み取り専用・数分）
 
 # 4. cron に載せる（Windows はタスクスケジューラ→docs/windows.md／
