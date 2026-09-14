@@ -98,7 +98,7 @@
 #
 # ORDER IS THE POLICY, and tests assert it:
 #   1. no tool_name                  → deny  (fail closed on a moved schema)
-#   2. not an mcp__ tool             → pass  (Bash is never matched: `git push`
+#   2. not an mcp* tool              → pass  (Bash is never matched: `git push`
 #                                             and `rm` are reversible-by-history
 #                                             and this loop runs them unattended)
 #   3. an exact permit target        → claim a one-shot permit, else deny
@@ -276,7 +276,15 @@ if [[ -z "$safe_name" ]]; then
 fi
 
 # ─── 2. connector and MCP calls only ───────────────────────────────────────
-if [[ "$safe_name" != mcp__* ]]; then
+# The test is `mcp*`, not `mcp__*`. A gate that asked for exactly two
+# underscores answered ALLOW to every other spelling, so a connector arriving
+# as `mcp_claude_ai_Gmail__send_message` was passed as though it were Bash.
+# Widening it is not a full repair here: the anchored `^mcp__…` lists in steps
+# 4-6 still miss that spelling, so what a one-underscore write now meets is the
+# verb fallback at step 8 — which catches the ones carrying a verb and not the
+# verbless writes. Recorded, not widened further: no such call has been
+# measured, and loosening the anchors would also change which reads pass.
+if [[ "$safe_name" != mcp* ]]; then
   allow "$safe_name"
 fi
 
