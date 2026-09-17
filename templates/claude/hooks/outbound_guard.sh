@@ -261,21 +261,51 @@ deny() {  # deny <tool_name> <why>
 # repository that would have caught it.
 payload="$(cat)"
 
-# tool_name is an identifier. Matching its closing quote as well as its safe
-# character set prevents partial extraction from becoming JSON interpolation.
+# tool_name is an identifier. It is read with a STRICT JSON PARSER, not with a
+# regex over the raw text.
+#
+# Why this changed (2026-09-18, found by an independent review): a regex takes
+# the FIRST occurrence, and JSON member order is the producer's choice. A
+# payload that puts `tool_input` first and carries the string `"tool_name":
+# "Bash"` INSIDE it, with the real `"tool_name": "mcp__…notion-update-page"`
+# after, was classified as `Bash` and passed — `{}`, no permit, no helper call.
+# Reproduced on this machine against the live hook before the fix. Every
+# observed Claude Code payload puts the real `tool_name` first, so the hole was
+# dormant, not theoretical: nothing in the format forbids the other order, and
+# a tool_input is attacker-influenced whenever its content comes from outside.
+#
+# The parser is python3, which this guard already depends on for the permit
+# path. If it is absent, a connector call cannot be classified safely, so it is
+# denied rather than guessed at; plain tools (Bash, Read, …) are unaffected.
 safe_name=''
-if [[ "$payload" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
-  safe_name="${BASH_REMATCH[1]}"
+SAFE_SESSION=''
+if command -v python3 >/dev/null 2>&1; then
+  _parsed="$(printf '%s' "$payload" | python3 -c '
+import json, re, sys
+SAFE = re.compile(r"\A[A-Za-z0-9_.:/-]+\Z")
+try:
+    doc = json.load(sys.stdin)
+except Exception:
+    doc = None
+def pick(key):
+    if not isinstance(doc, dict):
+        return ""
+    value = doc.get(key)
+    return value if isinstance(value, str) and SAFE.match(value) else ""
+print(pick("tool_name"))
+print(pick("session_id"))
+' 2>/dev/null)" || _parsed=''
+  safe_name="$(printf '%s' "$_parsed" | sed -n '1p')"
+  SAFE_SESSION="$(printf '%s' "$_parsed" | sed -n '2p')"
+  unset _parsed
+elif [[ "$payload" == *mcp* ]]; then
+  deny "unknown-tool" "no JSON parser available: a connector call cannot be classified safely"
 fi
 
 # The session id travels in the deny reason so the operator knows which value
-# to bind a permit to; `issue` refuses without it. Same safe charset, same
-# reason. transcript_path is deliberately NOT quoted back — it spells out the
-# project slug.
-SAFE_SESSION=''
-if [[ "$payload" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
-  SAFE_SESSION="${BASH_REMATCH[1]}"
-fi
+# to bind a permit to; `issue` refuses without it. It is read by the same
+# parser above, for the same reason. transcript_path is deliberately NOT quoted
+# back — it spells out the project slug.
 
 # ─── 1. no tool_name means the schema moved or the payload never arrived ───
 # Deny: the guard being loudly wrong is recoverable; the guard being quietly

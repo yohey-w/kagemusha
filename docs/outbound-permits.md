@@ -55,9 +55,16 @@ Its pass is the empty document `{}`, which leaves the normal permission flow unt
 `"ask"` is unused for a different reason: an unattended run has nobody to ask, so `ask` on that lane is a hang rather than a question.
 
 One limitation is inherited from the Codex guard and is stated here rather than left to be discovered.
-Each guard's classifier reads `tool_name` with a regex over the raw payload and therefore takes the first occurrence.
+Each guard's classifier used to read `tool_name` with a regex over the raw payload, which takes the first occurrence.
 Every observed payload and every published example puts `tool_name` ahead of `tool_input`, but JSON member order is the producer's choice.
-The send path is not exposed to this, because the helper parses the whole envelope with a strict JSON parser before it will claim anything; only the classifier is.
+
+**This was a live bypass, not a theoretical one, and the paragraph that used to stand here was wrong.**
+It said "the send path is not exposed to this, because the helper parses the whole envelope with a strict JSON parser before it will claim anything; only the classifier is."
+That reasoning skipped a step: the helper only runs for a call the classifier routed to it. A payload carrying the string `"tool_name": "Bash"` INSIDE `tool_input`, with the real name after it, was classified as `Bash` and passed — `{}`, no permit, no helper call. It was reproduced against the live Claude hook on 2026-09-18 by an independent review, and again by the author before the fix.
+Since a `tool_input` is attacker-influenced whenever its content comes from outside (a fetched page, a customer's message, a file), this was reachable.
+
+The Claude classifier now reads `tool_name` and `session_id` with `python3`'s JSON parser, taking only top-level members. python3 is already required for the permit path; where it is absent, a payload naming any connector is denied rather than guessed at, and plain tools are unaffected.
+The Codex guard still classifies by regex and carries the original weakness.
 
 ## A worktree has none of this
 

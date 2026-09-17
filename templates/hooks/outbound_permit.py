@@ -301,19 +301,74 @@ def _validate_claude_gmail(tool_input) -> None:
         raise PermitError("Gmail body or htmlBody must be a non-empty string")
 
 
+# Notion-flavored markdown can reach OTHER pages from inside a body string:
+# `<page url=…>` moves a page, `<database data-source-url=…>` creates a linked
+# view, `<folder …>` attaches one.  A permit that hashed only the body would
+# bind the text and not the act, so a permitted write may not carry them.
+# (Found 2026-09-18 by an independent review of the first version of this file.)
+_NOTION_REACHING_NOTATION = ("<page ", "<database ", "<folder ")
+# The commands a permit may open.  `replace_content` and `apply_template` are
+# NOT here: the first deletes child pages and databases that the arguments
+# never name, and the second writes whatever the template says TODAY, so the
+# hash binds an id instead of the content that lands.
+_NOTION_PERMITTED_COMMANDS = frozenset(
+    {"update_properties", "update_content", "insert_content"}
+)
+
+
+def _reject_reaching_notation(value, where: str) -> None:
+    """Refuse any string in the payload that can act on a DIFFERENT page."""
+    if isinstance(value, str):
+        lowered = value.lower()
+        for token in _NOTION_REACHING_NOTATION:
+            if token in lowered:
+                raise PermitError(
+                    f"Notion {where} may not carry `{token.strip()}` notation "
+                    "(it acts on another page or database)"
+                )
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _reject_reaching_notation(item, f"{where}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_reaching_notation(item, f"{where}[{index}]")
+
+
 def _validate_claude_notion_update(tool_input) -> None:
     # notion-update-page edits ONE existing page, named by page_id, under one
-    # command.  The hash already binds the whole argument set; this check keeps
-    # a permit from being issued for a call that does not name its target, and
-    # refuses the async escape hatch — a backgrounded write reports success
-    # before the page is written, so the operator would approve an outcome
-    # nobody has seen.
+    # command.  The hash already binds the whole argument set; these checks keep
+    # a permit from being issued for a call whose EFFECT is not in that set.
     if not tool_input:
         raise PermitError("Notion tool_input must not be empty")
     _require_text(tool_input, "page_id", "Notion")
     _require_text(tool_input, "command", "Notion")
+    command = tool_input["command"]
+    if command not in _NOTION_PERMITTED_COMMANDS:
+        raise PermitError(
+            f"Notion command {command} has no permit path "
+            f"(permitted: {', '.join(sorted(_NOTION_PERMITTED_COMMANDS))})"
+        )
     if tool_input.get("allow_async") is True:
+        # a backgrounded write answers before the page is written, so the
+        # approval would cover an outcome nobody has seen.
         raise PermitError("allow_async is not valid for a permitted Notion write")
+    if tool_input.get("template_id") is not None:
+        raise PermitError("template_id binds an id, not the content that lands")
+    if tool_input.get("is_skill") is not None:
+        # marking a page as a skill turns it into instructions another agent
+        # loads; that is the `convert-page-to-skill` act, which has no path.
+        raise PermitError("is_skill is not valid for a permitted Notion write")
+    if tool_input.get("allow_deleting_content") is True:
+        raise PermitError(
+            "allow_deleting_content deletes child pages the arguments never name"
+        )
+    updates = tool_input.get("content_updates")
+    if updates is not None:
+        if not isinstance(updates, list) or len(updates) != 1:
+            raise PermitError("a Notion permit may name exactly one content update")
+        if updates[0].get("replace_all_matches") is True:
+            raise PermitError("replace_all_matches makes one permit many edits")
+    _reject_reaching_notation(tool_input, "update")
 
 
 def _validate_claude_notion_create(tool_input) -> None:
@@ -335,6 +390,11 @@ def _validate_claude_notion_create(tool_input) -> None:
         raise PermitError("creation_mode is not valid alongside an explicit parent")
     if tool_input.get("allow_async") is True:
         raise PermitError("allow_async is not valid for a permitted Notion write")
+    if pages[0].get("template_id") is not None:
+        raise PermitError("template_id binds an id, not the content that lands")
+    if pages[0].get("is_skill") is not None:
+        raise PermitError("is_skill is not valid for a permitted Notion write")
+    _reject_reaching_notation(tool_input, "create")
 
 
 # Keyed by the exact wire tool name, which is unique across both CLIs, so the
