@@ -854,3 +854,50 @@ o_notion_accept "an append still passes" notion-update \
   '{"page_id":"3dea","command":"insert_content","content":"# heading","position":{"type":"end"}}' ins
 o_notion_accept "a one-row create still passes" notion-create \
   '{"parent":{"type":"data_source_id","data_source_id":"19d5"},"pages":[{"properties":{"name":"x"}}]}' row
+
+# ─── O16. second review round: three more shapes ───────────────────────────
+# All three were reproduced against the live hook before the fix.
+
+# (a) a duplicated top-level tool_name: every parser picks a copy, and the two
+# ends of the call need not pick the same one. Refuse the envelope instead.
+O_DUP="$O_ROOT/dup.json"
+printf '{"tool_name":"mcp__claude_ai_Notion__notion-update-page","tool_input":{},"tool_name":"Bash","session_id":"sess-dup","cwd":"%s"}\n' "$O_ROOT" > "$O_DUP"
+assert_eq "O16: a duplicated top-level tool_name is refused, not resolved" \
+  "deny" "$(o_claim "$(cat "$O_DUP")")"
+O_DUP_SESS="$O_ROOT/dup-session.json"
+printf '{"tool_name":"Bash","tool_input":{"command":"ls"},"session_id":"a","session_id":"b","cwd":"%s"}\n' "$O_ROOT" > "$O_DUP_SESS"
+assert_eq "O16: …and a duplicated session_id is refused too" \
+  "deny" "$(o_claim "$(cat "$O_DUP_SESS")")"
+
+# (b) with no JSON parser a connector call cannot be classified, but PLAIN
+# tools must keep working. The first version of this fix denied everything,
+# including Bash, while its own comment claimed plain tools were unaffected.
+O_NOPY="$TEST_TMP/o_nopy_bin"
+mkdir -p "$O_NOPY"
+for o_bin in bash sed cat grep printf mktemp rm; do
+  o_path="$(command -v "$o_bin" 2>/dev/null)" && ln -sf "$o_path" "$O_NOPY/$o_bin"
+done
+o_claim_nopy() { printf '%s' "$1" | env PATH="$O_NOPY" bash "$O_ROOT/.claude/hooks/outbound_guard.sh" 2>/dev/null; }
+O_PLAIN_ENV="$(o_envelope "$O_ROOT/plain-input.json" sess-nopy "$O_ROOT" Bash 2>/dev/null || true)"
+printf '{"command":"ls"}\n' > "$O_ROOT/plain-input.json"
+O_PLAIN_ENV="$(o_envelope "$O_ROOT/plain-input.json" sess-nopy "$O_ROOT" Bash)"
+assert_eq "O16: with no python3, a plain tool still passes" \
+  "pass" "$(o_output_decision "$(o_claim_nopy "$O_PLAIN_ENV")")"
+assert_eq "O16: …while a connector call is refused rather than guessed at" \
+  "deny" "$(o_output_decision "$(o_claim_nopy "$(o_envelope "$O_NOTION_UPD" sess-nopy "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)")")"
+
+# (c) the reaching-notation check is a pattern, not a fixed substring: a tab,
+# a newline or a space after `<` all reached another page through it.
+o_notion_reject "a tab inside the reaching tag does not evade the check" \
+  '{"page_id":"x","command":"insert_content","content":"<page\turl=\"y\">z</page>"}' wtab
+o_notion_reject "…nor a newline" \
+  '{"page_id":"x","command":"insert_content","content":"<page\nurl=\"y\">z</page>"}' wnl
+o_notion_reject "…nor a space after the angle bracket" \
+  '{"page_id":"x","command":"insert_content","content":"< page url=\"y\">z</page>"}' wsp
+o_notion_reject "…nor a closing tag" \
+  '{"page_id":"x","command":"insert_content","content":"</ page>"}' wclose
+o_notion_reject "…nor the database form with a tab" \
+  '{"page_id":"x","command":"insert_content","content":"<\tdatabase data-source-url=\"c\">d</database>"}' wdb
+# and an ordinary body with angle brackets in prose is still writable
+o_notion_accept "ordinary prose with a URL still passes" notion-update \
+  '{"page_id":"3dea","command":"insert_content","content":"# 訂正\n- 別ボード ashby: sierra-jp https://example.invalid/x"}' prose

@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sys
 import time
@@ -306,7 +307,12 @@ def _validate_claude_gmail(tool_input) -> None:
 # view, `<folder …>` attaches one.  A permit that hashed only the body would
 # bind the text and not the act, so a permitted write may not carry them.
 # (Found 2026-09-18 by an independent review of the first version of this file.)
-_NOTION_REACHING_NOTATION = ("<page ", "<database ", "<folder ")
+# Matched as a PATTERN, not as fixed substrings: `<page\turl=`, `<page\nurl=`
+# and `< page url=` all reached another page while a substring check for
+# "<page " let them through (found 2026-09-18 in review).
+_NOTION_REACHING_NOTATION = re.compile(
+    r"<\s*/?\s*(?:page|database|folder)\b", re.IGNORECASE
+)
 # The commands a permit may open.  `replace_content` and `apply_template` are
 # NOT here: the first deletes child pages and databases that the arguments
 # never name, and the second writes whatever the template says TODAY, so the
@@ -319,13 +325,12 @@ _NOTION_PERMITTED_COMMANDS = frozenset(
 def _reject_reaching_notation(value, where: str) -> None:
     """Refuse any string in the payload that can act on a DIFFERENT page."""
     if isinstance(value, str):
-        lowered = value.lower()
-        for token in _NOTION_REACHING_NOTATION:
-            if token in lowered:
-                raise PermitError(
-                    f"Notion {where} may not carry `{token.strip()}` notation "
-                    "(it acts on another page or database)"
-                )
+        found = _NOTION_REACHING_NOTATION.search(value)
+        if found:
+            raise PermitError(
+                f"Notion {where} may not carry `{found.group(0).strip()}` notation "
+                "(it acts on another page or database)"
+            )
     elif isinstance(value, dict):
         for key, item in value.items():
             _reject_reaching_notation(item, f"{where}.{key}")

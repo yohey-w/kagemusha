@@ -283,23 +283,60 @@ if command -v python3 >/dev/null 2>&1; then
   _parsed="$(printf '%s' "$payload" | python3 -c '
 import json, re, sys
 SAFE = re.compile(r"\A[A-Za-z0-9_.:/-]+\Z")
+WANTED = ("tool_name", "session_id")
+
+def pairs(items):
+    # A duplicate top-level key is not a payload any honest producer emits, and
+    # every parser gets to choose which copy wins.  Found 2026-09-18 in review:
+    # `{"tool_name":"mcp__…","tool_name":"Bash"}` resolved to Bash here and
+    # passed.  Refuse the whole envelope rather than pick a copy.
+    seen = set()
+    for key, value in items:
+        if key in WANTED and key in seen:
+            raise ValueError("duplicate top-level key")
+        seen.add(key)
+    return dict(items)
+
 try:
-    doc = json.load(sys.stdin)
+    doc = json.loads(sys.stdin.read(), object_pairs_hook=pairs)
+except ValueError:
+    print("!")          # refuse: unparseable, or a duplicated key
+    raise SystemExit(0)
 except Exception:
-    doc = None
+    print("!")
+    raise SystemExit(0)
+
 def pick(key):
     if not isinstance(doc, dict):
         return ""
     value = doc.get(key)
     return value if isinstance(value, str) and SAFE.match(value) else ""
+
+print("")               # line 1: the refusal marker is absent
 print(pick("tool_name"))
 print(pick("session_id"))
-' 2>/dev/null)" || _parsed=''
-  safe_name="$(printf '%s' "$_parsed" | sed -n '1p')"
-  SAFE_SESSION="$(printf '%s' "$_parsed" | sed -n '2p')"
+' 2>/dev/null)" || _parsed='!'
+  if [[ "$(printf '%s' "$_parsed" | sed -n '1p')" == '!' ]]; then
+    deny "unknown-tool" "the payload is not a single well-formed object with unique top-level keys"
+  fi
+  safe_name="$(printf '%s' "$_parsed" | sed -n '2p')"
+  SAFE_SESSION="$(printf '%s' "$_parsed" | sed -n '3p')"
   unset _parsed
-elif [[ "$payload" == *mcp* ]]; then
-  deny "unknown-tool" "no JSON parser available: a connector call cannot be classified safely"
+else
+  # No parser.  Classify with the old regex so that PLAIN tools keep working —
+  # a machine without python3 must not have every Bash call denied — but a
+  # payload naming any connector cannot be classified safely here, so it is
+  # refused instead of guessed at.  (The first version of this fix denied
+  # everything, including Bash, while its own comment claimed otherwise.)
+  if [[ "$payload" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
+    safe_name="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$payload" == *mcp* ]]; then
+    deny "${safe_name:-unknown-tool}" "no JSON parser available: a connector call cannot be classified safely"
+  fi
+  if [[ "$payload" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
+    SAFE_SESSION="${BASH_REMATCH[1]}"
+  fi
 fi
 
 # The session id travels in the deny reason so the operator knows which value
