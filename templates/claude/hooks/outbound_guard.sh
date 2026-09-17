@@ -121,6 +121,15 @@ set -uo pipefail
 # can thread by itself (`replyThreadId`), so the email side loses nothing.
 GMAIL_PERMITTED_TOOL='mcp__claude_ai_Gmail__send_message'
 SLACK_PERMITTED_TOOL='mcp__slack__slack_post_message'
+# Notion, Claude side only (2026-09-18, operator's ruling): this system keeps
+# its 正本 in the operator's own Notion, so an approved edit of ONE named page
+# is work they asked for. Two acts only — edit one page, create one page. The
+# other Notion writes in OUTBOUND_EXACT (comments, session messages) and the
+# step-6 block (duplicate/move/attachments) keep NO permit path, because the
+# incident recorded there is exactly what happens when one verb opens and the
+# neighbouring one is reached for instead.
+NOTION_UPDATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-update-page'
+NOTION_CREATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-create-pages'
 
 # ─── 4. outward by name. Each entry is anchored against the WHOLE name. ────
 # The operator's ruling, item by item:
@@ -292,7 +301,9 @@ fi
 # The helper strictly parses the entire envelope and claims the matching record
 # by atomic rename before this hook emits the pass document. Any failure is a
 # deny; stderr is hidden so message contents never enter the hook response.
-if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" ]]; then
+if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" \
+   || "$safe_name" == "$NOTION_UPDATE_PERMITTED_TOOL" \
+   || "$safe_name" == "$NOTION_CREATE_PERMITTED_TOOL" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --cli claude --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
       allow "$safe_name (one-shot permit claimed)"

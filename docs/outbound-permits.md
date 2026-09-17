@@ -1,6 +1,6 @@
 # One-shot outbound permits
 
-This procedure opens exactly one approved Gmail or Slack send call. It does not approve a message.
+This procedure opens exactly one approved Gmail or Slack send call — and, on the Claude side, one approved Notion page write. It does not approve a message.
 Use it only after the user has explicitly approved the exact message shown by `review`.
 
 ## Scope and threat model
@@ -13,16 +13,32 @@ One helper serves both CLIs. `--cli` selects which pair of exact wire operations
 It defaults to `codex`, so an install that predates the shared helper keeps working with the arguments it already passes.
 Nothing else differs: canonicalization, the SHA-256 binding over the complete argument set, the project/session/expiry binding, and the single atomic claim are shared, because those are the parts that must not drift apart.
 
-| `--cli` | Gmail | Slack | permit store |
-|---|---|---|---|
-| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | `<project>/.codex/outbound-permits/` |
-| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `<project>/.claude/outbound-permits/` |
+| `--cli` | `--tool gmail` | `--tool slack` | `--tool notion-update` | `--tool notion-create` | permit store |
+|---|---|---|---|---|---|
+| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | `<project>/.codex/outbound-permits/` |
+| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `<project>/.claude/outbound-permits/` |
+
+`--tool` is one flag for every CLI, so its allowed values are the union; asking
+for a selector the chosen CLI does not have is a usage error (exit 2), never a
+silent resolution to another CLI's wire name. Codex has no Notion row because
+its guard names no Notion tool: there is nothing there to open.
+
+The Notion pair was added 2026-09-18 on the operator's ruling. The reasoning is
+not that Notion became inward — the guard still treats a shared workspace as
+outward speech — but that this system keeps its 正本 (ledgers, job logs) in the
+operator's own Notion, so an approved edit of ONE named page is work they asked
+for. Two acts only, and the validators keep one permit to one act: an update
+must name its `page_id` and its `command`, a create must carry an explicit
+`parent` and exactly one entry in `pages`, and neither may set `allow_async`
+(a backgrounded write answers before the page is written, so the approval would
+cover an outcome nobody has seen).
 
 A permit issued for one CLI cannot be claimed through the other: the wire name, the store directory and the selector all have to agree.
 One connector answers to two spellings, and a permit accepts both. Measured 2026-09-13/14 on the ChatGPT desktop app: the JavaScript wrapper inside `exec` writes one underscore (`mcp__codex_apps__gmail_send_email`, `mcp__codex_apps__slack_slack_send_message`) while the `PreToolUse` envelope for the same call carries two.
 Only that `__`/`_` difference inside the operation segment is absorbed; the `mcp__<server>__` prefix must match exactly, so another connector, another verb, a hyphen or a missing separator stay different tools with no permit path.
 A permit still opens one act: it is spent by whichever spelling claims it, exactly once.
 No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling.
+On the Notion side the same rule holds for everything but the two page writes: `notion-create-comment`, `notion-send-message-to-session`, `notion-duplicate-page` and `notion-move-pages` keep no permit path and go through the queue. That narrowness is the point — the incident recorded in the guard is one verb being denied while the neighbouring one went straight through.
 On the Claude side this also means `mcp__slack__slack_reply_to_thread` has no permit path: a threaded Slack reply cannot be approved through a ticket and has to go through the queue.
 Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
 The installed Slack connector's read-only get/list/read/search operations remain available through an exact enumerated allowlist; all other operations in the Slack wire namespace fail closed.

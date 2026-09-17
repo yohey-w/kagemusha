@@ -689,3 +689,85 @@ assert_exit "O12: no argument is refused, not assumed" 2 bash "$O_WT_RUN"
 assert_exit "O12: an unknown flag is refused" 2 bash "$O_WT_RUN" --nope "$O_WT_DST"
 assert_exit "O12: a missing directory is refused" 2 bash "$O_WT_RUN" "$TEST_TMP/o_wt_nothing_here"
 assert_exit "O12: copying a checkout onto itself is refused" 2 bash "$O_WT_RUN" "$O_WT_SRC"
+
+# ─── O13. the Notion permit path (Claude only) ─────────────────────────────
+# Added 2026-09-18 on the operator's ruling: this system keeps its 正本 in the
+# operator's own Notion, so an approved edit of ONE named page is work they
+# asked for. The path opens exactly two acts and must not become a third.
+O_NOTION_UPD="$O_ROOT/notion-update.json"
+cat > "$O_NOTION_UPD" <<'JSON'
+{"page_id":"3d7ae6e4037981079fdfddd39522eb46","command":"update_properties","properties":{"JD URL":"https://example.invalid/jd"}}
+JSON
+O_NOTION_CRE="$O_ROOT/notion-create.json"
+cat > "$O_NOTION_CRE" <<'JSON'
+{"parent":{"type":"data_source_id","data_source_id":"19d54413-8537-4f8d-a523-57b2c9dd1f8b"},"pages":[{"properties":{"企業名":"Example"}}]}
+JSON
+
+O_N_REVIEW="$(o_review "$O_NOTION_UPD" notion-update)"
+assert_grep_str "O13: review binds the Notion update wire name" \
+  'mcp__claude_ai_Notion__notion-update-page' "$O_N_REVIEW"
+assert_eq "O13: a Notion update without a permit is denied" "deny" \
+  "$(o_claim "$(o_envelope "$O_NOTION_UPD" sess-n0 "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)")"
+
+o_issue "$O_NOTION_UPD" sess-n1 300 notion-update
+O_N_ENV="$(o_envelope "$O_NOTION_UPD" sess-n1 "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)"
+assert_eq "O13: an exact approved Notion update passes once" "pass" "$(o_claim "$O_N_ENV")"
+assert_eq "O13: …and the claimed permit cannot be reused" "deny" "$(o_claim "$O_N_ENV")"
+
+# a permit is bound to the page it names: the same command on another page is
+# a different act and must not ride the same ticket.
+O_NOTION_OTHER="$O_ROOT/notion-other.json"
+cat > "$O_NOTION_OTHER" <<'JSON'
+{"page_id":"0000000000000000000000000000dead","command":"update_properties","properties":{"JD URL":"https://example.invalid/jd"}}
+JSON
+o_issue "$O_NOTION_UPD" sess-n2 300 notion-update
+assert_eq "O13: a permit does not open the same edit on another page" "deny" \
+  "$(o_claim "$(o_envelope "$O_NOTION_OTHER" sess-n2 "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)")"
+assert_eq "O13: …and that failure leaves the exact permit unconsumed" "pass" \
+  "$(o_claim "$(o_envelope "$O_NOTION_UPD" sess-n2 "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)")"
+
+o_issue "$O_NOTION_CRE" sess-n3 300 notion-create
+assert_eq "O13: an exact approved one-page create passes once" "pass" \
+  "$(o_claim "$(o_envelope "$O_NOTION_CRE" sess-n3 "$O_ROOT" mcp__claude_ai_Notion__notion-create-pages)")"
+
+# one permit opens one act: a list of two pages is two acts.
+O_NOTION_TWO="$O_ROOT/notion-two.json"
+cat > "$O_NOTION_TWO" <<'JSON'
+{"parent":{"type":"data_source_id","data_source_id":"x"},"pages":[{"properties":{"企業名":"A"}},{"properties":{"企業名":"B"}}]}
+JSON
+assert_exit "O13: a permit may not name two pages at once" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool notion-create --tool-input "$O_NOTION_TWO"
+O_NOTION_NOPARENT="$O_ROOT/notion-noparent.json"
+printf '%s\n' '{"pages":[{"properties":{"x":"y"}}]}' > "$O_NOTION_NOPARENT"
+assert_exit "O13: …nor a create with no explicit parent" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool notion-create --tool-input "$O_NOTION_NOPARENT"
+O_NOTION_DRAFT="$O_ROOT/notion-draftmode.json"
+printf '%s\n' '{"parent":{"type":"data_source_id","data_source_id":"x"},"creation_mode":"draft","pages":[{"properties":{"x":"y"}}]}' > "$O_NOTION_DRAFT"
+assert_exit "O13: …nor creation_mode beside an explicit parent" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool notion-create --tool-input "$O_NOTION_DRAFT"
+# a backgrounded write answers before the page exists, so the operator would be
+# approving an outcome nobody has seen.
+O_NOTION_ASYNC="$O_ROOT/notion-async.json"
+printf '%s\n' '{"page_id":"abc","command":"update_content","allow_async":true}' > "$O_NOTION_ASYNC"
+assert_exit "O13: …nor an async Notion write" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool notion-update --tool-input "$O_NOTION_ASYNC"
+O_NOTION_NOPAGE="$O_ROOT/notion-nopage.json"
+printf '%s\n' '{"command":"update_content"}' > "$O_NOTION_NOPAGE"
+assert_exit "O13: …nor an update that names no page" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool notion-update --tool-input "$O_NOTION_NOPAGE"
+
+# the neighbouring verbs stay closed. This is the whole point of the narrow
+# pair: the recorded incident is one verb opening and the next being reached
+# for instead.
+o_issue "$O_NOTION_UPD" sess-n4 300 notion-update
+for o_neighbour in notion-create-comment notion-send-message-to-session \
+                   notion-duplicate-page notion-move-pages; do
+  assert_eq "O13: no Notion permit opens $o_neighbour" "deny" \
+    "$(o_claim "$(o_envelope "$O_NOTION_UPD" sess-n4 "$O_ROOT" "mcp__claude_ai_Notion__$o_neighbour")")"
+done
+assert_eq "O13: …and the update permit is still unconsumed afterwards" "pass" \
+  "$(o_claim "$(o_envelope "$O_NOTION_UPD" sess-n4 "$O_ROOT" mcp__claude_ai_Notion__notion-update-page)")"
+
+# Codex has no Notion connector named in its guard, so it has no selector.
+assert_exit "O13: the Notion selectors do not exist on the Codex side" 2 \
+  python3 "$O_PERMIT" review --cli codex --tool notion-update --tool-input "$O_NOTION_UPD"
