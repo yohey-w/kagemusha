@@ -8,11 +8,17 @@
 # from a working session.
 #
 # FORMAT: one POSIX ERE per line ("#" = comment, blank lines ignored).
-# Each pattern is a plain literal with exactly ONE character wrapped in
-# brackets — a bracket expression matches the bare character, so the pattern
-# matches the forbidden string while the pattern's own text does not. THIS
-# FILE therefore passes its own scan and needs no exemption (an exempted file
-# is a hole, and a hole in a guard is how the guard dies).
+# Each pattern is a plain literal with ONE bracket expression in it — the
+# bracket matches the bare character(s) inside it, so the pattern matches the
+# forbidden string while the pattern's own text does not (the "[" breaks the
+# adjacency the regex requires). THIS FILE therefore passes its own scan and
+# needs no exemption (an exempted file is a hole, and a hole in a guard is how
+# the guard dies).
+#
+# Corollary: a ONE-CHARACTER forbidden word cannot be written this way — there
+# is no adjacency to break, so "[X]" would match its own line. Write the
+# collocations instead: put the word first and a bracket class of the
+# characters that follow it in real prose (see the in-group vocabulary below).
 #
 # tests/test_c_privacy.sh derives a positive sample from every line by
 # deleting the [ ] and \ characters, and asserts each one is caught — so a
@@ -63,3 +69,18 @@ sokute[i]
 sokute[i]-platform\.vercel\.app
 3bfae6e[4]
 eC8k_LSy[6]
+
+# in-group vocabulary — the honorific and the role names from the author's own
+# loop. The kit ships to strangers: "the approver" / "the operator" / "the
+# chair" is what a reader outside this house can act on. These are ordinary
+# kanji, so the regex cannot use a word boundary — it matches the word plus the
+# character that follows it in real Japanese prose (particles, punctuation,
+# a space, or the head of a compound).
+# (2026-09-20, found by review on PR #26: three of these had ridden into the
+#  meeting-copilot skill's user-facing text, where the automated scan could not
+#  see them because no pattern existed yet.)
+殿[のがはにへをもとやでさま様裁指発自、。 ]
+将[軍]
+家[老]
+軍[師]
+足[軽]

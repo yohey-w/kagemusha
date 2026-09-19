@@ -723,6 +723,7 @@ def load_agenda(path: pathlib.Path):
                 musts.append({
                     "name": m.get("名前", "") or m.get("name", ""),
                     "kw": [k for k in (m.get("検知キーワード") or m.get("keywords") or []) if k],
+                    "ask": m.get("問い", "") or m.get("ask", ""),
                 })
         title = s.get("title", f"ステップ{i + 1}")
         steps.append({
@@ -734,6 +735,7 @@ def load_agenda(path: pathlib.Path):
             "must": musts,
             "nudge": s.get("nudge", ""),
             "script": [x for x in (s.get("台本") or []) if x],
+            "ask": s.get("抜けたら出す問い", "") or s.get("ask", ""),
         })
     if not steps:
         return None
@@ -967,12 +969,18 @@ def build_nav(agenda, lines, mode, start_epoch, total_min_override=None):
             "due": a <= time.time() < b,      # 予定ではいまここ
         })
 
-    unmet = [m["name"] for s in steps[: cur + 1] for m in s["must"] if m["kw"] and not met(m)]
-    warn = None
+    pending = [m for s in steps[: cur + 1] for m in s["must"] if m["kw"] and not met(m)]
+    unmet = [m["name"] for m in pending]
+    warn = warn_say = None
     if elapsed > 0 and unmet and remaining <= agenda["warn_at"]:
         warn = f"残り{int(remaining)}分: {unmet[0]}がまだ"
         if len(unmet) > 1:
             warn += f"（ほか{len(unmet) - 1}件）"
+        # 【言うこと】= 進行表に書いた問いそのまま。無ければ段の問い、それも無ければ定型
+        step_i = next((i for i, s in enumerate(steps[: cur + 1])
+                       if pending[0] in s["must"]), cur)
+        warn_say = (pending[0].get("ask") or steps[step_i].get("ask")
+                    or f"「{unmet[0]}について、いまどうなっていますか」")
 
     return {
         "cur": cur,
@@ -985,6 +993,7 @@ def build_nav(agenda, lines, mode, start_epoch, total_min_override=None):
         "nudge": steps[cur]["nudge"],
         "musts": [{"name": m["name"], "ok": met(m)} for m in steps[cur]["must"]],
         "unmet": unmet,
+        "warn_say": warn_say,
         "chips": chips,
         "warn": warn,
         # 開始前の表示は時刻だけで決める。合図(同席開始)の聞き取り揺れを吸収した結果、
@@ -1204,8 +1213,16 @@ def build_state(outdir: pathlib.Path, agenda, start_epoch, total_min=None):
     # 台本は中段が持つので、下段の穴埋めは取り漏れ警報だけ (v1 の script 穴埋めはしない)
     # 取り漏れが解消すれば nav["warn"] が None になり、このカードは自動で消える。
     if nav and nav["warn"]:
+        # このカードも3要素で出す（番人のカードと同じ読み方にする）。
+        # ここだけ lines 1本のままだと、進行役から見て「何を言えばよいか本文に無い」
+        # 旧形式のカードが1枚だけ混ざる（2026-09-20 レビュー指摘）。
         w = {"kind": "warn", "lines": [nav["warn"]], "confidence": "high",
-             "key": "nav:warn", "at": "", "auto": True}
+             "key": "nav:warn", "at": "", "auto": True, "to": "進行役へ",
+             "target": nav["unmet"][0] if nav["unmet"] else "取り漏れ",
+             "status": f"残り{nav['remaining_min']}分・まだ取れていません"
+                       + (f"（ほか{len(nav['unmet']) - 1}件）"
+                          if len(nav["unmet"]) > 1 else ""),
+             "say": nav.get("warn_say") or nav["warn"]}
         stack.insert(sum(1 for c in stack if c.get("pin")), w)
 
     stack = stack[:CARD_STACK_MAX]

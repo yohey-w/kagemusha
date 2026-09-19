@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """lookup_assist.py — 進行役が「探し始めた」のを検知して、探している物を出す層。
 
---- なぜ要るか (2026-09-19 殿の要望・逐語) ---
-「おれが相手の応答に対して回答するのに情報をさがすときがあるんだけど、いちいち
-君にきいてたじゃん。おれが情報をさがしているのを検知して、そのときに探している
+--- なぜ要るか (2026-09-19 実走での要望・逐語) ---
+「相手の応答に対して回答するのに情報をさがすときがあるんだけど、いちいち
+（AIに）きいてたじゃん。情報をさがしているのを検知して、そのときに探している
 情報をだしてくれるとめっちゃたすかる」
 
 会議中に本当に要るのは推論ではなく**索引**。URL・アカウント名・件数・日付・
@@ -46,11 +46,27 @@ DEFAULT_TRIGGERS = (
     "one moment", "let me check", "hold on", "bear with me", "looking it up",
 )
 
-# 値を画面に出してはいけない話題。見出し・本文のどちらに出ても効く。
-SECRET_WORDS = (
-    "パスワード", "合言葉", "秘密", "鍵", "トークン", "クレデンシャル",
-    "password", "passwd", "secret", "token", "api key", "apikey", "api_key",
-    "credential", "private key",
+# --- 伏字にする項目の決め方 ------------------------------------------------
+# 🔴 判定は**見出しの型**で行う。本文の語では判定しない。
+#
+# 旧実装は見出しと本文の全文に「鍵」「秘密」などを部分一致させていた。同梱のデモで
+# 実害が出た(2026-09-20 レビュー実測): 「連携の相手先」という項目の本文に
+# 「動画配信: 鍵があと1つだけ足りない」と書いてあるだけで、決済・メール配信の状況まで
+# **項目まるごと伏字**になった——進行役がその場で言いたい実務情報そのものが消えた。
+#
+# だから2段で決める。どちらも**見出しだけ**を見る:
+#   1. 明示の印  … 「secret: …」「秘密: …」で始まる、または [secret] / [秘密] を含む
+#   2. 値の名前  … 見出しがその値そのものを名指している場合だけ(下の語)
+# 「鍵」「key」のような**一般語は入れない**。鍵の話題は会議の実務情報でもあるため。
+SECRET_MARK = re.compile(r"^\s*(secret|秘密|機密)\s*[:：]|\[\s*(secret|秘密|機密)\s*\]",
+                         re.I)
+# 見出しがこの語を含むとき、その項目は「値そのもの」を指しているとみなす。
+SECRET_HEAD_WORDS = (
+    "パスワード", "ぱすわーど", "合言葉", "あいことば", "秘密鍵", "暗証",
+    "アクセストークン", "トークン", "apiキー", "api キー", "クレデンシャル",
+    "password", "passwd", "passphrase", "private key", "secret key",
+    "access token", "auth token", "api key", "apikey", "api_key",
+    "credential", "client secret",
 )
 # 伏字にする「値らしい塊」。長い英数字・記号列は、名前ではなく値とみなす。
 VALUE_RE = re.compile(r"[A-Za-z0-9_\-+/=.]{12,}")
@@ -77,9 +93,23 @@ def words(s: str) -> set:
     return set(_WORD_RE.findall(norm(re.sub(r"[（(].*?[)）]", " ", s or ""))))
 
 
-def is_secret(text: str) -> bool:
-    t = norm(text)
-    return any(w in t for w in SECRET_WORDS)
+def is_secret(title: str) -> bool:
+    """**見出しだけ**を見て、その項目が「値そのもの」かを決める。
+
+    本文は見ない。本文に鍵やトークンの話が出てくるのは普通のことで、そこで
+    項目まるごと伏字にすると実務情報が消える(上のコメントの実害)。
+    """
+    t = (title or "").strip()
+    if SECRET_MARK.search(t):
+        return True
+    n = norm(t)
+    return any(w in n for w in SECRET_HEAD_WORDS)
+
+
+def strip_mark(title: str) -> str:
+    """見出しから「secret:」「[秘密]」の印を落として、画面に出す名前にする。"""
+    t = SECRET_MARK.sub("", title or "", count=1)
+    return t.strip(" 　:：") or (title or "").strip()
 
 
 def mask(text: str) -> str:
@@ -90,14 +120,22 @@ def mask(text: str) -> str:
 # ---------------------------------------------------------------- 索引
 
 def parse_quick_facts(text: str) -> list[dict]:
-    """即答表 md → [{title, body, line, secret}]。見出し(#〜###)が話題。"""
+    """即答表 md → [{title, body, line, secret}]。話題は ``##`` 以下の見出し。
+
+    🔴 H1(``# ``)は**読み飛ばす**。H1 はその表そのものの題で、下に続くのは
+    「この表の書き方」の説明文であって会議の事実ではない。無差別に拾うと、
+    説明文が1件の「事実」として検索に混ざる(2026-09-20 レビュー実測)。
+    """
     out: list[dict] = []
     cur = None
     for i, raw in enumerate((text or "").replace("\r\n", "\n").split("\n"), 1):
         st = raw.strip()
-        m = re.match(r"^#{1,6}\s+(.*)$", st)
+        m = re.match(r"^(#{1,6})\s+(.*)$", st)
         if m:
-            cur = {"title": re.sub(r"[*`]", "", m.group(1)).strip(),
+            if len(m.group(1)) == 1:        # H1 = 表の題。ここから次の見出しまでは前書き
+                cur = None
+                continue
+            cur = {"title": re.sub(r"[*`]", "", m.group(2)).strip(),
                    "body": [], "line": i}
             out.append(cur)
             continue
@@ -109,8 +147,8 @@ def parse_quick_facts(text: str) -> list[dict]:
         body = " / ".join(e["body"]).strip()
         if not e["title"] and not body:
             continue
-        res.append({"title": e["title"], "body": body, "line": e["line"],
-                    "secret": is_secret(e["title"] + " " + body)})
+        res.append({"title": strip_mark(e["title"]), "body": body, "line": e["line"],
+                    "secret": is_secret(e["title"])})
     return res
 
 
@@ -173,7 +211,10 @@ class Index:
                         "status": f"資料 {fp.name}",
                         "say": line[:80] or fp.name,
                         "ref": "",
-                        "secret": is_secret(head),
+                        # 資料も「見出し」で決める。ここではファイル名がその役
+                        # (中身に鍵の話が出てくるだけで資料1件が丸ごと伏字になると、
+                        #  会議で読みたい行が消える)
+                        "secret": is_secret(fp.stem),
                         "bag": words(fp.stem + " " + head),
                     })
 

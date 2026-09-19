@@ -133,9 +133,13 @@ class CopilotCase(unittest.TestCase):
         """premise_ok の【対象】は台帳の事実文。"F-011" のような内部IDは小さく添えるだけ。"""
         sys.modules.pop("premise_watch", None)
         try:
-            pw = importlib.import_module("premise_watch")
-        except SystemExit as e:               # PyYAML が無い環境ではこの層を飛ばす
-            self.skipTest(f"premise_watch を読み込めない: {e}")
+            import yaml  # noqa: F401
+        except ImportError:
+            # 前提監視は PyYAML 必須。無ければ**黙って劣化せず止まる**のが仕様。
+            with self.assertRaises(SystemExit):
+                importlib.import_module("premise_watch")
+            return
+        pw = importlib.import_module("premise_watch")
         pid = pw.PREMISES[0]["id"]
         title = pw.PREMISES[0]["title"]
         card = pw.to_card({"ts": iso(datetime.now()), "type": "既知",
@@ -317,10 +321,23 @@ class QuickFactsCase(CopilotCase):
         self.assertEqual(c["to"], "進行役へ")
 
     def test_ledger_facts_are_searched_too(self):
+        """PyYAML があれば台帳も引く。無ければ**静かに空**（探し物は落ちない）。
+
+        どちらも仕様なので、環境で skip しない——skip にすると「その日は
+        何も検査していない」ことが緑に見える。
+        """
         import lookup_assist as la
+        has_yaml = True
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            has_yaml = False
         idx = la.Index(ledger=self.meeting / "ledger.yaml")
-        if not len(idx):
-            self.skipTest("台帳を読めない環境（PyYAML 無し）")
+        if not has_yaml:
+            self.assertEqual(len(idx), 0, "PyYAML 無しでも落ちずに空であること")
+            self.assertIsNone(idx.find("確認します、何かありましたっけ", ""))
+            return
+        self.assertTrue(len(idx), "PyYAML があるのに台帳を1件も読めていない")
         fact = idx.entries[0]
         probe = " ".join(sorted(fact["bag"], key=len, reverse=True)[:3])
         hit = idx.find(f"確認します、{probe}は", "")
@@ -356,6 +373,67 @@ class QuickFactsCase(CopilotCase):
                                     f"秘密の項目から値らしい文字列が出ている: {e['title']}")
                 self.assertIn("鍵パネル", out["say"])
 
+    def test_a_plain_entry_that_merely_mentions_a_key_is_not_masked(self):
+        """🔴 本文に「鍵」と書いてあるだけの実務メモを伏字にしない。
+
+        2026-09-20 のレビュー実測: 同梱デモの「連携の相手先」が、本文の
+        「動画配信: 鍵があと1つだけ足りない」だけで項目まるごと伏字になり、
+        決済・メール配信の状況という**言いたい中身**が消えていた。
+        """
+        import lookup_assist as la
+        qf = self.tmp / "plain.md"
+        qf.write_text("## 連携の相手先\n"
+                      "決済: テスト環境まで完成\n"
+                      "動画配信: 鍵があと1つだけ足りない\n", encoding="utf-8")
+        idx = la.Index(quick_facts=qf)
+        hit = idx.find("確認します、連携の相手先はどうなってましたっけ", "")
+        self.assertIsNotNone(hit)
+        self.assertIn("決済", hit["say"], f"実務情報が伏字になった: {hit}")
+        self.assertNotIn("鍵パネル", hit["say"])
+        self.assertNotIn("••••", hit["say"])
+
+    def test_the_heading_marker_is_what_makes_an_entry_secret(self):
+        import lookup_assist as la
+        for head in ("secret: 管理画面のログイン", "管理画面のログイン [secret]",
+                     "秘密: 管理画面のログイン", "管理画面のパスワード"):
+            qf = self.tmp / "m.md"
+            qf.write_text(f"## {head}\n値: hunter2-SUPERSECRET-9999\n", encoding="utf-8")
+            e = la.parse_quick_facts(qf.read_text(encoding="utf-8"))[0]
+            self.assertTrue(e["secret"], f"印を見落とした: {head}")
+            self.assertNotIn("secret", e["title"].lower(), "印が対象名に残っている")
+            out = la.Index.render({**e, "target": e["title"], "status": "s",
+                                   "say": e["body"], "ref": ""})
+            self.assertNotIn("hunter2-SUPERSECRET-9999", out["say"])
+        # 印も値の名前も無ければ、秘密扱いしない
+        qf.write_text("## 動画配信の鍵の状況\nあと1つ足りません\n", encoding="utf-8")
+        self.assertFalse(la.parse_quick_facts(qf.read_text(encoding="utf-8"))[0]["secret"])
+
+    def test_the_h1_preamble_is_not_indexed_as_a_fact(self):
+        """H1 の下の「この表の書き方」は会議の事実ではないので索引に入れない。"""
+        import lookup_assist as la
+        qf = self.tmp / "h1.md"
+        qf.write_text("# 即答表（架空）\n\n書き方: 合言葉・鍵・トークンの値は書かない。\n\n"
+                      "## 入口\n画面: ログイン画面\n", encoding="utf-8")
+        got = la.parse_quick_facts(qf.read_text(encoding="utf-8"))
+        self.assertEqual([e["title"] for e in got], ["入口"])
+
+    def test_the_shipped_quick_facts_marks_exactly_the_value_entries(self):
+        import lookup_assist as la
+        got = la.parse_quick_facts(
+            (EXAMPLE_MEETING / "quick_facts.md").read_text(encoding="utf-8"))
+        secret = [e["title"] for e in got if e["secret"]]
+        self.assertEqual(len(secret), 1, f"同梱デモの伏字対象がずれている: {secret}")
+        self.assertIn("合言葉", secret[0])
+        for e in got:
+            out = la.Index.render({**e, "target": e["title"], "status": "s",
+                                   "say": e["body"], "ref": ""})
+            if e["secret"]:
+                self.assertNotRegex(out["say"], la.VALUE_RE)
+                self.assertIn("鍵パネル", out["say"])
+            else:
+                self.assertEqual(out["say"], e["body"][:120],
+                                 f"秘密でない項目が書き換えられた: {e['title']}")
+
     def test_a_miss_is_recorded_for_later(self):
         cop = self.make()
         self.say(cop, "guest", "むかしの話ですが")
@@ -382,6 +460,42 @@ class QuickFactsCase(CopilotCase):
         self.say(cop, "host", "ちょっとお待ちください、お見積りの金額を確認します")
         kinds = {c["kind"] for c in self.cards()}
         self.assertIn("warn", kinds, f"金額の警報が消えている: {kinds}")
+
+
+class LegacyCardCase(CopilotCase):
+    """3行形式から取り残されていた2枚（2026-09-20 レビュー指摘）。"""
+
+    def test_the_start_signal_card_has_the_three_elements(self):
+        cop = self.make()
+        cop.started = False
+        self.say(cop, "host", self.c.MODE_START_WORD)
+        got = self.cards()
+        self.assertEqual(len(got), 1, got)
+        for f in ("target", "status", "say"):
+            self.assertTrue(str(got[0].get(f, "")).strip(), f"{f} が空: {got[0]}")
+        self.assertNotEqual(got[0]["target"], got[0]["say"],
+                            "対象と言うことが同じ＝1要素カードのまま")
+
+    def test_the_navigator_warning_card_has_the_three_elements(self):
+        """画面が自前で合成する取り漏れ警報も、番人のカードと同じ読み方にする。"""
+        sys.modules.pop("viewer2", None)
+        v = importlib.import_module("viewer2")
+        agenda = v.load_agenda(v.AGENDA_PATH)
+        # 会議はほぼ終わり（残り時間 < 警報分）なのに必須が取れていない状態を作る
+        start = datetime.now() - timedelta(minutes=agenda["total_min"] - 1)
+        (self.state / "transcript.jsonl").write_text("".join(
+            json.dumps(r, ensure_ascii=False) + "\n" for r in [
+                {"ts": iso(start), "type": "mode", "mode": "start"},
+                {"ts": iso(start + timedelta(seconds=5)), "speaker": "host",
+                 "text": "おはようございます。よろしくお願いします"},
+            ]), encoding="utf-8")
+        st = v.build_state(self.state, agenda, start.timestamp(), None)
+        self.assertTrue(st["nav"]["warn"], "取り漏れ警報が出る状態になっていない")
+        w = next(c for c in st["cards"] if c.get("key") == "nav:warn")
+        for f in ("target", "status", "say", "to"):
+            self.assertTrue(str(w.get(f, "")).strip(), f"{f} が空: {w}")
+        self.assertEqual(w["target"], st["nav"]["unmet"][0])
+        self.assertIn("残り", w["status"])
 
 
 class ScriptModeCase(CopilotCase):

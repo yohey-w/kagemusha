@@ -605,7 +605,12 @@ class Copilot:
             ):
                 self.reset_state("同席開始(音声揺れ吸収)")
                 self.started = True
-                self.emit("topic", ["同席、始めます。"], "high", f"開始合図 in={text[:20]}")
+                s0 = self.kb.steps[0]
+                self.emit("topic", [], "high", f"開始合図 in={text[:20]}",
+                          target=f"【1】{s0['title']}",
+                          status="同席を始めました",
+                          say=shorten(s0["say"] or (clean_md(s0["script"][0])
+                                                    if s0["script"] else s0["title"]), 58))
                 return
         if text.startswith("[TEST]"):
             # 本番では素通し。--test のときだけ印を外して本番と同じ経路に通す
@@ -902,7 +907,7 @@ class Copilot:
     def try_lookup(self, text: str) -> bool:
         """進行役が資料を探し始めたら、即答表と台帳から1秒以内に答えを出す。
 
-        殿の要望(2026-09-19): 「相手の応答に回答するのに情報をさがすとき、いちいち
+        実走での要望(2026-09-19): 「相手の応答に回答するのに情報をさがすとき、いちいち
         聞いていた。探しているのを検知して、探している情報を出してくれると助かる」。
         当たらなかったら lookup_misses.jsonl に残す(会議後に即答表を育てる材料)。
         """

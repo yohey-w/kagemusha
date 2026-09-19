@@ -31,7 +31,7 @@ This is not limited to "systems." Use it whenever you need a single authoritativ
 ## §4 不変条件と権限境界 / Invariants & Authority Boundaries
 
 崩してはいけない前提・誰が何を決めてよいか。
-例: 「¥に関わる範囲の決定は殿のみ」
+例: 「¥に関わる範囲の決定は承認者のみ」
 
 ## §5 実装状態の正直な表 / Honest Implementation State
 
