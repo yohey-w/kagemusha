@@ -415,7 +415,7 @@ def stop_policy() -> dict:
     return {
         "enabled": bool(raw.get("enabled", True)),
         "silence_min": f("silence_min", "MEETLIVE_STOP_SILENCE_MIN", 10.0),
-        "farewell_grace_min": f("farewell_grace_min", "MEETLIVE_STOP_FAREWELL_MIN", 3.0),
+        "farewell_grace_min": f("farewell_grace_min", "MEETLIVE_STOP_FAREWELL_MIN", 5.0),
         "end_grace_min": f("end_grace_min", "MEETLIVE_STOP_END_MIN", 10.0),
     }
 

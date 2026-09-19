@@ -158,25 +158,61 @@ def classify(utterance: str) -> dict:
     return result
 
 
+_BY_ID = {p["id"]: p["title"] for p in PREMISES}
+_ID_RE = re.compile(r"[A-Za-z]{1,4}[-_]?\d{1,4}")
+
+
+def fact_text(raw: str) -> tuple[str, str]:
+    """判定が返した出所 → (人が読める事実文, 内部ID)。
+
+    🔴 カードの【対象】に "F-011" と書いてはいけない。実走(2026-09-19)の premise_ok
+    4件は全部これで、進行役から見れば**何の話か分からないカード**だった。
+    IDは小さく添えるだけにして、本文には台帳の事実文そのものを出す。
+    """
+    s = (raw or "").strip()
+    if not s:
+        return ("", "")
+    if s in _BY_ID:
+        return (_BY_ID[s], s)
+    m = _ID_RE.search(s)
+    if m and m.group(0) in _BY_ID:
+        pid = m.group(0)
+        # 「F-011 本番も検証環境も動いている」のように id と文が並ぶ形にも備える
+        rest = (s[: m.start()] + s[m.end():]).strip(" 　:：-—・")
+        return (rest or _BY_ID[pid], pid)
+    return (s, m.group(0) if m else "")
+
+
 def to_card(result: dict) -> dict | None:
     t = result.get("type")
     ts = result["ts"]
+    base = {"ts": ts, "src": "premise-watch", "to": "進行役へ",
+            "q": result.get("utterance", "")[:60]}
     if t == "矛盾":
-        lines = [f"⚠前提ズレ: {result.get('premise','')}",
-                 f"相手: {result.get('gist','')}",
+        target, ref = fact_text(result.get("premise", ""))
+        lines = [f"⚠前提ズレ: {target}", f"相手: {result.get('gist','')}",
                  f"返し: {result.get('reply','')}"]
-        return {"ts": ts, "kind": "premise_warn", "lines": lines, "confidence": "high",
-                "ttl": 60, "src": "premise-watch", "q": result.get("utterance", "")[:60]}
+        return {**base, "kind": "premise_warn", "lines": lines, "confidence": "high",
+                "ttl": 60, "ref": ref,
+                "target": target or "前提のズレ",
+                "status": f"相手の話と食い違っています（{result.get('gist','')}）",
+                "say": result.get("reply", "")}
     if t == "既知":
-        lines = [f"✔既知: {result.get('source','')}",
-                 f"返し: {result.get('reply','')}"]
-        return {"ts": ts, "kind": "premise_ok", "lines": lines, "confidence": "high",
-                "ttl": 45, "src": "premise-watch", "q": result.get("utterance", "")[:60]}
+        target, ref = fact_text(result.get("source", ""))
+        lines = [f"✔既知: {target}", f"返し: {result.get('reply','')}"]
+        return {**base, "kind": "premise_ok", "lines": lines, "confidence": "high",
+                "ttl": 45, "ref": ref,
+                "target": target or "既に伺っていること",
+                "status": "台帳にある事実と一致",
+                "say": result.get("reply", "")}
     if t == "新規":
         lines = [f"＋新情報: {result.get('gist','')}",
                  f"確認: {result.get('confirm','')}"]
-        return {"ts": ts, "kind": "premise_new", "lines": lines, "confidence": "low",
-                "ttl": 45, "src": "premise-watch", "q": result.get("utterance", "")[:60]}
+        return {**base, "kind": "premise_new", "lines": lines, "confidence": "low",
+                "ttl": 45,
+                "target": result.get("gist", "") or "新しい話",
+                "status": "台帳に無い新情報",
+                "say": result.get("confirm", "")}
     return None
 
 

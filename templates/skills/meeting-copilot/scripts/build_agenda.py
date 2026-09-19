@@ -256,9 +256,13 @@ def nouns(s: str) -> set:
 def assign_asks(steps: list[dict], asks: list[dict]) -> list[dict]:
     """「確認したいこと」を段へ割り付ける。**決め方を1つに固定する**:
 
-      1. 段の題+取る答えと**重なった語の長さの合計**がいちばん大きい段
-         (件数で数えると「データ」と「移行」が同じ1点になり、先に書いた段が総取りする。
-          長い語ほど効かせると、実際に同じ話をしている段へ寄る)
+      1. 段の題+取る答えと**重なった語の長さの合計**を、その段の語数で割った値が
+         いちばん大きい段。
+         · 件数で数えると「データ」と「移行」が同じ1点になり、先に書いた段が総取りする
+           ⇒ 長い語ほど効かせる
+         · 「今日決めたいこと」のように**他の段の話題を全部並べる段**は、
+           どの問いにも当たってしまい、ぜんぶ吸い込む
+           ⇒ 語数で割って「その問いの話が主題になっている段」を勝たせる
       2. どこにも重ならなければ「先に伺う」性格の段(題に 伺/確認/質問 を含む)
       3. それも無ければ先頭の段
     同点は前の段が勝つ(並びが変わらない＝作り直しても結果が動かない)。
@@ -281,6 +285,7 @@ def assign_asks(steps: list[dict], asks: list[dict]) -> list[dict]:
             # 片方がもう片方を含むだけ(移行 ⊂ 移行範囲)は半分の重み
             n += 0.5 * sum(len(w) for w in bag - b
                            if any(w in x or x in w for x in b))
+            n /= max(1.0, len(b)) ** 0.5     # 話題を並べただけの段に総取りさせない
             if n > score:
                 best, score = i, n
         i = best if best is not None else fallback
@@ -288,8 +293,10 @@ def assign_asks(steps: list[dict], asks: list[dict]) -> list[dict]:
         a["step"] = i
         if not s["抜けたら出す問い"]:
             s["抜けたら出す問い"] = tidy(text, 60)
-        # 必須取得物: 問いの中の語を検知キーワードにする(長いものから3つ)
-        kws = sorted((w for w in bag if len(w) >= 3), key=len, reverse=True)[:3]
+        # 必須取得物: 問いの中の語を検知キーワードにする(長いものから3つ)。
+        # 語の集合は順序を持たないので、長さが同じものは文字順で割り、
+        # **同じ進行表からは必ず同じ JSON が出る**ようにする(差分が毎回出ない)。
+        kws = sorted((w for w in bag if len(w) >= 3), key=lambda w: (-len(w), w))[:3]
         s["必須取得物"].append({
             "名前": tidy(text, 28),
             "検知キーワード": kws or [tidy(text, 10)],

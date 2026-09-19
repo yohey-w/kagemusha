@@ -39,7 +39,7 @@
   "auto_stop": {
     "enabled": true,
     "silence_min": 10,
-    "farewell_grace_min": 3,
+    "farewell_grace_min": 5,
     "end_grace_min": 10
   },
 
