@@ -4,17 +4,21 @@
     "  MEETLIVE_MEETING=templates/skills/meeting-copilot/config/example_meeting \\",
     "  MEETLIVE_DIR=/tmp/meetlive_demo python3 .../scripts/viewer2.py --port 47398",
     "で、この道具がひととおり動く。自分の案件用にはこのフォルダを丸ごとコピーして中身を",
-    "入れ替えるのがいちばん早い。キーの意味は config/meeting.example.json を見ること。"
+    "入れ替えるのがいちばん早い。キーの意味は config/meeting.example.json を見ること。",
+    "agenda_steps.json と talk_script.md は agenda_sheet.md から生成したものです:",
+    "  python3 ../../scripts/build_agenda.py agenda_sheet.md --out . --check"
   ],
 
   "title": "Acme社 移行の打合せ（デモ・架空）",
   "start": "15:00",
-  "total_min": 30,
+  "end": "15:45",
+  "total_min": 45,
 
   "host_label": "進行役",
   "counterpart": "Acmeさん",
   "share": "host",
   "layout": "columns",
+  "script_mode": "with_lines",
 
   "features": {
     "copilot": true,
@@ -30,6 +34,13 @@
 
   "card_policy": {
     "auto_dismiss_kinds": ["warn", "premise_warn"]
+  },
+
+  "auto_stop": {
+    "enabled": true,
+    "silence_min": 10,
+    "farewell_grace_min": 5,
+    "end_grace_min": 10
   },
 
   "call_words": ["コパイロット", "こぱいろっと", "秘書", "ひしょ"],

@@ -80,7 +80,7 @@ Case data lives under `projects/`, which the allowlist `.gitignore` makes struct
 | `owner` | value, promises, irreversible, taste | **人（依頼主）が決める**。ここだけが人の出番 |
 | `counterpart` | the other party's domain, timing, their own operation | 相手が決める |
 | `contract_change` | the answer changes a signed agreement | 契約変更が要る |
-| `agent` | everything else — **set a default, act, report afterwards** | 影武者が決めて事後報告 |
+| `agent` | everything else — **set a default, act, report afterwards** | エージェントが決めて事後報告 |
 
 **The discipline is the fourth value.** Without `agent`, every open question drifts to `owner` and the human becomes the bottleneck again. The test: *value, promise, irreversibility, taste* — if none apply, it is not the human's fork.
 **規律の本体は4つ目の値。** これが無いと未決が全部 `owner` に流れ、人がまたボトルネックになる。判定は「価値・約束・不可逆・好み」——どれでもなければ人の分岐ではない。

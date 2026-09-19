@@ -388,6 +388,23 @@ def main():
         f"rate={cfg.rate} -> {outdir}",
         flush=True,
     )
+    # 停止ファイルを見たら自分で畳む。子機を待ち受けているだけなので停止の口が
+    # 無く、会議のあとも残り続けていた(2026-09-19 実走)。kill は使わない。
+    stop_file = cfgmod.stop_file()
+
+    def watch_stop():
+        while True:
+            try:
+                if stop_file.exists():
+                    print(f"停止ファイルを見つけたので終わります ({stop_file})", flush=True)
+                    srv.shutdown()
+                    return
+            except Exception:       # noqa: BLE001  監視で落ちない
+                pass
+            time.sleep(2.0)
+
+    threading.Thread(target=watch_stop, daemon=True).start()
+    print(f"  停止ファイル({stop_file.name})が置かれたら自分で終わります", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

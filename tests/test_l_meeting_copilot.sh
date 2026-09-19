@@ -175,9 +175,20 @@ assert_empty_str "L5: run.sh / stop.sh never reach for kill or pkill" \
      | grep -nE '(^|[^a-z_])p?kill([^a-z_]|$)')"
 assert_grep "L5: stop.sh uses the viewer's own /quit"        "/quit"          "$L_SCRIPTS/stop.sh"
 assert_grep "L5: stop.sh uses the responder's own stop file" "responder.stop" "$L_SCRIPTS/stop.sh"
-# the two layers with no stop path of their own are named as manual, in the kit
-assert_grep "L5: SKILL.md says which layers have no stop path" \
-  "停止の口が無い" "$L_SKILL/SKILL.md"
+# 2026-09-20: every layer now has a stop path — one shared file each of them polls.
+# The failure this closes: after the 9/19 meeting, receiver and copilot had NO stop
+# path at all, so three processes ran on for ~12 hours drawing 903 cards nobody saw.
+assert_grep "L5: stop.sh places the one stop file every layer watches" \
+  "meetlive.stop" "$L_SCRIPTS/stop.sh"
+for l_layer in copilot receiver viewer2 responder; do
+  assert_grep "L5: $l_layer watches the shared stop file" \
+    "stop_file()" "$L_SCRIPTS/$l_layer.py"
+done
+# ...and the launcher clears a stale one, or the next meeting dies on startup
+assert_grep "L5: run.sh clears a stale stop file before starting" \
+  "meetlive.stop" "$L_SCRIPTS/run.sh"
+assert_grep "L5: SKILL.md documents the one stop path" \
+  "meetlive.stop" "$L_SKILL/SKILL.md"
 
 # ── L6. the responder feeds the model EVERYTHING ───────────────────────────
 # 2026-09-03, measured: truncating the material does not make the answer say

@@ -231,7 +231,7 @@ allow() { log "allow ${1:-}"; printf '{}'; exit 0; }
 deny() {  # deny <tool_name> <why>
   log "DENY $1 — $2"
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' \
-    "outbound guard: $1 is an outward call. Do not send, and do not reach for a neighbouring tool. Append the message to approval_queue.md and wait for the operator to approve it. / 外向き送信は approval_queue.md へ積んで殿の承認を待つ。別のツールへ迂回するな。($2) session_id=${SAFE_SESSION:-unknown} — an approved exact send is opened with .claude/hooks/outbound_permit.py issue --cli claude (see docs/outbound-permits.md)."
+    "outbound guard: $1 is an outward call. Do not send, and do not reach for a neighbouring tool. Append the message to approval_queue.md and wait for the operator to approve it. / 外向き送信は approval_queue.md へ積んで承認者の承認を待つ。別のツールへ迂回するな。($2) session_id=${SAFE_SESSION:-unknown} — an approved exact send is opened with .claude/hooks/outbound_permit.py issue --cli claude (see docs/outbound-permits.md)."
   exit 0
 }
 

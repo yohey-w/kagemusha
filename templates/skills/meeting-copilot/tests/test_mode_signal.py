@@ -108,6 +108,19 @@ class ModeSignalCase(unittest.TestCase):
             else:
                 os.environ[k] = v
 
+    def step2_utterance(self) -> str:
+        """段②へ進ませる発話を**デモ会議フォルダの段取りから作る**。
+
+        ここに文字列を直書きすると、デモの段取りを組み替えただけでこのテストが
+        赤くなる（このテストが見ているのは合図の対称性であって、デモの文言ではない）。
+        段②の検知キーワードをそのまま含む、十分な長さの発話を作る。
+        """
+        v = self.viewer2
+        steps = (v.load_agenda(v.AGENDA_PATH) or {})["steps"]
+        kw = next((k for k in steps[1]["kw"] if k), "")
+        self.assertTrue(kw, "デモ会議フォルダの段②に検知キーワードがありません")
+        return f"では、{kw}についてお話しさせてください"
+
 
 # ---------------------------------------------------------------- 1. 述語
 
@@ -169,7 +182,7 @@ class TestWriterReaderSymmetry(ModeSignalCase):
         agenda = v.load_agenda(v.AGENDA_PATH)
         t0 = datetime.now() - timedelta(minutes=5)
         lines = [
-            {"ts": iso(t0), "speaker": "host", "text": "移行の範囲を決めさせてください"},
+            {"ts": iso(t0), "speaker": "host", "text": self.step2_utterance()},
             {"ts": iso(t0 + timedelta(seconds=30)), "speaker": "host", "text": text},
         ]
         nav = v.build_nav(agenda, lines, "start", t0.timestamp())
@@ -241,7 +254,7 @@ class TestStartButton(ModeSignalCase):
         # 押す前に段2のキーワードを喋っておく = ボタンで①へ戻ることが観測できる
         (self.state / "transcript.jsonl").write_text(
             json.dumps({"ts": iso(datetime.now() - timedelta(minutes=4)),
-                        "speaker": "host", "text": "移行の範囲を決めさせてください"},
+                        "speaker": "host", "text": self.step2_utterance()},
                        ensure_ascii=False) + "\n", encoding="utf-8")
         handler = v.make_handler(self.state, agenda, blocks, start_epoch)
 

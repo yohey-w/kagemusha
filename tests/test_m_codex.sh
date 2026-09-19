@@ -611,7 +611,7 @@ assert_grep_str "M8: …and the stamp itself, inside additionalContext" "[now] "
 # the date and shipped the format string to the model.
 assert_no_grep_str "M8: …with the date substituted, not the format string" "%Y" "$M_HOOK_CTX"
 
-# control — the form 殿 hit on 2026-09-07: bare `date` output is not JSON, so
+# control — the shape that was hit on 2026-09-07: bare `date` output is not JSON, so
 # the check above is capable of failing.
 assert_nonempty_str "M8: control — the JSON check rejects the plain-text form" \
   "$(bash -c "date '+[now] %Y-%m-%d (%a) %H:%M %Z'" | python3 -c '
