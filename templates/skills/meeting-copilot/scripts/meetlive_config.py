@@ -57,6 +57,9 @@ MEETING_DEFAULTS: dict = {
     "counterpart": "",           # 空なら MEETLIVE_COUNTERPART / 既定「相手」
     "share": "host",             # "host" | "guest" | "none" (画面共有の構え)
     "layout": "auto",            # "columns" | "rows" | "auto"
+    "script_mode": "with_lines",  # "with_lines" | "answers_only" (カンペの粒度)
+    "end": "",                   # "HH:MM" 終わりの予定。終話検知の材料(空なら使わない)
+    "auto_stop": {},             # 終話検知の効き方 (stop_policy() 参照)
     "features": {"copilot": True, "responder": True,
                  "premise_watch": True, "stage": True},
     "stage": {"set_label": "", "order": []},
@@ -364,6 +367,95 @@ def card_policy() -> dict:
         "stack_max": int(raw.get("stack_max", 60) or 60),
         "history_max": int(raw.get("history_max", 30) or 30),
     }
+
+
+def script_mode() -> str:
+    """カンペ(中段テレプロンプター)の粒度。
+
+    with_lines   … 「取る答え」「言い方の例」「抜けたら出す問い」を全部出す(既定)
+    answers_only … 「取る答え」と「抜けたら出す問い」だけ。言い方の例は隠す
+                   (読み上げ用の台詞が画面にあると、そこを読もうとして会話が固くなる、
+                    という 2026-09-19 の実走反省。台本一致は40件中1件だった)
+    """
+    v = (_meeting_str("script_mode") or os.environ.get("MEETLIVE_SCRIPT_MODE") or "").lower()
+    return v if v in ("with_lines", "answers_only") else "with_lines"
+
+
+# ---------------------------------------------------------------- 終話と停止
+
+
+def stop_file() -> pathlib.Path:
+    """全層が共通で見る停止ファイル。これが出来たら各プロセスは**自分で**終わる。
+
+    🔴 kill を使わないための唯一の経路。stop.sh も、終話を検知した番人も、
+    ここに1つのファイルを置くだけ。畳むのはプロセス自身の仕事。
+    """
+    return state_dir(create=False) / "meetlive.stop"
+
+
+def stop_policy() -> dict:
+    """終話検知の効き方。meeting.json の ``auto_stop`` で会議ごとに変えられる。
+
+    silence_min      … 双方の無音がこれだけ続いたら終話とみなす(分)
+                       実測(2026-09-19)で会議の**最中**に150秒の片側ギャップがあった。
+                       分単位で余裕を取らないと会議中に自分で落ちる。
+    farewell_grace_min … 別れの言葉のあと、この時間無音なら終話
+    end_grace_min    … 予定の終わり(--end / meeting.json の end)からこの時間過ぎたら終話
+    enabled          … false で終話検知を切る(停止ファイルによる停止は残る)
+    """
+    raw = load_meeting().get("auto_stop")
+    raw = raw if isinstance(raw, dict) else {}
+
+    def f(key, env, default):
+        try:
+            return float(raw.get(key, os.environ.get(env) or default) or default)
+        except (TypeError, ValueError):
+            return default
+
+    return {
+        "enabled": bool(raw.get("enabled", True)),
+        "silence_min": f("silence_min", "MEETLIVE_STOP_SILENCE_MIN", 10.0),
+        "farewell_grace_min": f("farewell_grace_min", "MEETLIVE_STOP_FAREWELL_MIN", 3.0),
+        "end_grace_min": f("end_grace_min", "MEETLIVE_STOP_END_MIN", 10.0),
+    }
+
+
+def meeting_end_iso(default: str = "") -> str:
+    """meeting.json の ``end`` ("HH:MM") を「今日の日付 + その時刻」に直す。"""
+    hhmm = _meeting_str("end")
+    if not hhmm:
+        return default
+    parts = hhmm.split(":")
+    try:
+        h, m = int(parts[0]), int(parts[1])
+    except (IndexError, ValueError):
+        return default
+    from datetime import datetime
+    return datetime.now().replace(hour=h, minute=m, second=0,
+                                  microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+# ---------------------------------------------------------------- 探し物アシスト
+
+
+def quick_facts_path() -> pathlib.Path | None:
+    """即答表 ``quick_facts.md``(会議フォルダ直下・任意)。無ければ None。
+
+    進行役が「ちょっとお待ちください」と探し始めたときに、1秒以内に出す値の置き場。
+    🔴 合言葉そのものは書かない。書くのは**所在**だけ(鍵パネルは別経路)。
+    """
+    raw = os.environ.get("MEETLIVE_QUICK_FACTS")
+    if raw:
+        p = pathlib.Path(raw).expanduser()
+        if not p.exists():
+            raise SystemExit(f"[meetlive] MEETLIVE_QUICK_FACTS={raw} が見つかりません。")
+        return p
+    return meeting_file("quick_facts.md")
+
+
+def lookup_cooldown() -> float:
+    """同じ探し物を撃ち直すまでの間(秒)。"""
+    return _float_env("MEETLIVE_LOOKUP_COOLDOWN", 120.0)
 
 
 def features() -> dict:

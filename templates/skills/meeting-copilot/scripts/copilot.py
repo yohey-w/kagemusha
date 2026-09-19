@@ -9,6 +9,22 @@ transcript.jsonl を tail し、**ルールと文字列照合だけ**でカー�
         warn  = 約束の境界(金額・期限・責任)への警報      ttl 45
         topic = 段取りが次へ進んだ / 取り漏れの催促        ttl 90
         wrap  = 中止条件の検知(注意喚起のみ)              ttl 60
+        lookup= 進行役が探し物を始めたときの即答          ttl 90
+
+🔴 カードは**必ず3要素**を持つ (2026-09-19 実走の反省・カード1013件中、3要素が
+   そろっていたのは14件=1.4%だった。残りは「対象は分かるが、何が問題で・何を
+   言えばよいかが本文に無い」型で、進行役は読んでも動けなかった):
+
+     target … 【対象】 何について言っているか (内部IDではなく人が読める言葉)
+     status … 【状況】 何が起きた・何が分かった
+     say    … 【言うこと】 その場でそのまま読み上げられる完成文
+     to     … 宛先 "進行役へ" | "記録のみ" (声に出すものと、裏の記録を区別する)
+     ref    … 内部ID(F-011 等)。本文には出さず、小さく添えるだけ
+
+   lines は後方互換のため残す(この3要素から自動で組み立てる)。
+
+🔴 同じ対象の催促は**初回だけフルカード**。以後は件数のバッジだけ
+   (実走で同一文言の催促が960件。TTLで消えて再び出るのを12時間繰り返した)。
 
 設計メモ:
   - 状態(いまどの段・取り漏れ)は「同席開始」でリセットする。テスト行を本番に持ち込まないため。
@@ -35,8 +51,10 @@ import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import lookup_assist  # noqa: E402
 import meetlive_config as cfgmod  # noqa: E402
 import mode_signal  # noqa: E402
+import step_detect  # noqa: E402
 
 # ------------------------------------------------------------------ パス
 STATE_DIR = cfgmod.state_dir()
@@ -47,8 +65,11 @@ STAGE_CMD = STATE_DIR / "stage_cmd.jsonl"
 AGENDA_PATH = cfgmod.input_path("MEETLIVE_AGENDA", "agenda_steps.example.json", required=True)
 SCRIPT_PATH = cfgmod.input_path("MEETLIVE_SCRIPT", "talk_script.example.md", required=True)
 
+STOP_FILE = cfgmod.stop_file()
+LOOKUP_MISSES = STATE_DIR / "lookup_misses.jsonl"
+
 POLL_SEC = 0.3
-TTL = {"call": 60, "warn": 45, "topic": 90, "wrap": 60,
+TTL = {"call": 60, "warn": 45, "topic": 90, "wrap": 60, "lookup": 90,
        "premise_warn": 60, "premise_ok": 45, "premise_new": 45}
 # topic(取り漏れ催促)の TTL は再発火間隔(SILENCE_COOLDOWN)より長くしてある。
 # 短いと「表示が消えてから次が出るまでの間」に見逃す。
@@ -72,6 +93,12 @@ Q_TAILS = ("ですか", "ますか", "んですか", "でしょうか", "？", "
 Q_MIN_LEN = 30    # 疑問終止形でも短い言いさし断片は拾わない
                   # (実測: 相手の言いさし断片への誤発火が18回中18回だった)
 
+# 同じ対象の催促を撃ち直す回数。初回はフルカード、以後はここに挙げた回数に達した
+# ときだけ「未解決バッジ」を1枚。45秒に1回×2時間=160回でも、出るカードは6枚。
+BADGE_AT = (2, 4, 8, 16, 32, 64, 128, 256)
+STOP = cfgmod.stop_policy()
+LOOKUP_COOLDOWN = cfgmod.lookup_cooldown()
+
 # ------------------------------------------------------------------ 語彙集(設定)
 PHRASE = cfgmod.load_phrasebook()
 WARN_CATS = {}
@@ -84,6 +111,12 @@ ESCAPE_WORDS = tuple(PHRASE.get("escape_words") or ())
 # 質問/依頼の形か
 ASK_MARKS = tuple(PHRASE.get("ask_marks") or ())
 HANDOVER_WORDS = tuple(PHRASE.get("handover_words") or ())
+# 別れの言葉。これが出たら終話の**予鈴**(即停止はしない。無音が続いてはじめて畳む)
+FAREWELL_WORDS = tuple(PHRASE.get("farewell_words")
+                       or ("失礼します", "ありがとうございました", "よろしくお願いします",
+                           "また来週", "また次回", "お疲れさまでした"))
+# 探し始めの合図(探し物アシスト)。既定は lookup_assist が持つ汎用の語彙。
+LOOKUP_TRIGGERS = tuple(PHRASE.get("lookup_triggers") or lookup_assist.DEFAULT_TRIGGERS)
 WRAP_LINES = list(PHRASE.get("wrap_lines") or ["通常モードへ。戻るのは失敗ではない。"])
 NOT_FOUND_LINES = list(PHRASE.get("not_found_lines")
                        or ["手元にありません。", "「そこは持ち帰って、確認してご連絡します」へ。"])
@@ -219,6 +252,9 @@ class Knowledge:
                 musts.append({
                     "name": _agenda_field(m, "名前", "name", "") or "",
                     "kw": [k for k in (_agenda_field(m, "検知キーワード", "keywords", []) or []) if k],
+                    # 取れていないときに、その場でそのまま読み上げる問い。
+                    # これが無いと催促カードの【言うこと】が作れず、1要素カードに戻る。
+                    "ask": _agenda_field(m, "問い", "ask", "") or "",
                 })
             self.steps.append(
                 {
@@ -229,6 +265,11 @@ class Knowledge:
                     "must": musts,
                     "nudge": s.get("nudge", ""),
                     "script": [x for x in (_agenda_field(s, "台本", "script", []) or []) if x],
+                    # build_agenda.py が入れる3要素。手書きの段取りJSONには無くてよい
+                    # (無ければ従来どおり title / nudge / 台本 から組み立てる)。
+                    "answer": _agenda_field(s, "取る答え", "answer", "") or "",
+                    "say": _agenda_field(s, "言い方の例", "say", "") or "",
+                    "ask": _agenda_field(s, "抜けたら出す問い", "ask", "") or "",
                 }
             )
         if not self.steps:
@@ -312,9 +353,13 @@ def search(kb: Knowledge, query: str, top: int = 2):
 
 # ------------------------------------------------------------------ 本体
 class Copilot:
-    def __init__(self, kb: Knowledge, start: datetime, test_mode: bool = False) -> None:
+    def __init__(self, kb: Knowledge, start: datetime, test_mode: bool = False,
+                 end: datetime | None = None, lookup: "lookup_assist.Index | None" = None) -> None:
         self.kb = kb
         self.start = start
+        self.end = end                      # 終わりの予定(終話検知に使う・無くてよい)
+        self.lookup = lookup if lookup is not None else lookup_assist.Index()
+        self.last_guest = ""                # 相手の直前の発話(探し物の手掛かり)
         self.test_mode = test_mode          # [TEST] 行を処理してよいのは検査のときだけ
         self.last_answerer = 0.0
         self.reset_state("起動")
@@ -333,14 +378,19 @@ class Copilot:
 
     def reset_state(self, why: str) -> None:
         self.all_blob = ""       # 両者の発話(必須取得物の検知に使う)
-        self.host_blob = ""      # こちら側の発話(段の検知に使う)
         self.delta = 0           # 「<呼びかけ語>、次/戻って」の手動送り
         self.cur = 0
+        self.auto_hi = 0         # 段の高水位。発話単位で判定する(step_detect)
+        self.prev_speaker = None  # 直前の**発話**の話者(話者交代の検知に使う)
         self.guest_streak = 0
         self.started = False
         self.last_silence = {}
         self.overrun_done = set()
         self.last_line_ts = datetime.now()
+        self.nudged = {}         # 対象 -> 催促した回数(同じ催促の反復をやめるため)
+        self.looked_up = {}      # 探し物の対象 -> 最後に出した時刻
+        self.farewell_at = None  # 別れの言葉を聞いた時刻(終話の予鈴)
+        self.stopping = False
         log(f"状態リセット: {why}")
 
     # ---- 時間 --------------------------------------------------------
@@ -355,11 +405,13 @@ class Copilot:
 
     # ---- 段と取り漏れ -------------------------------------------------
     def auto_step(self) -> int:
-        auto = 0
-        for i, s in enumerate(self.kb.steps):
-            if any(kw_hit(k, self.host_blob) for k in s["kw"]):
-                auto = max(auto, i)
-        return auto
+        """段の高水位。判定は発話が来たときに step_detect が1回ずつ進める。
+
+        旧実装は「こちら側の全発話を連結した文字列」に当てていたので、雑談の中の
+        1語で段が4つ飛んだ(2026-09-19 実測: 段の切替4回中、台本の文脈と関係のある
+        切替は0回)。規則は step_detect.py に1本化して画面側と共有する。
+        """
+        return self.auto_hi
 
     def calc_cur(self) -> int:
         return max(0, min(len(self.kb.steps) - 1, self.auto_step() + self.delta))
@@ -373,19 +425,56 @@ class Copilot:
         ]
 
     # ---- カード書き出し -----------------------------------------------
-    def emit(self, kind: str, lines: list[str], confidence: str, reason: str, ttl=None) -> None:
+    def emit(self, kind: str, lines: list[str], confidence: str, reason: str, ttl=None,
+             target: str = "", status: str = "", say: str = "",
+             to: str = "進行役へ", ref: str = "", extra: dict | None = None) -> None:
+        """カードを1枚書く。3要素(target/status/say)が本体で、lines は後方互換。
+
+        3要素を渡さなかった呼び出しは lines から埋める(古い経路が黙って
+        1要素カードに戻らないように、必ず何かが入る形にする)。
+        """
         lines = [l for l in lines if l][:3] or ["手元にありません。"]
+        target = target or shorten(lines[0], 28)
+        status = status or (lines[1] if len(lines) > 1 else "")
+        say = say or (lines[-1] if len(lines) > 1 else lines[0])
         rec = {
             "ts": now_iso(),
             "kind": kind,
             "lines": lines,
+            "target": target,
+            "status": status,
+            "say": say,
+            "to": to,
             "confidence": confidence,
             "ttl": TTL.get(kind, 45) if ttl is None else ttl,
         }
+        if ref:
+            rec["ref"] = ref
+        if extra:
+            rec.update(extra)
         with CARDS.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         self.card_count += 1
-        log(f"CARD {kind}/{confidence} 理由={reason} → {' | '.join(lines)}")
+        log(f"CARD {kind}/{confidence} 宛={to} 理由={reason} → {target} / {status} / {say}")
+
+    def nudge(self, key: str, target: str, status: str, say: str, reason: str,
+              kind: str = "topic") -> None:
+        """同じ対象の催促。初回はフルカード、以後は未解決バッジだけ。
+
+        実走(2026-09-19)で同一文言の催促が960件出た。TTLで消えては再び出るので、
+        「消える／読む」の区別そのものが意味を失っていた。数え直すのは対象ごと。
+        """
+        n = self.nudged.get(key, 0) + 1
+        self.nudged[key] = n
+        if n == 1:
+            self.emit(kind, [], "high", reason, target=target, status=status, say=say)
+            return
+        if n in BADGE_AT:
+            self.emit(kind, [], "high", f"{reason}(未解決{n}回目)",
+                      target=target, status=f"未解決のまま{n}回目", say=say,
+                      extra={"badge": True, "count": n})
+            return
+        log(f"間引き: 『{target}』の催促は既出({n}回目・バッジは次の節目で)")
 
     # ---- 舞台 -----------------------------------------------------------
     def write_stage(self, res: str, text: str, src: str = "voice") -> None:
@@ -400,8 +489,10 @@ class Copilot:
             log(f"舞台指令を書けず（続行）: {e!r}")
 
     def stage_card(self, res: str, text: str) -> None:
-        self.emit("call", [f"舞台→{STAGE_LABEL.get(res, res)}"], "low",
-                  f"舞台={res} in={(text or '')[:28]}", ttl=20)
+        label = STAGE_LABEL.get(res, res)
+        self.emit("call", [], "low", f"舞台={res} in={(text or '')[:28]}", ttl=20,
+                  target="舞台（共有窓）", status=f"{label} に切り替えました",
+                  say=f"いま画面に {label} を出しています。", to="記録のみ")
 
     # ---- 呼び出しへの回答 ---------------------------------------------
     def answer(self, text: str):
@@ -519,8 +610,7 @@ class Copilot:
             if res:
                 self._pend_call = None
                 self.all_blob += "\n" + text
-                if speaker == "host":
-                    self.host_blob += "\n" + text
+                self.prev_speaker = speaker
                 self.write_stage(res, text)
                 self.stage_card(res, text)
                 self.cur = self.calc_cur()
@@ -542,10 +632,16 @@ class Copilot:
         else:
             self._pend_call = None
 
-        # --- 状態の更新(段=こちら側の発話 / 必須取得物=両者) ---
+        # --- 状態の更新(段=一発話ごとの高水位 / 必須取得物=両者の連結) ---
         self.all_blob += "\n" + text
-        if speaker == "host":
-            self.host_blob += "\n" + text
+        self.auto_hi = step_detect.advance(
+            self.auto_hi, self.kb.steps, speaker, self.prev_speaker, text, kw_hit)
+        self.prev_speaker = speaker
+        if speaker == "guest":
+            self.last_guest = text
+        if speaker == "host" and any(w in text for w in FAREWELL_WORDS):
+            self.farewell_at = time.time()
+            log(f"終話の予鈴: 別れの言葉 in={text[:24]}")
 
         # --- 呼び出し(最優先。topic とは二重に出さない) ---
         if called:
@@ -559,8 +655,16 @@ class Copilot:
             if speaker != "host":
                 log(f"注意: guest 側に呼び出し語（話者判定のブレ。イヤホンを確認）: {text[:24]}")
             lines, conf, reason = self.answer(text)
-            self.emit("call", lines, conf, f"{reason} in={text[:28]}")
+            self.emit("call", lines, conf, f"{reason} in={text[:28]}",
+                      target=shorten(self._bare(text), 28),
+                      status="照会への回答" if conf != "none" else "手元に無し",
+                      say=lines[0])
             self.cur = self.calc_cur()
+            return
+
+        # --- 探し物アシスト(進行役が資料を探し始めた) ---
+        #     answerer(LLM)より**先**に、即答表と台帳をキーワードで当てる。
+        if speaker == "host" and self.try_lookup(text):
             return
 
         # --- 警報: 約束の境界 ---
@@ -569,7 +673,9 @@ class Copilot:
             t = time.time()
             if t - self.last_warn.get(cat, 0.0) >= WARN_COOLDOWN:
                 self.last_warn[cat] = t
-                self.emit("warn", [WARN_CATS[cat][1]], "high", f"境界={cat} in={text[:28]}")
+                self.emit("warn", [WARN_CATS[cat][1]], "high", f"境界={cat} in={text[:28]}",
+                          target=f"{cat}の話", status="約束の外",
+                          say=WARN_CATS[cat][1])
             else:
                 log(f"間引き: {cat}の警報は{int(WARN_COOLDOWN)}秒以内に既出 in={text[:24]}")
 
@@ -621,7 +727,9 @@ class Copilot:
         if not ANSWERER.exists():
             log(f"answerer.py が無いので見送り: {ANSWERER}")
             return
-        self.emit("call", ["考え中…"], "low", f"台本外の質問 in={text[:28]}", ttl=15)
+        self.emit("call", [], "low", f"台本外の質問 in={text[:28]}", ttl=15,
+                  target=shorten(text, 28), status="台本の外。調べています",
+                  say="考え中…（数秒お待ちください）", to="記録のみ")
         try:
             self.ans_proc = subprocess.Popen(
                 [sys.executable, str(ANSWERER), text],
@@ -666,15 +774,20 @@ class Copilot:
         if idle >= SILENCE_SEC and (self.auto_step() > 0 or self.delta > 0):
             if now - self.last_silence.get(self.cur, 0.0) >= SILENCE_COOLDOWN:
                 miss = [
-                    m["name"] for m in self.kb.steps[self.cur]["must"]
+                    m for m in self.kb.steps[self.cur]["must"]
                     if m["kw"] and not any(kw_hit(k, self.all_blob) for k in m["kw"])
                 ]
+                self.last_silence[self.cur] = now
                 if miss:
-                    self.last_silence[self.cur] = now
-                    self.emit("topic", [f"{miss[0]}を聞くと進みます"], "high",
-                              f"沈黙{int(idle)}秒 段={self.cur+1}")
+                    m = miss[0]
+                    self.nudge(
+                        key=f"must:{self.cur}:{m['name']}",
+                        target=m["name"],
+                        status="まだ取れていません",
+                        say=self.ask_for(m, self.cur),
+                        reason=f"沈黙{int(idle)}秒 段={self.cur+1}",
+                    )
                 else:
-                    self.last_silence[self.cur] = now
                     log(f"沈黙{int(idle)}秒だが【{self.cur+1}】の必須は取得済み。黙る")
         # 予定超過: 各ステップ1回だけ
         i = self.cur
@@ -682,12 +795,20 @@ class Copilot:
             end = self.start + timedelta(minutes=sum(s["min"] for s in self.kb.steps[: i + 1]))
             if wall > end + timedelta(minutes=OVERRUN_MIN):
                 self.overrun_done.add(i)
+                over = int((wall - end).total_seconds() // 60)
                 if i + 1 < len(self.kb.steps):
-                    line = f"【{i+1}】は予定超過。次は【{i+2}】{self.kb.steps[i+1]['title']}"
+                    nxt = self.kb.steps[i + 1]
+                    say = nxt["say"] or clean_md(nxt["script"][0]) if nxt["script"] else ""
+                    say = say or f"次は「{nxt['title']}」へ進ませてください。"
                 else:
-                    line = f"【{i+1}】は予定超過。" + (self.kb.steps[i]["nudge"] or "復唱して閉じる")
-                self.emit("topic", [shorten(line, 58)], "high",
-                          f"予定超過 枠切れ{end:%H:%M}+{int(OVERRUN_MIN)}分")
+                    say = (self.kb.steps[i]["ask"] or self.kb.steps[i]["nudge"]
+                           or "決まったことを読み上げて、ここで閉じさせてください。")
+                self.emit("topic", [], "high",
+                          f"予定超過 枠切れ{end:%H:%M}+{int(OVERRUN_MIN)}分",
+                          target=f"【{i+1}】{self.kb.steps[i]['title']}",
+                          status=f"予定を{over}分超過",
+                          say=shorten(say, 58))
+        self.check_end(now, idle)
 
     def warn_cat(self, speaker: str, text: str):
         if speaker == "host" and any(e in text for e in ESCAPE_WORDS):
@@ -715,22 +836,119 @@ class Copilot:
             return False
         self.last_wrap = t
         self.guest_streak = 0
-        self.emit("wrap", list(WRAP_LINES), "high", f"中止条件={fire}")
+        self.emit("wrap", list(WRAP_LINES), "high", f"中止条件={fire}",
+                  target="中止条件", status=fire, say=WRAP_LINES[0])
         return True
+
+    def ask_for(self, must: dict, step_i: int) -> str:
+        """取り漏れの【言うこと】。**その場で読み上げられる完成文**にする。
+
+        優先は「必須取得物に添えられた問い」→「その段の抜けたら出す問い」→
+        名前から作る定型。旧実装の「○○を聞くと進みます」は、何と言えばよいかが
+        書いていないので進行役が動けなかった(実測1013件中の95%がこれ)。
+        """
+        ask = (must.get("ask") or "").strip()
+        if ask:
+            return shorten(ask, 58)
+        step_ask = (self.kb.steps[step_i]["ask"] or "").strip()
+        if step_ask:
+            return shorten(step_ask, 58)
+        return shorten(f"「{must['name']}について、いまどうなっていますか」", 58)
 
     def topic_card(self, prev: int) -> None:
         s = self.kb.steps[self.cur]
-        lines = []
+        el = self.elapsed_min()
+        rest = max(0, int(self.kb.total_min - el)) if el > 0 else int(self.kb.total_min)
+        status = f"残り{rest}分・あと{len(self.kb.steps)-self.cur-1}段"
         if self.cur > prev:
             miss = self.unmet(self.cur - 1)
             if miss:
-                lines.append("取り漏れ: " + miss[0] + (f"（ほか{len(miss)-1}件）" if len(miss) > 1 else ""))
-        el = self.elapsed_min()
-        rest = max(0, int(self.kb.total_min - el)) if el > 0 else int(self.kb.total_min)
-        lines.append(f"【{self.cur+1}】{s['title']}へ。残り{rest}分・あと{len(self.kb.steps)-self.cur-1}段")
-        must = "・".join(m["name"] for m in s["must"])
-        lines.append(f"取るもの: {must}" if must else (s["nudge"] or "取るもの: なし"))
-        self.emit("topic", lines, "high", f"進行 {prev+1}→{self.cur+1}")
+                status = ("取り漏れ: " + miss[0]
+                          + (f"（ほか{len(miss)-1}件）" if len(miss) > 1 else "")
+                          + f" / {status}")
+        say = s["say"] or (clean_md(s["script"][0]) if s["script"] else "")
+        if not say:
+            must = "・".join(m["name"] for m in s["must"])
+            say = f"ここで取るのは「{must}」です。" if must else (s["nudge"] or "")
+        self.emit("topic", [], "high", f"進行 {prev+1}→{self.cur+1}",
+                  target=f"【{self.cur+1}】{s['title']}",
+                  status=status, say=shorten(say, 58))
+
+    # ---- 探し物アシスト ---------------------------------------------------
+    def _bare(self, text: str) -> str:
+        q = text or ""
+        for w in CALL_WORDS:
+            q = q.replace(w, "")
+        return q.strip("、。 　,.")
+
+    def try_lookup(self, text: str) -> bool:
+        """進行役が資料を探し始めたら、即答表と台帳から1秒以内に答えを出す。
+
+        殿の要望(2026-09-19): 「相手の応答に回答するのに情報をさがすとき、いちいち
+        聞いていた。探しているのを検知して、探している情報を出してくれると助かる」。
+        当たらなかったら lookup_misses.jsonl に残す(会議後に即答表を育てる材料)。
+        """
+        if not lookup_assist.is_lookup(text, LOOKUP_TRIGGERS):
+            return False
+        prev_guest = self.last_guest
+        hit = self.lookup.find(text, prev_guest)
+        if hit is None:
+            rec = {"ts": now_iso(), "host": text[:120], "guest": (prev_guest or "")[:120]}
+            try:
+                with LOOKUP_MISSES.open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            except OSError as e:
+                log(f"探し物の外しを記録できず（続行）: {e!r}")
+            log(f"探し物: 当たりなし in={text[:28]} → answerer へ")
+            self.call_answerer(self._bare(text) or text)
+            return True
+        key = f"lookup:{hit['target']}"
+        last = self.looked_up.get(key, 0.0)
+        if time.time() - last < LOOKUP_COOLDOWN:
+            log(f"間引き: 『{hit['target']}』は直近に出した")
+            return True
+        self.looked_up[key] = time.time()
+        self.emit("lookup", [], "high", f"探し物 in={text[:28]}",
+                  target=hit["target"], status=hit["status"], say=hit["say"],
+                  ref=hit.get("ref", ""))
+        return True
+
+    # ---- 終話の検知 -------------------------------------------------------
+    def check_end(self, now: float, idle: float) -> None:
+        """会議が終わったら**自分で**畳む。
+
+        実走(2026-09-19)では会議のあと12時間近くプロセスが残り、誰も見ていない
+        画面に同じカードを903件描き続けた。畳むのは停止ファイルを置くだけで、
+        kill は使わない(全層が自分で見に行って自分で終わる)。
+
+        誤って会議の**最中**に止めるほうが害が大きいので、判定は分単位で余裕を取る。
+        """
+        if self.stopping or not STOP["enabled"] or not self.started:
+            return
+        why = None
+        if self.end is not None and datetime.now() > self.end + timedelta(
+                minutes=STOP["end_grace_min"]):
+            why = (f"予定の終わり {self.end:%H:%M} から"
+                   f"{int(STOP['end_grace_min'])}分過ぎました")
+        elif idle >= STOP["silence_min"] * 60.0:
+            why = f"双方の無音が{int(idle//60)}分続きました"
+        elif (self.farewell_at is not None
+              and idle >= STOP["farewell_grace_min"] * 60.0):
+            why = f"別れの挨拶のあと{int(idle//60)}分の無音がありました"
+        if not why:
+            return
+        self.stopping = True
+        self.emit("topic", [], "high", f"終話検知: {why}",
+                  target="同席", status=why,
+                  say="同席を終わります。画面と受信もいっしょに畳みます。",
+                  to="記録のみ")
+        log(f"終話検知: {why} → 停止ファイルを置きます: {STOP_FILE}")
+        try:
+            STOP_FILE.write_text(
+                json.dumps({"ts": now_iso(), "by": "copilot", "why": why},
+                           ensure_ascii=False) + "\n", encoding="utf-8")
+        except OSError as e:
+            log(f"停止ファイルを書けず（続行）: {e!r}")
 
 
 # ------------------------------------------------------------------ tail
@@ -774,6 +992,11 @@ def tail(cop: Copilot) -> None:
     log(f"番人の席を取得 pid={my_pid}")
     while True:
         try:
+            # 停止ファイル: 自分で置いたもの(終話検知)も、stop.sh が置いたものも同じ。
+            # 🔴 畳むのはプロセス自身。kill は使わない。
+            if STOP_FILE.exists():
+                log(f"停止ファイルを見つけたので終わります: {STOP_FILE}")
+                return
             try:
                 owner = int(LOCK.read_text(encoding="utf-8").strip() or "0")
             except Exception:
@@ -814,6 +1037,8 @@ def tail(cop: Copilot) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="", help="会議開始 (例 2026-01-20T15:00:00・実行機のローカル時刻)")
+    ap.add_argument("--end", default="",
+                    help="会議終了の予定 (ISO8601 か HH:MM)。ここから猶予を過ぎたら自分で畳む")
     ap.add_argument("--test", action="store_true",
                     help="[TEST] で始まる行も判定に通す(検査専用・本番では付けない)")
     ap.add_argument("--selfcheck", action="store_true",
@@ -825,19 +1050,51 @@ def main() -> None:
             start = datetime.fromisoformat(a.start)
         except ValueError:
             log(f"--start を読めないので起動時刻を使う: {a.start!r}")
+    end = None
+    raw_end = a.end or cfgmod.meeting_end_iso()
+    if raw_end:
+        if re.fullmatch(r"\d{1,2}:\d{2}", raw_end):
+            h, m = (int(x) for x in raw_end.split(":"))
+            end = start.replace(hour=h, minute=m, second=0, microsecond=0)
+        else:
+            try:
+                end = datetime.fromisoformat(raw_end)
+            except ValueError:
+                log(f"--end を読めないので終話の予定は使わない: {raw_end!r}")
     kb = Knowledge()
     kb.load()
+    lookup = lookup_assist.Index(
+        quick_facts=cfgmod.quick_facts_path(),
+        ledger=cfgmod.meeting_file("ledger.yaml"),
+        kb_dir=cfgmod.knowledge_dir(),
+    )
     log(f"舞台の資源: {len(STAGE['resources'])}件 / 声で呼べるもの {len(STAGE_MATCH)}件")
     log(f"語彙集: 定型{len(FIXED)}件 / 境界{len(WARN_CATS)}種")
+    log(f"探し物の索引: {len(lookup)}件 / 合図{len(LOOKUP_TRIGGERS)}語"
+        + (f" / 即答表 {cfgmod.quick_facts_path()}" if cfgmod.quick_facts_path() else
+           " / 即答表なし（quick_facts.md を会議フォルダに置くと即答できます）"))
     if a.selfcheck:
         log(f"状態ディレクトリ: {STATE_DIR}")
         log(f"段取り: {AGENDA_PATH}")
         log(f"台本: {SCRIPT_PATH}")
+        log(f"終わりの予定: {end:%H:%M}" if end else "終わりの予定: 未設定")
+        log(f"終話検知: {'入' if STOP['enabled'] else '切'}"
+            f"（無音{STOP['silence_min']:.0f}分 / 別れの言葉のあと"
+            f"{STOP['farewell_grace_min']:.0f}分 / 予定超過{STOP['end_grace_min']:.0f}分）")
+        log(f"カンペの粒度: {cfgmod.script_mode()}")
         log("selfcheck OK")
         return
     if a.test:
         log("⚠ テストモード: [TEST] 行も判定に通す")
-    cop = Copilot(kb, start, test_mode=a.test)
+    if STOP_FILE.exists():
+        # 前の会議の停止ファイルが残っていると、起動した瞬間に自分で終わる。
+        # 「画面は上がるのに番人が居ない」がいちばん分かりにくい壊れ方なので消しておく。
+        log(f"前回の停止ファイルを片付けます: {STOP_FILE}")
+        try:
+            STOP_FILE.unlink()
+        except OSError as e:
+            log(f"停止ファイルを消せず（続行）: {e!r}")
+    cop = Copilot(kb, start, test_mode=a.test, end=end, lookup=lookup)
     tail(cop)
 
 
