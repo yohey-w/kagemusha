@@ -19,6 +19,10 @@
     python3 replay_eval.py --transcript <逐語.jsonl> --meeting <会議フォルダ> \\
         --backend jev --dry-run
 
+    # レート制限のある枠で、正解を付けた発話だけを間隔をあけて判定する
+    python3 replay_eval.py --transcript <逐語.jsonl> --meeting <会議フォルダ> \\
+        --backend jev --ids labelled_ids.txt --pace 6 --retry-on-429
+
 逐語 ``transcript.jsonl`` は1行1発話 ``{"ts":..., "speaker": "host"|"guest",
 "text": ...}``。**発話の番号は1始まりの行番号**で、これが正解表の鍵になります。
 
@@ -31,6 +35,13 @@
 ``gold`` に書くのは鍵（``s3`` ``none`` ``yes`` ``no`` ``closing``）です。
 鍵と見出しの対応は ``--dry-run`` が先頭に出します。
 
+無料枠には**レート制限**があります（2026-09-20 実測: 最初の32発話は連続で通り、
+以後はおよそ6秒に1回＝10回/分。2,077発話のうち通ったのは320で、残り1,754は 429 で
+ルールへ退避した）。全部を流すのではなく、**正解を付けた発話だけ** `--ids` で拾い、
+`--pace` で間隔をあけるのが現実的です。`--retry-on-429` は混雑のときだけ1回待って
+撃ち直します——🔴 **会議中は使いません**（待つぶんカードが遅れるので、会議では
+待たずにルールへ退避するのが正しい）。
+
 🔴 遅延の数字は「この機体からこの経路で」の実測です。別の回線・別の時間帯では
    変わります。p95 を1回の再生で決め打ちにしないこと。
 """
@@ -42,6 +53,7 @@ import json
 import os
 import pathlib
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
@@ -74,6 +86,27 @@ def load_transcript(path) -> list:
     if not rows:
         raise SystemExit(f"[replay] {p} に発話が1本もありません。")
     return rows
+
+
+def load_ids(path) -> set:
+    """判定する発話の番号（1行1つ・``#`` 以降は注記）。空なら全部。
+
+    間引くのは呼び出し回数を減らすため。**窓の文脈は逐語全体から取る**ので、
+    「300発話だけ判定する」と「300発話しかない逐語を流す」は別物になる。
+    """
+    if not path:
+        return set()
+    p = pathlib.Path(path).expanduser()
+    if not p.exists():
+        raise SystemExit(f"[replay] --ids {path} が見つかりません。")
+    out = set()
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        s = raw.split("#", 1)[0].strip().rstrip(",")
+        if s.isdigit():
+            out.add(int(s))
+    if not out:
+        raise SystemExit(f"[replay] --ids {path} に発話番号が1つもありません。")
+    return out
 
 
 def load_labels(path) -> dict:
@@ -111,6 +144,7 @@ class Tally:
         self.answered: dict = {}
         self.correct: dict = {}
         self.labeled: dict = {}
+        self.not_asked: dict = {}         # 正解はあるが、その発話では聞いていない問い
         self.noul_gold_yes: dict = {}
         self.noul_hit: dict = {}          # {(qid, 閾値): 件数}
         self.calib: dict = {}             # {(qid, 帯): [件数, 正解数]}
@@ -119,7 +153,23 @@ class Tally:
         self.in_tok = 0
         self.out_tok = 0
 
-    def add(self, uid: int, answers: de.Answers, latency_ms: float, labels: dict):
+    def add(self, uid: int, answers: de.Answers, latency_ms: float, labels: dict,
+            asked=()):
+        """1発話ぶんを足す。``asked`` はその発話で実際に聞いた問いの id。
+
+        🔴 聞いていない問いに正解が付いていたら、**不正解ではなく「対象外」**。
+        q4/q8 は進行役の発話にしか聞かないので、相手の発話の正解行は分母に
+        入れてはいけない。以前は黙って捨てていた——数字は正しかったが、
+        「300件に正解を付けたのに196件しか使われていない」ことが画面に出ず、
+        使われなかった104件が見えなかった。
+        """
+        asked = set(asked or answers.by_id)
+        for (luid, qid), _gold in labels.items():
+            if luid == uid and qid not in asked:
+                self.not_asked[qid] = self.not_asked.get(qid, 0) + 1
+        self._add(uid, answers, latency_ms, labels)
+
+    def _add(self, uid: int, answers: de.Answers, latency_ms: float, labels: dict):
         self.backends[answers.backend or "-"] = self.backends.get(answers.backend or "-", 0) + 1
         if latency_ms > 0:
             self.latency.append(latency_ms)
@@ -161,9 +211,10 @@ class Tally:
         L.append("担当: " + " ".join(f"{k}={v}" for k, v in sorted(self.backends.items())))
         L.append("")
         L.append("── 問いごと ──")
-        L.append(f"{'問い':<18}{'答えた':>7}{'正解付き':>9}{'的中率':>9}  再現率(noul)")
-        for qid in sorted(self.answered):
-            n, lab = self.answered[qid], self.labeled.get(qid, 0)
+        L.append(f"{'問い':<18}{'答えた':>7}{'正解付き':>9}{'対象外':>7}{'的中率':>9}  再現率(noul)")
+        for qid in sorted(set(self.answered) | set(self.not_asked)):
+            n, lab = self.answered.get(qid, 0), self.labeled.get(qid, 0)
+            na = self.not_asked.get(qid, 0)
             acc = f"{self.correct.get(qid, 0) / lab:.1%}" if lab else "—"
             rec = ""
             gy = self.noul_gold_yes.get(qid, 0)
@@ -171,7 +222,10 @@ class Tally:
                 rec = "  ".join(
                     f"@{th}: {self.noul_hit.get((qid, th), 0) / gy:.1%}" for th in (0.5, 0.8))
                 rec += f" (正解「はい」{gy}件)"
-            L.append(f"{qid:<18}{n:>7}{lab:>9}{acc:>9}  {rec}")
+            L.append(f"{qid:<18}{n:>7}{lab:>9}{na:>7}{acc:>9}  {rec}")
+        if any(self.not_asked.values()):
+            L.append("  ※ 「対象外」= 正解は付いているが、その発話では聞いていない問い"
+                     "（q4/q8 は進行役の発話にしか聞かない）。分母には入れていません")
         if not any(self.labeled.values()):
             L.append("  ※ --labels を渡すと的中率・再現率・校正が出ます"
                      "（列: utterance_id,q,gold）")
@@ -253,6 +307,14 @@ def main() -> None:
     ap.add_argument("--labels", default="", help="正解表 csv（utterance_id,q,gold）")
     ap.add_argument("--out", default="", help="記録の書き出し先（既定 ./replay_out/decisions.jsonl）")
     ap.add_argument("--limit", type=int, default=0, help="先頭から何発話だけ流すか（0=全部）")
+    ap.add_argument("--ids", default="",
+                    help="判定する発話を絞る（utterance_id を1行1つ書いたファイル）。"
+                         "窓の文脈は逐語全体から取るので、間引いても文脈は欠けない")
+    ap.add_argument("--pace", type=float, default=0.0,
+                    help="呼び出しの間隔(秒)。既定 0。無料枠のレート制限を避けるとき用")
+    ap.add_argument("--retry-on-429", action="store_true",
+                    help="混雑(429/503)のときは退避せず --pace ぶん待って1回だけ撃ち直す"
+                         "（既定 off。🔴 会議中は使わない——待つぶんカードが遅れる）")
     ap.add_argument("--dry-run", action="store_true", help="送る内容を表示するだけ")
     ap.add_argument("--append", action="store_true", help="既存の記録に追記する（既定は作り直し）")
     ap.add_argument("--allow-no-roster", action="store_true",
@@ -289,7 +351,12 @@ def main() -> None:
             f"         送る中身は --dry-run で先に確かめられます。")
 
     labels = load_labels(a.labels)
-    engine = de.make_engine(a.backend, bundle, meeting)
+    ids = load_ids(a.ids)
+    if a.retry_on_429 and not a.pace:
+        raise SystemExit("[replay] --retry-on-429 は --pace <秒> と一緒に使ってください"
+                         "（待つ長さが 0 では撃ち直しても同じ結果になります）。")
+    engine = de.make_engine(a.backend, bundle, meeting,
+                            retry_busy_sec=a.pace if a.retry_on_429 else 0.0)
     out_path = pathlib.Path(a.out).expanduser() if a.out \
         else pathlib.Path.cwd() / "replay_out" / "decisions.jsonl"
     if out_path.exists() and not a.append:
@@ -297,21 +364,40 @@ def main() -> None:
     log = de.DecisionLog(out_path)
     tally = Tally()
 
-    print(f"[replay] {len(rows)} 発話 / backend={a.backend} / 問い{len(bundle.questions)}本 "
-          f"/ 段{len(meeting.steps)}・即答表{len(meeting.quick_facts)}・名簿{len(meeting.roster)}")
+    todo = [r for r in rows if not ids or r["utterance_id"] in ids]
+    print(f"[replay] {len(rows)} 発話中 {len(todo)} 本を判定 / backend={a.backend} "
+          f"/ 問い{len(bundle.questions)}本 / 段{len(meeting.steps)}・"
+          f"即答表{len(meeting.quick_facts)}・名簿{len(meeting.roster)}"
+          + (f" / 間隔{a.pace}秒" if a.pace else "")
+          + ("（混雑したら待って1回撃ち直す）" if a.retry_on_429 else ""))
+    if ids:
+        missing = sorted(ids - {r["utterance_id"] for r in rows})
+        if missing:
+            print(f"  ⚠ --ids のうち {len(missing)} 件は逐語に無い"
+                  f"（例: {missing[:5]}）", flush=True)
+    done, last_call = 0, 0.0
     for i, r in enumerate(rows):
+        # 窓は**逐語全体**から作る。間引いても、その発話の直前の文脈は欠けない。
         win = de.window_of(rows[:i + 1], bundle.window, bundle.window_chars)
+        if ids and r["utterance_id"] not in ids:
+            continue
+        if a.pace and last_call:
+            wait = a.pace - (time.monotonic() - last_call)
+            if wait > 0:
+                time.sleep(wait)
+        last_call = time.monotonic()
         state, questions, answers, ms = de.evaluate_utterance(
             engine, bundle, meeting, masker, win)
         if not questions:
             continue
         log.write(utterance_id=r["utterance_id"], ts=r["ts"], speaker=r["speaker"],
                   state=state, questions=questions, answers=answers, latency_ms=ms)
-        tally.add(r["utterance_id"], answers, ms, labels)
-        if a.backend == "jev" and (i + 1) % 50 == 0:
-            print(f"  … {i + 1}/{len(rows)}", flush=True)
+        tally.add(r["utterance_id"], answers, ms, labels, asked=questions)
+        done += 1
+        if a.backend == "jev" and done % 50 == 0:
+            print(f"  … {done}/{len(todo)}", flush=True)
 
-    print(tally.report(bundle, len(rows), out_path))
+    print(tally.report(bundle, done, out_path))
 
 
 if __name__ == "__main__":

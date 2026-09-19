@@ -98,6 +98,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"boom")
             return
+        if mode == "429" or (mode == "429once" and not self.server.served_one):
+            self.server.served_one = True
+            self.send_response(429)
+            self.end_headers()
+            self.wfile.write(b"slow down")
+            return
         if mode == "wrongtype":
             bad = {"model": "stub-1", "usage": {"input_tokens": 1},
                    "answers": {"q4_lookup": {"type": "noul", "noul": "n/a"}}}
@@ -130,6 +136,7 @@ class StubServer:
         self.httpd = HTTPServer(("127.0.0.1", 0), _Handler)
         self.httpd.received = []
         self.httpd.mode = mode
+        self.httpd.served_one = False
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
@@ -264,7 +271,7 @@ class MaskTest(unittest.TestCase):
         # 段の見出しや即答表の見出しにも相手の名前が入りうるので、**送る物の
         # 全体**（state + questions）で確かめる。
         meeting = de.MeetingData(
-            steps=(("s1", "Acme社への移行の範囲", ()),),
+            steps=(de.Step("s1", "Acme社への移行の範囲", (), "山田 太郎さんの承認"),),
             quick_facts=(("qf_1", "山田 太郎さんの連絡先"),),
             roster=self.meeting.roster, lookup_triggers=(), farewell_words=(),
             ask_marks=())
@@ -339,6 +346,102 @@ class RulesBackendTest(unittest.TestCase):
         qs = de.build_questions(self.bundle, self.meeting, "host", self.masker)
         self.assertEqual(set(a.by_id), set(qs))
         self.assertEqual(a.backend, "rules")
+
+
+class CriteriaDetailTest(unittest.TestCase):
+    """④ 段の見出しだけでは判定材料が薄いので、「取る答え」を添えられるようにした。"""
+
+    def setUp(self):
+        self.meeting = de.load_meeting_data(DEMO)
+        self.masker = de.Masker(self.meeting.roster)
+
+    def test_the_detail_line_is_read_from_the_agenda(self):
+        self.assertTrue(any(s.detail for s in self.meeting.steps),
+                        "デモの段取りに「取る答え」が1つも無い")
+
+    def test_off_by_default_on_and_the_description_grows(self):
+        def crit(detail):
+            d = json.loads(json.dumps(BUNDLE_DICT))
+            for q in d["questions"]:
+                if q["id"] == "q1_step":
+                    q["criteria_detail"] = detail
+            b = de.bundle_from_dict(d)
+            return de.build_questions(b, self.meeting, "host",
+                                      self.masker)["q1_step"]["criteria"]
+        plain, rich = crit(False), crit(True)
+        self.assertEqual(set(plain), set(rich), "鍵が変わってはいけない")
+        grew = [k for k in plain if k != "none" and len(rich[k]) > len(plain[k])]
+        self.assertTrue(grew, "criteria_detail を立てても説明が伸びていない")
+        # 既定は off（黙って送る量が増えない）
+        self.assertFalse(de.bundle_from_dict(BUNDLE_DICT).question("q1_step").criteria_detail)
+
+    def test_the_detail_is_masked_like_everything_else(self):
+        meeting = de.MeetingData(
+            steps=(de.Step("s1", "移行の範囲", (), "山田 太郎さんの承認を取る"),),
+            roster=self.meeting.roster)
+        d = json.loads(json.dumps(BUNDLE_DICT))
+        for q in d["questions"]:
+            if q["id"] == "q1_step":
+                q["criteria_detail"] = True
+        qs = de.build_questions(de.bundle_from_dict(d), meeting, "host", self.masker)
+        self.assertNotIn("山田", json.dumps(qs, ensure_ascii=False))
+
+
+class BusyRetryTest(unittest.TestCase):
+    """③ 混雑(429/503)のときだけ、退避の前に1回だけ待って撃ち直す。"""
+
+    def setUp(self):
+        self.meeting = de.load_meeting_data(DEMO)
+        os.environ[TEST_KEY_ENV] = "test-key-not-a-real-one"
+        self.addCleanup(lambda: os.environ.pop(TEST_KEY_ENV, None))
+
+    def test_the_http_status_survives_as_a_number(self):
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)
+        with self.assertRaises(de.DecisionError) as cm:
+            de.JevBackend(b.jev, bundle=b).evaluate({"recent_utterances": []},
+                                                    {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(cm.exception.status, 429)
+
+    def test_a_busy_signal_is_retried_once_and_then_succeeds(self):
+        # 1回目だけ 429、2回目から通る偽の判定器
+        srv = StubServer(mode="429once")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)
+        eng = de.make_engine("jev", b, self.meeting, retry_busy_sec=0.01)
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "jev", "撃ち直して通ったのに退避している")
+        self.assertIn("撃ち直して通った", ans.error)
+        self.assertEqual(len(srv.received), 2, "撃ち直していない")
+
+    def test_a_retry_that_also_fails_falls_back(self):
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)
+        eng = de.make_engine("jev", b, self.meeting, retry_busy_sec=0.01)
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "rules(fallback)")
+        self.assertEqual(len(srv.received), 2)
+
+    def test_without_the_option_a_busy_signal_falls_back_at_once(self):
+        # 🔴 会議中の既定。待たずに退避する（待つとカードが遅れる）
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)
+        eng = de.make_engine("jev", b, self.meeting)
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "rules(fallback)")
+        self.assertEqual(len(srv.received), 1, "既定なのに撃ち直している")
+
+    def test_a_non_busy_failure_is_not_retried(self):
+        srv = StubServer(mode="500")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)
+        eng = de.make_engine("jev", b, self.meeting, retry_busy_sec=0.01)
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "rules(fallback)")
+        self.assertEqual(len(srv.received), 1, "待っても無駄な失敗で撃ち直している")
 
 
 class JevBackendTest(unittest.TestCase):
@@ -525,6 +628,53 @@ class ReplayTest(unittest.TestCase):
             p2 = subprocess.run(cmd + ["--dry-run"], capture_output=True, text=True,
                                 timeout=120, cwd=self.td.name)
             self.assertEqual(p2.returncode, 0, p2.stderr[-800:])
+
+    def test_ids_thins_the_calls_but_not_the_context(self):
+        # ① 呼び出しは減らすが、窓の文脈は逐語全体から取る。
+        ids = self.dir / "ids.txt"
+        ids.write_text("4\n5  # 注記は無視\n999\n", encoding="utf-8")
+        out = self.run_replay("--backend", "rules", "--ids", str(ids))
+        recs = [json.loads(x) for x in self.out.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([r["utterance_id"] for r in recs], [4, 5])
+        self.assertIn("逐語に無い", out, "--ids の余りを黙って捨てている")
+        # 4番の窓には、判定していない1〜3番が文脈として入っている
+        w = recs[0]["state"]["recent_utterances"]
+        self.assertGreater(len(w), 1, "間引いたら窓まで痩せている")
+        self.assertIn("今日決めたいことは3つです。順にまいります。",
+                      [u["text"] for u in w])
+
+    def test_pace_spaces_the_calls_out(self):
+        # ② 間隔。無料枠のレート制限を避けるため
+        import time as _t
+        t0 = _t.monotonic()
+        self.run_replay("--backend", "rules", "--pace", "0.2")
+        spent = _t.monotonic() - t0
+        # 5発話 → 間隔は4回ぶん ≒ 0.8秒
+        self.assertGreater(spent, 0.6, f"間隔が効いていない({spent:.2f}s)")
+
+    def test_retry_on_429_needs_a_pace_to_wait_for(self):
+        cmd = [sys.executable, str(SCRIPTS / "replay_eval.py"),
+               "--transcript", str(self.tr), "--meeting", str(DEMO),
+               "--out", str(self.out), "--backend", "rules", "--retry-on-429"]
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
+                           cwd=self.td.name)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("--pace", p.stdout + p.stderr)
+
+    def test_a_label_for_a_question_never_asked_is_out_of_scope(self):
+        # ⑤ q4/q8 は進行役の発話にしか聞かない。相手の発話に付いた正解は
+        #    不正解ではなく「対象外」——分母に入れず、件数を画面に出す。
+        labels = self.dir / "labels.csv"
+        # 1番と3番は相手の発話（q4 は聞いていない）、4番は進行役
+        labels.write_text(
+            "utterance_id,q,gold\n1,q4_lookup,no\n3,q4_lookup,no\n4,q4_lookup,yes\n",
+            encoding="utf-8")
+        out = self.run_replay("--backend", "rules", "--labels", str(labels))
+        self.assertIn("対象外", out)
+        row = next(l for l in out.splitlines() if l.startswith("q4_lookup"))
+        # 正解付き=1（進行役の4番だけ）／対象外=2（相手の1番と3番）
+        self.assertRegex(row, r"q4_lookup\s+\d+\s+1\s+2\s")
+        self.assertIn("100.0%", row, "聞いた1件は当たっているはず")
 
     def test_the_cost_comes_out_of_usage(self):
         srv = StubServer()

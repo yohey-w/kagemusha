@@ -63,6 +63,12 @@ questions:
       Looking only at the most recent utterance in current_utterance, and using
       the earlier utterances as context, which agenda step is the conversation
       in right now? Answer "none" if the recent utterance belongs to no step.
+    # 候補の説明に、進行表の「取る答え」を添えるか（既定 false）。
+    # 見出しだけでは判定材料が薄いことがある——実測(2026-09-20)で、検収の段を
+    # 「該当なし」と答える誤りが 48 件中 11 件あった。見出しは4〜8文字しかない。
+    # 立てると1問が長くなる（＝入力トークンが増える）ので、再生で効き目を
+    # 確かめてから本番に入れること。
+    criteria_detail: false
 
   # Q2 局面。順序のある4段階（締めの促しと自動停止の材料）。
   - id: q2_phase

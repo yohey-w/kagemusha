@@ -41,6 +41,7 @@ import os
 import pathlib
 import re
 import time
+import typing
 import unicodedata
 import urllib.error
 import urllib.request
@@ -68,7 +69,20 @@ _ASCII_KEY = re.compile(r"[^A-Za-z0-9_]")
 
 
 class DecisionError(RuntimeError):
-    """判定器へ届かなかった・答えを読めなかった。呼び出し側が退避する合図。"""
+    """判定器へ届かなかった・答えを読めなかった。呼び出し側が退避する合図。
+
+    ``status`` に HTTP の状態番号が入ることがある。混雑（429/503）とそれ以外を
+    呼び出し側が区別できないと、「待てば通る」のと「待っても無駄」を同じ扱いに
+    してしまうため（2026-09-20 実測: 2,077発話のうち 1,754 が 429 だった）。
+    """
+
+    def __init__(self, msg, status: int = 0):
+        super().__init__(msg)
+        self.status = status
+
+
+# 混雑を表す状態番号。ここだけは「待てば通る」ので、退避の前に1回だけ待てる。
+BUSY_STATUS = (429, 503, 529)
 
 
 # ---------------------------------------------------------------- 設定
@@ -118,6 +132,7 @@ class Question:
     criteria: dict = dataclasses.field(default_factory=dict)  # noul: true/false の説明
     candidates: str = ""            # "" | "agenda_steps" | "quick_facts"
     include_none: bool = False
+    criteria_detail: bool = False   # 候補の説明に「取る答え」を添えるか
 
     def applies_to(self, speaker: str) -> bool:
         return self.ask == "any" or self.ask == speaker
@@ -180,6 +195,7 @@ def bundle_from_dict(d: dict) -> Bundle:
             criteria={str(k): str(v) for k, v in crit.items()},
             candidates=str(raw.get("candidates") or "").strip(),
             include_none=bool(raw.get("include_none")),
+            criteria_detail=bool(raw.get("criteria_detail")),
         ))
     return Bundle(
         questions=tuple(qs),
@@ -278,11 +294,20 @@ def _key(raw: str, fallback: str) -> str:
     return k[:24] if k else fallback
 
 
+class Step(typing.NamedTuple):
+    """段1つ。``detail`` は進行表の「取る答え」（その段で取り切る中身）。"""
+
+    key: str
+    title: str
+    kw: tuple = ()
+    detail: str = ""
+
+
 @dataclasses.dataclass
 class MeetingData:
     """会議フォルダから読む「候補」と、ルール判定に要る語彙。"""
 
-    steps: tuple = ()          # ((key, title, (kw, ...)), ...)
+    steps: tuple = ()          # (Step, ...)
     quick_facts: tuple = ()    # ((key, title), ...)
     roster: tuple = ()         # ((name, alias), ...)
     lookup_triggers: tuple = ()
@@ -360,8 +385,12 @@ def load_meeting_data(meeting_dir, privacy: Privacy | None = None,
                 continue
             title = str(_field(s, "title", "題", default="") or "").strip()
             kws = [str(k) for k in (_field(s, "検知キーワード", "keywords", default=[]) or []) if k]
-            steps.append((_key(str(s.get("id") or ""), f"s{i + 1}"), title or f"段{i + 1}",
-                          tuple(kws)))
+            # 「取る答え」は進行表1枚から build_agenda.py が写したもの。段の見出しは
+            # 短すぎて判定材料にならないことがあるので、候補の説明に添えられるよう
+            # ここで持っておく（添えるかどうかは問いごとの criteria_detail）。
+            detail = str(_field(s, "取る答え", "answers_to_get", default="") or "").strip()
+            steps.append(Step(_key(str(s.get("id") or ""), f"s{i + 1}"),
+                              title or f"段{i + 1}", tuple(kws), detail))
             if len(steps) >= max_candidates:
                 break
         qf = md / "quick_facts.md"
@@ -467,8 +496,17 @@ def build_state(window, masker: Masker) -> dict:
 
 
 def _candidates(q: Question, meeting: MeetingData) -> tuple:
+    """この問いの選択肢 ((鍵, 説明), ...)。
+
+    ``criteria_detail`` が立っている問いは、段の見出しに「取る答え」を添える。
+    見出しだけでは判定材料が薄い（2026-09-20 実測: 検収の段を「該当なし」と
+    答える誤りが 48 件中 11 件。見出しは4〜8文字しかなかった）。
+    """
     if q.candidates == "agenda_steps":
-        return tuple((k, t) for k, t, _kw in meeting.steps)
+        if q.criteria_detail:
+            return tuple((s.key, f"{s.title} — {s.detail}" if s.detail else s.title)
+                         for s in meeting.steps)
+        return tuple((s.key, s.title) for s in meeting.steps)
     if q.candidates == "quick_facts":
         return tuple(meeting.quick_facts)
     return q.options
@@ -661,7 +699,7 @@ class JevBackend(DecisionEngine):
             with self._opener(req, timeout=self.settings.timeout_sec) as res:
                 payload = json.loads(res.read().decode("utf-8"))
         except urllib.error.HTTPError as e:            # 4xx/5xx
-            raise DecisionError(f"HTTP {e.code}") from e
+            raise DecisionError(f"HTTP {e.code}", status=e.code) from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise DecisionError(f"届かない: {e!r}") from e
         except ValueError as e:                        # JSON が壊れている
@@ -733,9 +771,9 @@ class RulesBackend(DecisionEngine):
         text = cur.get("text") or ""
         hit = NONE_KEY
         if self._is_host(cur) and step_detect.is_turn_open(self._run(rows), text):
-            for key, _title, kws in self.meeting.steps:
-                if step_detect.step_hit(kws, text, self._kw_hit):
-                    hit = key
+            for s in self.meeting.steps:
+                if step_detect.step_hit(s.kw, text, self._kw_hit):
+                    hit = s.key
         return Answer(qid="", qtype="choice", value=hit, confidence=1.0)
 
     def _phase(self, rows: list, question: Question) -> Answer:
@@ -811,14 +849,28 @@ class FallbackEngine(DecisionEngine):
 
     name = "fallback"
 
-    def __init__(self, primary: DecisionEngine, secondary: DecisionEngine):
+    def __init__(self, primary: DecisionEngine, secondary: DecisionEngine,
+                 retry_busy_sec: float = 0.0):
         self.primary = primary
         self.secondary = secondary
+        # 混雑(429/503)のときだけ、退避の前に1回だけ待って撃ち直す秒数。
+        # 🔴 **会議中は 0 のまま**。待つぶんカードが遅れるので、会議では待たずに
+        #    ルールへ退避するのが正しい。これは再生（採点）のための逃げ道で、
+        #    無料枠のレート制限にぶつかると判定が取れないから置いてある。
+        self.retry_busy_sec = max(0.0, float(retry_busy_sec or 0.0))
 
     def evaluate(self, state: dict, questions: dict) -> Answers:
         try:
             return self.primary.evaluate(state, questions)
         except DecisionError as e:
+            if self.retry_busy_sec and getattr(e, "status", 0) in BUSY_STATUS:
+                time.sleep(self.retry_busy_sec)
+                try:
+                    ans = self.primary.evaluate(state, questions)
+                    ans.error = f"{self.primary.name}: {e}（待って撃ち直して通った）"
+                    return ans
+                except DecisionError as e2:
+                    e = e2               # 2回目も駄目なら、その理由を残して退避
             ans = self.secondary.evaluate(state, questions)
             ans.backend = f"{self.secondary.name}(fallback)"
             ans.error = f"{self.primary.name}: {e}"
@@ -826,13 +878,14 @@ class FallbackEngine(DecisionEngine):
 
 
 def make_engine(kind: str, bundle: Bundle, meeting: MeetingData,
-                opener=None) -> DecisionEngine:
+                opener=None, retry_busy_sec: float = 0.0) -> DecisionEngine:
     """``rules`` / ``jev``（＝Jev、落ちたら rules へ退避）を組み立てる。"""
     rules = RulesBackend(meeting, bundle)
     if kind == "rules":
         return rules
     if kind == "jev":
-        return FallbackEngine(JevBackend(bundle.jev, bundle=bundle, opener=opener), rules)
+        return FallbackEngine(JevBackend(bundle.jev, bundle=bundle, opener=opener),
+                              rules, retry_busy_sec=retry_busy_sec)
     raise SystemExit(f"[decisions] 知らない backend: {kind!r}（rules か jev）")
 
 
