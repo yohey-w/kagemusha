@@ -1,0 +1,151 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# decisions.yaml（デモ会議フォルダの分・架空）— 判定層に投げる「問いの束」。
+#
+# 中身は同梱の例 config/decisions.example.yaml と同じです。会議フォルダに置くと
+# こちらが勝ちます。書き方・型の説明・注意書きはその例の側に書いてあります。
+#
+# このデモで試すには（鍵が無くても最後まで通ります）:
+#   python3 ../../scripts/replay_eval.py \
+#     --transcript <逐語.jsonl> --meeting . --backend rules
+# ═══════════════════════════════════════════════════════════════════════════
+
+version: 1
+
+# ── 送る範囲 ───────────────────────────────────────────────────────────────
+# 逐語の蓄積は送りません。判定器は state が伸びるほど精度が落ちます
+# （判定に関係のない材料が答えを引っ張る）。窓は発話数と文字数の両方で切ります。
+window:
+  utterances: 8
+  max_chars: 1200
+
+# ── 人名の伏せ方 ───────────────────────────────────────────────────────────
+# 会議フォルダの roster.txt にある名前を、送る直前に役名へ置き換えます。
+# 置き換えは state だけでなく**選択肢の説明にも**掛かります（段の見出しに
+# 相手の名前が入っていることがあるため）。roster.txt が無ければ話者名だけ伏せます。
+privacy:
+  roster: roster.txt
+  host_alias: 〈進行役〉
+  guest_alias: 〈相手〉
+
+# ── 送り先 ─────────────────────────────────────────────────────────────────
+# 🔴 鍵はここに書かないこと。書くのは**環境変数の名前**だけです。
+#    export AI_GATEWAY_API_KEY=... のように、走らせる側の環境に置きます。
+# base_url を空にすると Jev は起動しません（--backend rules だけが動きます）。
+# 直契約の経路に変えるときは base_url と key_env と model を差し替えてください。
+jev:
+  base_url: https://ai-gateway.vercel.sh/typesafe
+  path: /v1/systemone
+  model: typesafe-ai/jev
+  key_env: AI_GATEWAY_API_KEY
+  # 会議中の判定は2秒で出ないなら要りません（遅れて出るカードは邪魔になるだけ）。
+  # 再試行はしません。落ちたらルール判定へ退避します。
+  timeout_sec: 2.0
+
+# ── 費用の見方 ─────────────────────────────────────────────────────────────
+# 入力トークン100万あたりの単価。**0 なら費用は計算しません**（この配布物は
+# 他所の値段を内蔵しません）。自分が契約した単価を書いてください。
+pricing:
+  input_per_mtok: 0.042
+  output_per_mtok: 0.0
+  currency: USD
+
+# ── 問いの束 ───────────────────────────────────────────────────────────────
+questions:
+
+  # Q1 段。候補は agenda_steps.json の段の見出し＋「該当なし」。
+  - id: q1_step
+    type: choice
+    ask: any
+    candidates: agenda_steps
+    include_none: true
+    instructions: >-
+      The meeting has a fixed agenda. Each option below is one agenda step.
+      Looking only at the most recent utterance in current_utterance, and using
+      the earlier utterances as context, which agenda step is the conversation
+      in right now? Answer "none" if the recent utterance belongs to no step.
+
+  # Q2 局面。順序のある4段階（締めの促しと自動停止の材料）。
+  - id: q2_phase
+    type: score
+    ask: any
+    levels:
+      - key: opening
+        desc: >-
+          Opening: greetings, audio check, small talk, or stating what the
+          meeting is for. The substance has not started.
+      - key: body
+        desc: >-
+          Body: the participants are working through the substance of the
+          meeting.
+      - key: closing
+        desc: >-
+          Closing: wrapping up, confirming next steps or the next date, or
+          saying goodbye.
+      - key: ended
+        desc: >-
+          Ended: the goodbyes are finished and nothing further is being
+          discussed.
+    instructions: >-
+      Which phase of the meeting does the most recent utterance belong to?
+
+  # Q3 発話の種類。後ろの問いを効かせる/切るための仕分け。
+  - id: q3_kind
+    type: choice
+    ask: any
+    instructions: >-
+      What kind of utterance is current_utterance? Judge only that one
+      utterance; the earlier ones are context.
+    options:
+      - key: fact
+        desc: A statement of fact about the work, the schedule, or the numbers.
+      - key: question_to_host
+        desc: The other party is asking the host a question.
+      - key: question_to_guest
+        desc: The host is asking the other party a question.
+      - key: decision
+        desc: Something is being decided or agreed right now.
+      - key: commitment
+        desc: Someone promises to do something after this meeting.
+      - key: request
+        desc: Someone asks the other side to do something.
+      - key: trouble
+        desc: A problem, a failure, a delay, or a complaint is being reported.
+      - key: small_talk
+        desc: Greetings, filler, or chat unrelated to the work.
+
+  # Q4 探し物（進行役の発話のときだけ送る）。
+  - id: q4_lookup
+    type: noul
+    ask: host
+    instructions: >-
+      In current_utterance, is the host looking for a piece of information
+      right now - for example a URL, an account name, a count, a date, a price,
+      or where a document is - typically by saying they will check, or by
+      asking themselves where something was?
+    criteria:
+      "true": The host is searching for something and needs it on screen now.
+      "false": The host is not searching for anything.
+
+  # Q5 探し物は即答表のどれか。候補は quick_facts.md の見出し＋「該当なし」。
+  - id: q5_quick_fact
+    type: choice
+    ask: any
+    candidates: quick_facts
+    include_none: true
+    instructions: >-
+      Each option below is one entry in the host's quick-reference sheet. Which
+      entry answers what is being asked for or looked for in the recent
+      utterances? Answer "none" if no entry answers it.
+
+  # Q8 約束（進行役の発話のときだけ送る）。9/19 に1件も記録に残らなかった穴。
+  - id: q8_commitment
+    type: noul
+    ask: host
+    instructions: >-
+      In current_utterance, did the host commit to doing something after this
+      meeting - for example to send, to check, to prepare, to reply, or to
+      decide by a date? A commitment the other party makes does not count, and
+      neither does something the host is doing during the meeting itself.
+    criteria:
+      "true": The host promised to do something after the meeting.
+      "false": The host made no such promise in this utterance.

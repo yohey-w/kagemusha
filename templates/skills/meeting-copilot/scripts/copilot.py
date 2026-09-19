@@ -1097,6 +1097,12 @@ def main() -> None:
     log(f"探し物の索引: {len(lookup)}件 / 合図{len(LOOKUP_TRIGGERS)}語"
         + (f" / 即答表 {cfgmod.quick_facts_path()}" if cfgmod.quick_facts_path() else
            " / 即答表なし（quick_facts.md を会議フォルダに置くと即答できます）"))
+    # 判定層（decision_engine.py）。**この版では番人はまだ判定層を呼ばない** ——
+    # 通っているのは設定の2つだけ。何で回すつもりか・画面に出すつもりかを
+    # 起動時に読み上げておく（「出るはずだった」を会議の最中に気づく、を防ぐ）。
+    log(f"判定層: backend={cfgmod.decision_backend()}"
+        f" / カンペに出す={'はい' if cfgmod.show_decision_cards() else 'いいえ'}"
+        "（この版では番人からは呼びません。採点は replay_eval.py で）")
     if a.selfcheck:
         log(f"状態ディレクトリ: {STATE_DIR}")
         log(f"段取り: {AGENDA_PATH}")

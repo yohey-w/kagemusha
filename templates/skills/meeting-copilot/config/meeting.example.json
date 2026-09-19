@@ -32,7 +32,11 @@
     "                  それ以外は『済』を押すまで残る(2026-09-04 実機確認の既定)",
     "  call_words   … 進行役がモニタを呼ぶ語。🔴 STTの誤変換の綴りも並べる",
     "  start_homophones … 『同席開始』が音声認識で化けた綴り(実際に化けたものだけ)",
-    "  creds_label  … 鍵パネルのボタン名(既定『🔑 合言葉』)"
+    "  creds_label  … 鍵パネルのボタン名(既定『🔑 合言葉』)",
+    "  decision_backend  … 判定層を何で回すか。rules(既定・外へ出ない) か jev",
+    "                  (jev の宛先・鍵の環境変数名は decisions.yaml の側。",
+    "                   問いの束と候補の作り方は config/decisions.example.yaml)",
+    "  show_decision_cards … 判定層の答えをカンペに出すか(既定 false=記録だけ)"
   ],
 
   "title": "Acme社 定例（架空）",
@@ -52,6 +56,9 @@
     "premise_watch": true,
     "stage": true
   },
+
+  "decision_backend": "rules",
+  "show_decision_cards": false,
 
   "stage": {
     "set_label": "定例（架空）",
