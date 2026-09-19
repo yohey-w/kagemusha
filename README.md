@@ -123,6 +123,13 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 | what a desktop face costs | the app refuses remote-debugging arguments, so its acceptance run is done by hand | `PreToolUse` denies once its `[hooks.state]` key is spelled the Linux way; `UserPromptSubmit` is skipped **in silence**, so the per-turn date stamp is absent and a deny queues nothing (measured 2026-09-14) | put the date in the prompt, and read `approval_queue.md` yourself instead of trusting the deny text |
 | scheduling | cron / Task Scheduler — the same for both; no CLI-native scheduler is used or needed |||
 
+### Bundled skills
+
+The `skills` row above is a symlink, not a description — two skills ship in `templates/skills/`:
+
+- **`advisor-gate`** — a procedure for consulting a frontier-class external reasoning model on a decision that matters, then auditing the reply. [`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
+- **`meeting-copilot`** — a two-machine meeting copilot. Builds a script from a single agenda sheet, keeps 3-line cards, off-script search assist, and stops itself when the call ends. [`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
+
 The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/sessions` (`--ephemeral`): that tree is what the distillation lane harvests, and the machinery's prompts are not your judgment. `AGENT_CLI_RECORD=1` turns recording on while you debug a cron run.
 
 **Claude Code, in five lines.** ① `./scripts/setup.sh` ② fill `AGENTS.md` (the delegation boundary) ③ `cp config.env.example config.env`, set `PROJECT_ROOT` and `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` by hand once ⑤ put that line on cron.

@@ -123,6 +123,13 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 | デスクトップ版の代償 | 本体がデバッグ引数を拒否するので、受入テストは人の手で回す | `[hooks.state]` の鍵を Linux 綴りにすれば `PreToolUse` は拒否する。`UserPromptSubmit` は**黙って**飛ばされるので、1ターンごとの日時印は入らず、deny しても何も積まれない（2026-09-14 実測） | 日付はプロンプトに書き、deny の文面を信じずに `approval_queue.md` を自分で読む |
 | スケジューラ | cron / タスクスケジューラ——両方同じ。CLI 固有のスケジューラは使わないし、要らない |||
 
+### 同梱スキル
+
+上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には2つ同梱されている。
+
+- **`advisor-gate`** — 最上位の外部推論モデルへ重要な判断のレビューを諮問し、回答を検収するための手順。[`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
+- **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
+
 このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。
 
 **Claude Code・5行。** ① `./scripts/setup.sh` ② `AGENTS.md` の委任境界を埋める ③ `cp config.env.example config.env` して `PROJECT_ROOT` と `AGENT_CLI="claude"` ④ `./scripts/morning_brief.sh` を手で1回 ⑤ その行を cron へ。
