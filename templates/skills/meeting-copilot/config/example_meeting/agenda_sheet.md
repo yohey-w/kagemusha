@@ -1,9 +1,10 @@
 # Acme社 定例（架空）— 進行表
 
-> この1枚が正本です。相手に渡すページ（Notion 等）にそのまま貼れて、同じファイルから
-> `build_agenda.py` がカンペ（`talk_script.md`）と段取り（`agenda_steps.json`）を作ります。
+> **この1枚が正本です。** 相手に渡すページ（Notion 等）にそのまま貼れて、同じファイルから
+> `build_agenda.py` が同じフォルダのカンペ（`talk_script.md`）と段取り（`agenda_steps.json`）
+> を作ります。この会議フォルダの2ファイルは、この1枚から生成したものです。
 >
->     python3 scripts/build_agenda.py config/agenda_sheet.example.md --out <会議フォルダ>
+>     python3 ../../scripts/build_agenda.py agenda_sheet.md --out . --check
 >
 > 台本を別に書かないでください。二重に持つと、会議では必ず片方しか見ません
 > （2026-09-19 の実走で、台本の特徴句40件のうち実際に口に出たのは1件でした）。

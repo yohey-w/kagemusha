@@ -18,8 +18,8 @@
 #                   ここでは起こせない（copilot=false なら前提監視も動かない）
 #
 # 🔴 止め方は stop.sh。kill / pkill は使わない
-#   （viewer2 は HTTP /quit、responder は停止ファイル。receiver と copilot には
-#     停止の口が無いので、その2つだけは手で畳む — 詳しくは stop.sh と SKILL.md）
+#   （全層が <状態Dir>/meetlive.stop を見ていて、置かれたら自分で終わる。
+#     番人は終話（予定超過・長い無音・別れの言葉）を検知して自分でそれを置く）
 # ═══════════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -32,6 +32,7 @@ HOST="127.0.0.1"
 BACKEND="stub"
 KEYWORDS=""
 START=""
+END=""
 TOTAL_MIN=""
 FRESH=0
 RECV_PORT=""
@@ -49,6 +50,8 @@ usage() {
   --backend NAME      receiver の音声認識バックエンド (既定 stub)
   --keywords "a,b"    receiver へ渡す固有名詞（必ずダブルクォートで囲む）
   --start ISO8601     会議開始時刻 (省略時は meeting.json の start)
+  --end ISO8601|HH:MM 会議終了の予定 (省略時は meeting.json の end)
+                      ここから猶予を過ぎると番人が全層を畳む
   --total-min N       会議の長さ（分・省略時は meeting.json / 段取りJSON）
   --fresh             receiver の逐語を作り直す
   --recv-port N       receiver が子機を待ち受けるポート (既定 47311)
@@ -66,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --backend) BACKEND="$2"; shift ;;
     --keywords) KEYWORDS="$2"; shift ;;
     --start) START="$2"; shift ;;
+    --end) END="$2"; shift ;;
     --total-min) TOTAL_MIN="$2"; shift ;;
     --fresh) FRESH=1 ;;
     --recv-port) RECV_PORT="$2"; shift ;;
@@ -110,6 +114,18 @@ EOF
 
 LOGS="$STATE/logs"
 [[ "$DRY" -eq 1 ]] || mkdir -p "$LOGS"
+
+# 前の会議の停止ファイルが残っていると、起こした層が起動した瞬間に自分で終わる。
+# 「画面は上がるのに番人が居ない」がいちばん分かりにくい壊れ方なので先に片付ける。
+STOPF="$STATE/meetlive.stop"
+if [[ -f "$STOPF" ]]; then
+  if [[ "$DRY" -eq 1 ]]; then
+    printf '⚠ 前回の停止ファイルが残っています（起動時に片付けます）: %s\n' "$STOPF"
+  else
+    rm -f "$STOPF" "$STATE/responder.stop"
+    printf '前回の停止ファイルを片付けました: %s\n' "$STOPF"
+  fi
+fi
 
 if [[ "$FEAT_COPILOT" == "yes" && "$FEAT_RESPONDER" == "yes" ]]; then
   cat >&2 <<'EOF'
@@ -158,6 +174,7 @@ fi
 if [[ "$FEAT_COPILOT" == "yes" ]]; then
   COP=("$PY" "$HERE/copilot.py")
   [[ -n "$START" ]] && COP+=(--start "$START")
+  [[ -n "$END" ]] && COP+=(--end "$END")
   add copilot "${COP[@]}"
 fi
 
@@ -205,6 +222,25 @@ printf '合言葉ファイル: %s\n' "${MEETLIVE_CREDS_FILE:-(未設定・鍵パ
 printf '起こす層: %s\n' "${NAMES[*]}"
 if [[ "$FEAT_PREMISE" == "yes" ]]; then
   printf '前提監視: copilot が発話ごとに起こします（常駐しないのでここでは起こしません）\n'
+fi
+if [[ "$FEAT_COPILOT" == "yes" ]]; then
+  "$PY" - "$HERE" "$END" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import meetlive_config as c
+p = c.stop_policy()
+end = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] else c.meeting_end_iso()
+if p["enabled"]:
+    print(f"終話検知: 入（無音{p['silence_min']:.0f}分 / 別れの言葉のあと"
+          f"{p['farewell_grace_min']:.0f}分 / 予定超過{p['end_grace_min']:.0f}分）"
+          + (f" 終わりの予定 {end}" if end else " 終わりの予定は未設定"))
+else:
+    print("終話検知: 切（meeting.json の auto_stop.enabled=false）")
+print(f"カンペの粒度: {c.script_mode()}")
+qf = c.quick_facts_path()
+print(f"即答表: {qf}" if qf else
+      "即答表: なし（quick_facts.md を会議フォルダに置くと探し物に即答します）")
+PYEOF
 fi
 
 if [[ "$DRY" -eq 1 ]]; then

@@ -64,6 +64,7 @@ from datetime import datetime
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import meetlive_config as cfgmod  # noqa: E402
 import mode_signal  # noqa: E402
+import step_detect  # noqa: E402
 
 STATE_DIR = cfgmod.state_dir()
 AGENDA_PATH = cfgmod.input_path("MEETLIVE_AGENDA", "agenda_steps.example.json", required=True)
@@ -90,6 +91,7 @@ SECRETS_PATH = cfgmod.creds_file()
 CREDS_LABEL = cfgmod.creds_label()
 LAYOUT = cfgmod.layout()             # columns / rows / auto
 HEARTBEAT_PATH = cfgmod.heartbeat_path()
+STOP_FILE = cfgmod.stop_file()       # 全層が共通で見る停止ファイル (kill を使わないため)
 HEARTBEAT_STALE = cfgmod.heartbeat_stale_sec()
 
 CALL_WORDS = cfgmod.call_words()
@@ -764,6 +766,12 @@ def parse_script(path: pathlib.Path) -> dict:
       head   = ### の小見出し
       branch = ▸ の分岐。「→」の前が条件・後が言うこと。既定は畳む
       note   = 丸括弧のト書き・表・その他 (小さく薄く)
+
+    さらに build_agenda.py が作る3行には役割の札を付ける (``role``):
+      answer … 「取る答え:」  この段で必ず取るもの
+      line   … 言い方の例。``script_mode: answers_only`` のとき**隠す**
+      ask    … 「抜けたら:」  取れていないときに出す問い
+    札の付いた行は、頭の「取る答え:」「抜けたら:」を落として表示する。
     """
     out: dict[str, list] = {}
     if not path.exists():
@@ -823,23 +831,44 @@ def parse_script(path: pathlib.Path) -> dict:
             say = clean_md(mb.group(1))
             sub = clean_md(mb.group(2))
             if say:
-                item = {"t": "say", "s": say}
+                item = {"t": "say", "s": say, "role": "line"}
+                ma = re.match(r"^(抜けたら|抜けたら出す問い)\s*[:：]\s*(.*)$", say)
+                if ma:
+                    item["s"], item["role"] = ma.group(2).strip(), "ask"
                 if sub:
                     item["sub"] = sub
                 out[cur_n].append(item)
             continue
 
-        out[cur_n].append({"t": "note", "s": clean_md(s)})
+        plain = clean_md(s)
+        mn = re.match(r"^(取る答え|取るもの)\s*[:：]\s*(.*)$", plain)
+        if mn:
+            out[cur_n].append({"t": "note", "s": mn.group(2).strip(), "role": "answer"})
+            continue
+        out[cur_n].append({"t": "note", "s": plain})
 
     return {k: v for k, v in out.items() if v}
 
 
 def build_blocks(agenda, scripts: dict) -> list:
-    """段(agenda)と台本節(【N】)を突き合わせて、中段に出すブロックを作る。"""
+    """段(agenda)と台本節(【N】)を突き合わせて、中段に出すブロックを作る。
+
+    ``script_mode: answers_only`` のときは「言い方の例」(role=line)を落とす。
+    読み上げ用の台詞が画面にあると、そこを読もうとして会話が固くなる
+    (2026-09-19 実走: 台本の特徴句40件のうち実際に口に出たのは1件で、
+     進行役は結局、確認シートの流れで自分の言葉で話していた)。
+    """
     blocks = []
+    hide_lines = cfgmod.script_mode() == "answers_only"
     steps = (agenda or {}).get("steps") or []
     for i, s in enumerate(steps):
         items = list(scripts.get(str(i + 1), []))
+        if hide_lines:
+            kept = [x for x in items if x.get("role") != "line"]
+            # 全部が「言い方の例」だった段は、隠すと空になる。そのときは隠さない
+            # (空の段が並ぶほうが、台詞が見えるより困る)。
+            if kept:
+                items = kept
         src = "台本"
         if not any(x["t"] == "say" for x in items):
             # 台本から拾えない段は agenda の台本行で代替する
@@ -903,12 +932,10 @@ def build_nav(agenda, lines, mode, start_epoch, total_min_override=None):
 
     said = [r for r in lines if r.get("text") and (anchor is None or _ts(r.get("ts", "")) >= anchor)]
     all_blob = "\n".join(r.get("text", "") for r in said)
-    host_blob = "\n".join(r.get("text", "") for r in said if r.get("speaker") == "host")
 
-    auto = 0
-    for i, s in enumerate(steps):
-        if any(kw_hit(k, host_blob) for k in s["kw"]):
-            auto = max(auto, i)
+    # 段の判定は step_detect に1本化（番人 copilot.py とまったく同じ規則）。
+    # 連結した host_blob へのキーワード一致は、雑談の1語で段が飛ぶので使わない。
+    auto = step_detect.scan(steps, said, kw_hit)
     delta = 0
     for r in said:
         if r.get("call"):
@@ -1023,6 +1050,27 @@ def read_heartbeat(path: pathlib.Path | None = None) -> dict:
     return out
 
 
+def watch_stop_file(poll_sec: float = 2.0) -> None:
+    """停止ファイルが置かれたら自分で降りる。
+
+    /quit は手元からしか叩けないので、番人が終話を検知したときの畳み方が無かった
+    (2026-09-19 実走: 会議のあと12時間近く3プロセスが残った)。停止の合図を
+    ファイル1つにして、各層が**自分で**見に行く。kill は使わない。
+    """
+    def loop():
+        while True:
+            try:
+                if STOP_FILE.exists():
+                    print(f"停止ファイルを見つけたので降板 pid={os.getpid()} "
+                          f"({STOP_FILE})", flush=True)
+                    os._exit(0)
+            except Exception:       # noqa: BLE001  監視で落ちない
+                pass
+            time.sleep(poll_sec)
+
+    threading.Thread(target=loop, daemon=True).start()
+
+
 def build_health(outdir: pathlib.Path, lines: list) -> dict:
     """稼働ライン。画面の上段に1行で出す(文言もここで作って /state に載せる)。"""
     audio = _last_audio_epoch(outdir)
@@ -1089,6 +1137,37 @@ def build_state(outdir: pathlib.Path, agenda, start_epoch, total_min=None):
             return round(cts - _ts(q.get("ts", "")), 2)
         return None
 
+    def merge_badges(items: list) -> list:
+        """同じ (種別, 対象) のカードを1枚に畳む。
+
+        番人は同じ催促を撃ち直さない（初回フルカード＋節目のバッジ）が、画面側でも
+        畳んでおく。2026-09-19 の実走では同一文言のカードが960件積み上がり、
+        「読む／消える」の区別そのものが意味を失った。残すのは**中身のあるほう**で、
+        バッジからは件数だけを引き継ぐ。
+        """
+        out, seen = [], {}
+        for c in items:
+            key = (c.get("kind"), c.get("target") or "")
+            if not key[1]:
+                out.append(c)
+                continue
+            first = seen.get(key)
+            if first is None:
+                seen[key] = c
+                out.append(c)
+                continue
+            # 件数は大きいほうを採る。本文はバッジでないほう(=最初のフルカード)を残す
+            n = max(int(first.get("count") or 1), int(c.get("count") or 1))
+            if first.get("badge") and not c.get("badge"):
+                first.update({k: v for k, v in c.items()
+                              if k in ("lines", "say", "status", "confidence")})
+                first["badge"] = False
+            first["count"] = n
+        for c in out:
+            if int(c.get("count") or 0) > 1:
+                c["unresolved"] = int(c["count"])
+        return out
+
     stack, history, call_latency = [], [], None
     for pick in reversed(cards):                    # 新しいものが先頭
         key = str(pick.get("ts") or "")
@@ -1117,6 +1196,7 @@ def build_state(outdir: pathlib.Path, agenda, start_epoch, total_min=None):
         c["pin"] = (kind == "call")
         stack.append(c)
 
+    stack = merge_badges(stack)
     # 呼びかけへの回答 (call) は「済」を押すまで最上段に固定する
     stack.sort(key=lambda c: 0 if c.get("pin") else 1)
 
@@ -1312,6 +1392,27 @@ PAGE = r"""<!doctype html>
   .cd .cb p{margin:0 0 4px;font-size:21px;line-height:1.35;font-weight:600;color:#f0e6d2}
   .cd.hot .cb p,.cd.pin .cb p{color:#ffd9d6}
   .cd .cb p:last-child{margin-bottom:0}
+  /* 3行固定: 対象 / 状況 / 言うこと。「言うこと」だけを大きく出す
+     (進行役はそこを読み上げる。ほかの2行は、それが何の話か分かるための下地) */
+  .cd .cb p>b{display:inline-block;min-width:3.6em;margin-right:7px;font-size:10px;
+   letter-spacing:.14em;color:var(--faint);font-weight:600;vertical-align:2px}
+  .cd .cb p.ct{font-size:15px;font-weight:600;color:#cfd6e1}
+  .cd .cb p.cl{font-size:14px;font-weight:500;color:var(--faint)}
+  .cd .cb p.cs{font-size:21px;font-weight:700}
+  .cd .cb .rf{font-size:10px;color:var(--faint);letter-spacing:.06em}
+  .cd .to{font-size:10px;letter-spacing:.08em;color:var(--accent);
+   border:1px solid var(--line);border-radius:9px;padding:1px 7px}
+  .cd .to.quiet{color:var(--faint)}
+  .cd .bg{font-size:10px;letter-spacing:.06em;color:var(--hot);
+   border:1px solid var(--hot);border-radius:9px;padding:1px 7px}
+  #stagehelp{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;
+   margin:6px 0 0;padding:7px 10px;border:1px solid var(--accent);border-radius:7px;
+   background:#181c24;font-size:12px;color:#cfd6e1}
+  #stagehelp b{color:var(--accent);letter-spacing:.06em}
+  #stagehelp i{font-style:normal;color:var(--accent)}
+  #stagehelp button{margin-left:auto;background:#171b22;border:1px solid var(--line);
+   color:#cfd6e1;border-radius:6px;padding:3px 11px;font-size:12px;cursor:pointer}
+  body.shdone #stagehelp{display:none}
   .cd .q{color:var(--faint);font-size:11px;margin-top:5px}
   .cd.sm .cb p{font-size:17px;font-weight:500;color:#cfd6e1}
   #hist{display:none;margin-top:8px;border-top:1px dashed var(--line);padding-top:7px}
@@ -1431,6 +1532,16 @@ PAGE = r"""<!doctype html>
     <span id="docbtns"></span>
   </div>
   <div id="creds"></div>
+  <!-- 舞台の使い方。起動のたびに1回だけ出して、押したら消える。
+       2026-09-19 実走の開始56秒後の実発話:「舞台が見えてるけどどうすればいんだっけ
+       操作方法教えて」。手順は資源表にしか無く、進行画面には出ていなかった。 -->
+  <div id="stagehelp">
+    <b>舞台（相手に見せる別窓）の使い方</b>
+    <span>① 「🎭 舞台を開く」を押す → 別窓が開くので、会議アプリでその窓を共有する</span>
+    <span>② 出すものは右の丸ボタン、または声で「<i id="shcall">呼びかけ語</i>、〇〇を出して」</span>
+    <span>③ 見せ終わったら「消す」。この画面（カンペ）は共有されません</span>
+    <button id="shdone">分かった</button>
+  </div>
 </div>
 <div id="main">
   <div id="mid">
@@ -1448,10 +1559,11 @@ PAGE = r"""<!doctype html>
 <script>
 const BLOCKS = __BLOCKS__;
 const STAGE  = __STAGE__;
+const CALLW  = __CALLW__;   /* 呼びかけ語(舞台の使い方に出す) */
 const $=s=>document.querySelector(s);
 function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 function ttl(s){return esc((s||'').replace(/^[①②③④⑤⑥⑦⑧⑨⑩\s　]+/,''))}
-const KIND={call:'照会への回答',topic:'進行',warn:'確認',wrap:'注意',script:'進行メモ',premise_warn:'前提ズレ',premise_ok:'既知',premise_new:'新情報',reply:'相手への返し'};
+const KIND={call:'照会への回答',topic:'進行',warn:'確認',wrap:'注意',script:'進行メモ',premise_warn:'前提ズレ',premise_ok:'既知',premise_new:'新情報',reply:'相手への返し',lookup:'探し物'};
 
 let state=null, shown=-1, navCur=-1, manual=null, startEpoch=null, totalMin=60;
 
@@ -1624,15 +1736,31 @@ function render(d){
   drawShelf(d.docs||[]);
 }
 
-/* ---- 右列: カードの並び (call を上端に固定・その下は新着順・手で消す) ---- */
+/* ---- 右列: カードの並び (call を上端に固定・その下は新着順・手で消す) ----
+   カードは3行固定。【対象】何について / 【状況】何が起きた / 【言うこと】そのまま読む文。
+   2026-09-19 の実走で、3要素そろっていたカードは1013件中14件(1.4%)しかなく、
+   残りは「対象は分かるが、何が問題で何を言えばよいか本文に無い」型だった。 */
 function cardHTML(c, small){
   const hot = (c.kind==='warn'||c.kind==='premise_warn');
-  const body = (c.confidence==='none'
-    ? ['手元に資料がありません。','確認して後ほど回答、と伝えてください。']
-    : (c.lines||[]).slice(0,(c.kind==='reply'||c.kind==='call')?5:3))
-    .map(function(l){return '<p>'+esc(l)+'</p>'}).join('');
+  let body;
+  if(c.confidence==='none' && !c.say){
+    body = '<p class="cl"><b>状況</b>手元に資料がありません</p>'
+         + '<p class="cs"><b>言うこと</b>確認して後ほどご連絡します、と伝えてください</p>';
+  }else if(c.target || c.status || c.say){
+    body = (c.target?'<p class="ct"><b>対象</b>'+esc(c.target)
+             +(c.ref?' <span class="rf">'+esc(c.ref)+'</span>':'')+'</p>':'')
+         + (c.status?'<p class="cl"><b>状況</b>'+esc(c.status)+'</p>':'')
+         + (c.say?'<p class="cs"><b>言うこと</b>'+esc(c.say)+'</p>':'');
+  }else{
+    /* 3要素を持たない古い形式のカード(responder の返し等)は今までどおり */
+    body = (c.lines||[]).slice(0,(c.kind==='reply'||c.kind==='call')?5:3)
+      .map(function(l){return '<p>'+esc(l)+'</p>'}).join('');
+  }
+  const to = c.to || '進行役へ';
   return '<div class="cd'+(hot?' hot':'')+(c.pin?' pin':'')+(small?' sm':'')+'" data-key="'+esc(c.key||'')+'">'
-    +'<div class="ch"><span class="k">'+(c.confidence==='none'?'該当なし':esc(KIND[c.kind]||c.kind||''))+'</span>'
+    +'<div class="ch"><span class="k">'+(c.confidence==='none'&&!c.say?'該当なし':esc(KIND[c.kind]||c.kind||''))+'</span>'
+    +'<span class="to'+(to==='記録のみ'?' quiet':'')+'">'+esc(to)+'</span>'
+    +(c.unresolved?'<span class="bg">未解決 '+esc(String(c.unresolved))+'回</span>':'')
     +'<span class="at mono">'+esc(c.at||'')+'</span>'
     +(c.auto?'<span class="at">（解消すると自動で消えます）</span>'
             :'<button class="dn" data-key="'+esc(c.key||'')+'">済</button>')
@@ -1670,6 +1798,18 @@ function doUndismiss(key){
   if(!key) return;
   fetch('/card/undismiss?key='+encodeURIComponent(key),{method:'POST'}).catch(function(){});
 }
+/* ---- 舞台の使い方: 起動のたびに1回だけ。押したらこのタブでは出さない ---- */
+(function(){
+  const el=$('#shdone'); if(!el) return;
+  const call=$('#shcall');
+  if(call && Array.isArray(CALLW) && CALLW.length) call.textContent = CALLW[0];
+  try{ if(sessionStorage.getItem('shdone')==='1') document.body.classList.add('shdone'); }catch(e){}
+  el.addEventListener('click',function(){
+    document.body.classList.add('shdone');
+    try{ sessionStorage.setItem('shdone','1'); }catch(e){}
+  });
+})();
+
 $('#histbtn').addEventListener('click',function(){
   const on=document.body.classList.toggle('hist');
   $('#histbtn').classList.toggle('on', on);
@@ -1748,7 +1888,9 @@ def render_page(blocks, theme: str = "", layout: str = "") -> bytes:
         ensure_ascii=False,
     ).replace("</", "<\\/")
     lay = layout if layout in ("columns", "rows", "auto") else LAYOUT
+    callw = json.dumps(list(CALL_WORDS), ensure_ascii=False).replace("</", "<\\/")
     html = (PAGE.replace("__BLOCKS__", js).replace("__STAGE__", cat)
+            .replace("__CALLW__", callw)
             .replace("__CREDS_LABEL__", _esc(CREDS_LABEL))
             .replace("<body>", f'<body data-layout="{_esc(lay)}">', 1))
     # ?theme=ryotei のときだけ <body> に data-theme を足す。既定(theme="")は無改変のまま
@@ -2060,6 +2202,8 @@ def main():
           flush=True)
     print(f"  携帯ディスプレイからは この機体の LAN / VPN アドレス + :{a.port}", flush=True)
     print(f"  止めるときは kill ではなく手元から: curl localhost:{a.port}/quit", flush=True)
+    print(f"  停止ファイル({STOP_FILE.name})が置かれても自分で降ります", flush=True)
+    watch_stop_file()
     S((a.host, a.port), H).serve_forever()
 
 

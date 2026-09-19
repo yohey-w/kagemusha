@@ -18,6 +18,12 @@
     "  counterpart  … 相手の呼び方(プロンプト内)",
     "  share        … 画面共有の構え host=こちらが共有 / guest=相手が共有 / none=共有なし",
     "  layout       … カンペ画面 columns=左右2列 / rows=上下 / auto=画面の向きで切替",
+    "  script_mode  … カンペの粒度。with_lines=3行全部(既定) / answers_only=言い方の例を隠し",
+    "                  『取る答え』と『抜けたら出す問い』だけ出す",
+    "  end          … 終わりの予定 'HH:MM'。ここから auto_stop.end_grace_min 過ぎたら畳む",
+    "  auto_stop    … 終話検知。enabled / silence_min(双方の無音) /",
+    "                  farewell_grace_min(別れの言葉のあとの無音) / end_grace_min",
+    "                  🔴 会議の最中に落ちるほうが害が大きいので、既定は分単位で余裕がある",
     "  features     … 起動する層の ON/OFF (run.sh が読む)",
     "  stage        … 舞台セット。set_label=今回の呼び名 / order=出すボタンだけを順に",
     "                  (個々のURLは走行中に <state>/stage_urls.json で差し替えられる。",
@@ -37,6 +43,8 @@
   "counterpart": "Acmeさん",
   "share": "host",
   "layout": "columns",
+  "script_mode": "with_lines",
+  "end": "15:45",
 
   "features": {
     "copilot": true,
@@ -48,6 +56,13 @@
   "stage": {
     "set_label": "定例（架空）",
     "order": ["blank", "agenda", "slides", "free"]
+  },
+
+  "auto_stop": {
+    "enabled": true,
+    "silence_min": 10,
+    "farewell_grace_min": 3,
+    "end_grace_min": 10
   },
 
   "card_policy": {

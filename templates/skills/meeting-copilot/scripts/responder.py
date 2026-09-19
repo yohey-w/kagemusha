@@ -493,6 +493,11 @@ def watch(min_chars: int = 18, quiet: float = 2.0, timeout: float = 90.0) -> Non
             stop.unlink()
             print("[responder] 停止合図を受けたので終了します", flush=True)
             return
+        # 全層で共通の停止ファイル。番人が終話を検知したときもこれが置かれる
+        # (自分あての responder.stop と違い、**消さない**。他の層もまだ見に来る)
+        if cfgmod.stop_file().exists():
+            print("[responder] 共通の停止ファイルを見つけたので終了します", flush=True)
+            return
         if time.time() - last_hb >= HEARTBEAT_SEC:
             write_heartbeat(f"待機 先読み{len(bank)}枚")
             last_hb = time.time()
