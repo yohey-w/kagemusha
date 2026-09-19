@@ -40,6 +40,7 @@ import json
 import os
 import pathlib
 import re
+import sys
 import time
 import typing
 import unicodedata
@@ -64,6 +65,9 @@ DEFAULT_WINDOW = 8
 DEFAULT_WINDOW_CHARS = 1200
 DEFAULT_TIMEOUT = 2.0
 NONE_KEY = "none"
+# 退避の既定の順序。Jev（判定器）→ 小型 LLM → ルール。
+DEFAULT_CHAIN = ("jev", "llm", "rules")
+ENGINE_NAMES = ("jev", "llm", "rules")
 
 _ASCII_KEY = re.compile(r"[^A-Za-z0-9_]")
 
@@ -89,11 +93,11 @@ BUSY_STATUS = (429, 503, 529)
 
 
 @dataclasses.dataclass
-class JevSettings:
-    """外部判定器の宛先。**既定値は空**。設定に無ければ Jev は起動しない。"""
+class Endpoint:
+    """外の判定器の宛先。**既定値は空**。設定に無ければその実装は起動しない。"""
 
     base_url: str = ""
-    path: str = "/v1/systemone"
+    path: str = ""
     model: str = ""
     key_env: str = ""
     timeout_sec: float = DEFAULT_TIMEOUT
@@ -101,6 +105,24 @@ class JevSettings:
     @property
     def endpoint(self) -> str:
         return self.base_url.rstrip("/") + "/" + self.path.lstrip("/")
+
+
+@dataclasses.dataclass
+class JevSettings(Endpoint):
+    path: str = "/v1/systemone"
+
+
+@dataclasses.dataclass
+class LLMSettings(Endpoint):
+    """退避先の小型 LLM（OpenAI 互換の chat completions）。
+
+    Jev と同じ問いの束を、JSON で答えさせる。判定器ではないので確率分布は
+    返らない——確信度1つから**近似**して埋める（``approx: true`` を立てる）。
+    """
+
+    path: str = "/v1/chat/completions"
+    timeout_sec: float = 3.0
+    max_tokens: int = 400
 
 
 @dataclasses.dataclass
@@ -146,8 +168,12 @@ class Bundle:
     window: int = DEFAULT_WINDOW
     window_chars: int = DEFAULT_WINDOW_CHARS
     jev: JevSettings = dataclasses.field(default_factory=JevSettings)
+    llm: LLMSettings = dataclasses.field(default_factory=LLMSettings)
     privacy: Privacy = dataclasses.field(default_factory=Privacy)
     pricing: Pricing = dataclasses.field(default_factory=Pricing)
+    # 退避の順序。前から順に試して、答えた実装で止まる。最後は必ず rules
+    # （外へ出ない実装で終わらないと、全部落ちたときに会議が止まる）。
+    fallback_chain: tuple = DEFAULT_CHAIN
 
     def question(self, qid: str) -> "Question | None":
         return next((q for q in self.questions if q.qid == qid), None)
@@ -176,6 +202,15 @@ def bundle_from_dict(d: dict) -> Bundle:
     jv = d.get("jev") if isinstance(d.get("jev"), dict) else {}
     pv = d.get("privacy") if isinstance(d.get("privacy"), dict) else {}
     pr = d.get("pricing") if isinstance(d.get("pricing"), dict) else {}
+    lm = d.get("llm") if isinstance(d.get("llm"), dict) else {}
+    chain = [str(x).strip().lower() for x in (d.get("fallback_chain") or DEFAULT_CHAIN)]
+    unknown = [x for x in chain if x not in ENGINE_NAMES]
+    if unknown:
+        raise SystemExit(f"[decisions] fallback_chain に知らない名前: {unknown}"
+                         f"（使えるのは {', '.join(ENGINE_NAMES)}）")
+    if not chain or chain[-1] != "rules":
+        # 外へ出る実装で終わると、全部落ちたときに答えが1つも出ない。
+        chain = chain + ["rules"]
     qs = []
     for raw in (d.get("questions") or []):
         if not isinstance(raw, dict) or not raw.get("id"):
@@ -208,6 +243,15 @@ def bundle_from_dict(d: dict) -> Bundle:
             key_env=str(jv.get("key_env") or "").strip(),
             timeout_sec=float(jv.get("timeout_sec") or DEFAULT_TIMEOUT),
         ),
+        llm=LLMSettings(
+            base_url=str(lm.get("base_url") or "").strip(),
+            path=str(lm.get("path") or "/v1/chat/completions").strip(),
+            model=str(lm.get("model") or "").strip(),
+            key_env=str(lm.get("key_env") or "").strip(),
+            timeout_sec=float(lm.get("timeout_sec") or 3.0),
+            max_tokens=int(lm.get("max_tokens") or 400),
+        ),
+        fallback_chain=tuple(chain),
         privacy=Privacy(
             roster=str(pv.get("roster") or "roster.txt").strip(),
             host_alias=str(pv.get("host_alias") or "〈進行役〉"),
@@ -578,10 +622,13 @@ class Answer:
     probabilities: dict = dataclasses.field(default_factory=dict)
     score: float = 0.0
     p_yes: float = 0.0
+    approx: bool = False        # 確率分布が本物でなく、確信度から近似したもの
 
     def as_dict(self) -> dict:
         d = {"type": self.qtype, "value": self.value,
              "confidence": round(self.confidence, 4)}
+        if self.approx:
+            d["approx"] = True
         if self.probabilities:
             d["probabilities"] = {k: round(float(v), 4)
                                   for k, v in self.probabilities.items()}
@@ -654,6 +701,33 @@ class DecisionEngine:
         raise NotImplementedError
 
 
+def _post_json(settings: Endpoint, body: dict, opener) -> dict:
+    """1往復して JSON を返す。失敗はすべて DecisionError に畳む。
+
+    再試行はここではしない。会議中の判定は間に合わないなら要らないので、
+    待つかどうかは上（退避の鎖）が決める。
+    """
+    key = os.environ.get(settings.key_env) or ""
+    if not key:
+        raise DecisionError(
+            f"環境変数 {settings.key_env} が空です（鍵は設定ファイルに書かない）")
+    req = urllib.request.Request(
+        settings.endpoint,
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {key}",
+                 "Content-Type": "application/json"},
+        method="POST")
+    try:
+        with opener(req, timeout=settings.timeout_sec) as res:
+            return json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:                # 4xx/5xx
+        raise DecisionError(f"HTTP {e.code}", status=e.code) from e
+    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        raise DecisionError(f"届かない: {e!r}") from e
+    except ValueError as e:                            # JSON が壊れている
+        raise DecisionError(f"答えを読めない: {e!r}") from e
+
+
 class JevBackend(DecisionEngine):
     """外部の判定器へ REST で1往復。**落ちたら例外**（退避は呼び出し側の仕事）。
 
@@ -678,32 +752,11 @@ class JevBackend(DecisionEngine):
         if not settings.key_env:
             raise SystemExit("[decisions] jev.key_env（鍵を入れる環境変数の名前）が空です。")
 
-    def api_key(self) -> str:
-        key = os.environ.get(self.settings.key_env) or ""
-        if not key:
-            raise DecisionError(
-                f"環境変数 {self.settings.key_env} が空です（鍵は設定ファイルに書かない）")
-        return key
-
     def evaluate(self, state: dict, questions: dict) -> Answers:
         body = {"state": state, "questions": questions}
         if self.settings.model:
             body["model"] = self.settings.model
-        req = urllib.request.Request(
-            self.settings.endpoint,
-            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self.api_key()}",
-                     "Content-Type": "application/json"},
-            method="POST")
-        try:
-            with self._opener(req, timeout=self.settings.timeout_sec) as res:
-                payload = json.loads(res.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:            # 4xx/5xx
-            raise DecisionError(f"HTTP {e.code}", status=e.code) from e
-        except (urllib.error.URLError, TimeoutError, OSError) as e:
-            raise DecisionError(f"届かない: {e!r}") from e
-        except ValueError as e:                        # JSON が壊れている
-            raise DecisionError(f"答えを読めない: {e!r}") from e
+        payload = _post_json(self.settings, body, self._opener)
         raw = payload.get("answers")
         if not isinstance(raw, dict):
             raise DecisionError("answers が入っていない")
@@ -721,6 +774,166 @@ class JevBackend(DecisionEngine):
             backend=self.name,
             usage=payload.get("usage") if isinstance(payload.get("usage"), dict) else {},
             model=str(payload.get("model") or ""))
+
+
+class LLMBackend(DecisionEngine):
+    """Jev と同じ問いの束を、小型 LLM に JSON で答えさせる退避先。
+
+    判定器が使えないとき（枠のレート制限・障害・契約前）でも、ルールより
+    ましな答えを出すための中段。**判定器ではない**ので、次の2つが本物と違う:
+
+      · 確率分布が返らない。確信度1つから近似して埋める（``approx: true`` を
+        立てる。校正の表に混ぜて読むときは、この印を見て分けること）
+      · 文章を生成する実装なので、崩れた JSON が返りうる。厳格に読んで、
+        読めなければ**答えを捏造せず**次の退避先へ渡す
+
+    鍵と宛先は設定から。この層も URL を内蔵しない。
+    """
+
+    name = "llm"
+
+    # 「余った確率」を他の選択肢へ配るときの下限。0 を配ると、その選択肢が
+    # 「起こりえない」と読めてしまう（近似にすぎないのに断定になる）。
+    FLOOR = 1e-4
+
+    def __init__(self, settings: LLMSettings, bundle: "Bundle | None" = None,
+                 opener=None):
+        self.settings = settings
+        self.bundle = bundle
+        self._opener = opener or urllib.request.urlopen
+        if not settings.base_url:
+            raise SystemExit(
+                "[decisions] llm.base_url が設定されていません。\n"
+                "           decisions.yaml の llm: に送り先を書いてください"
+                "（この道具は宛先を内蔵しません）。")
+        if not settings.key_env:
+            raise SystemExit("[decisions] llm.key_env（鍵を入れる環境変数の名前）が空です。")
+
+    # -- 問いを言葉にする ---------------------------------------------------
+    def allowed(self, qid: str, q: dict) -> list:
+        """その問いで選んでよい値。鍵の綴りは Jev のときと同じものを使う。"""
+        t = str(q.get("type") or "")
+        if t == "noul":
+            return ["yes", "no"]
+        if t == "score":
+            defn = self.bundle.question(qid) if self.bundle else None
+            return [k for k, _ in (defn.levels if defn else ())]
+        crit = q.get("criteria")
+        return [str(k) for k in crit] if isinstance(crit, dict) else []
+
+    def prompt(self, state: dict, questions: dict) -> str:
+        lines = ["Answer every question below about the meeting transcript.",
+                 "",
+                 "Transcript (the last utterance is the one being judged):",
+                 json.dumps(state, ensure_ascii=False, indent=1),
+                 "",
+                 "Questions:"]
+        for qid, q in questions.items():
+            vals = self.allowed(qid, q)
+            lines.append(f"- {qid}: {q.get('instructions') or ''}")
+            crit = q.get("criteria")
+            if isinstance(crit, dict):
+                for k, v in crit.items():
+                    lines.append(f"    {k} = {v}")
+            elif isinstance(crit, list):
+                for k, v in zip(vals, crit):
+                    lines.append(f"    {k} = {v}")
+            lines.append(f"    allowed values: {', '.join(vals)}")
+        lines += [
+            "",
+            "Reply with a single JSON object and nothing else. One key per",
+            'question id, each mapping to {"value": <one allowed value>,',
+            '"confidence": <number from 0 to 1>}. Use a value exactly as',
+            "spelled in its allowed values. Confidence is how sure you are.",
+        ]
+        return "\n".join(lines)
+
+    # -- 答えを読む ---------------------------------------------------------
+    @staticmethod
+    def extract(text: str) -> dict:
+        """本文から JSON を1つ取り出す。取り出せなければ DecisionError。
+
+        囲みの ``` や前置きの1行を落とすところまではやるが、**中身は直さない**。
+        読めない答えを直して使うと、崩れているのに答えたことになってしまう。
+        """
+        s = (text or "").strip()
+        if s.startswith("```"):
+            s = re.sub(r"^```[a-zA-Z]*\s*", "", s)
+            s = re.sub(r"```\s*$", "", s).strip()
+        try:
+            out = json.loads(s)
+        except ValueError:
+            i, j = s.find("{"), s.rfind("}")
+            if i < 0 or j <= i:
+                raise DecisionError("JSON が見つからない") from None
+            try:
+                out = json.loads(s[i:j + 1])
+            except ValueError as e:
+                raise DecisionError(f"JSON が壊れている: {e!r}") from e
+        if not isinstance(out, dict):
+            raise DecisionError("JSON が辞書ではない")
+        return out
+
+    def to_answer(self, qid: str, q: dict, raw: dict) -> "Answer | None":
+        """``{"value":…, "confidence":…}`` 1件 → Answer。読めなければ None。"""
+        if not isinstance(raw, dict):
+            return None
+        value = str(raw.get("value") if raw.get("value") is not None else "").strip()
+        vals = self.allowed(qid, q)
+        if not value or (vals and value not in vals):
+            return None                     # 選択肢に無い値は**捨てる**（丸めない）
+        try:
+            conf = float(raw.get("confidence"))
+        except (TypeError, ValueError):
+            conf = 0.5                      # 確信度だけ無いのは許す（値は正しい）
+        conf = min(1.0, max(0.0, conf))
+        qtype = str(q.get("type") or "choice")
+        if qtype == "noul":
+            p = conf if value == "yes" else 1.0 - conf
+            return Answer(qid=qid, qtype="noul", value=value,
+                          confidence=max(p, 1.0 - p), p_yes=p, approx=True)
+        # 余りを他の選択肢へ均等に配った「それらしい分布」。本物ではない。
+        others = [v for v in vals if v != value]
+        rest = max(0.0, 1.0 - conf)
+        share = (rest / len(others)) if others else 0.0
+        probs = {value: conf}
+        for v in others:
+            probs[v] = max(self.FLOOR, share)
+        if qtype == "score":
+            return Answer(qid=qid, qtype="score", value=value, confidence=conf,
+                          probabilities=probs, score=float(vals.index(value)),
+                          approx=True)
+        return Answer(qid=qid, qtype="choice", value=value, confidence=conf,
+                      probabilities=probs, approx=True)
+
+    def evaluate(self, state: dict, questions: dict) -> Answers:
+        body = {"model": self.settings.model,
+                "messages": [
+                    {"role": "system",
+                     "content": "You classify meeting utterances. You reply with "
+                                "JSON only."},
+                    {"role": "user", "content": self.prompt(state, questions)}],
+                "response_format": {"type": "json_object"},
+                "temperature": 0,
+                "max_tokens": self.settings.max_tokens}
+        payload = _post_json(self.settings, body, self._opener)
+        try:
+            text = payload["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise DecisionError(f"返事の形が違う: {e!r}") from e
+        parsed = self.extract(text if isinstance(text, str) else json.dumps(text))
+        by_id = {}
+        for qid, q in questions.items():
+            a = self.to_answer(qid, q, parsed.get(qid))
+            if a is not None:
+                by_id[qid] = a
+        if not by_id:
+            # 1問も読めないなら答えていないのと同じ。次の退避先へ渡す。
+            raise DecisionError("読める答えが1件も無い")
+        usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        return Answers(by_id=by_id, backend=self.name, model=str(payload.get("model") or ""),
+                       usage={"input_tokens": int(usage.get("prompt_tokens") or 0),
+                              "output_tokens": int(usage.get("completion_tokens") or 0)})
 
 
 class RulesBackend(DecisionEngine):
@@ -840,53 +1053,101 @@ class RulesBackend(DecisionEngine):
         return Answers(by_id=out, backend=self.name)
 
 
-class FallbackEngine(DecisionEngine):
-    """本命が落ちたら退避先へ。**どちらが答えたかを記録に残す**のが役目。
+class ChainEngine(DecisionEngine):
+    """退避の鎖。前から順に試して、答えた実装で止まる。
 
-    「Jev を止めても最後まで通る」を、replay と本番の両方で同じ経路にするため
-    ここに1本化する（退避を呼び出し側ごとに書くと、片方だけ直り忘れる）。
+    **どれが答えたかを必ず記録に残す**のが役目。1番目でなければ名前に
+    ``(fallback)`` を付け、そこまでに落ちた理由を ``error`` に残す——
+    退避したことが見えないと、「判定器を使った」つもりの数字が、実は
+    ルールの数字だった、が起きる（実測: 2,077発話のうち 1,754 が退避だった）。
+
+    鎖の最後は必ず外へ出ない実装（rules）。全部落ちても答えは出る。
     """
 
-    name = "fallback"
+    name = "chain"
 
-    def __init__(self, primary: DecisionEngine, secondary: DecisionEngine,
-                 retry_busy_sec: float = 0.0):
-        self.primary = primary
-        self.secondary = secondary
-        # 混雑(429/503)のときだけ、退避の前に1回だけ待って撃ち直す秒数。
+    def __init__(self, engines, retry_busy_sec: float = 0.0):
+        self.engines = list(engines)
+        # 混雑(429/503)のときだけ、次へ落ちる前に1回だけ待って撃ち直す秒数。
         # 🔴 **会議中は 0 のまま**。待つぶんカードが遅れるので、会議では待たずに
-        #    ルールへ退避するのが正しい。これは再生（採点）のための逃げ道で、
-        #    無料枠のレート制限にぶつかると判定が取れないから置いてある。
+        #    次の退避先へ行くのが正しい。これは再生（採点）のための逃げ道。
         self.retry_busy_sec = max(0.0, float(retry_busy_sec or 0.0))
 
+    def _tag(self, ans: Answers, engine, i: int, errors: list) -> Answers:
+        if i:
+            ans.backend = f"{engine.name}(fallback)"
+            ans.error = " / ".join(errors)
+        return ans
+
     def evaluate(self, state: dict, questions: dict) -> Answers:
-        try:
-            return self.primary.evaluate(state, questions)
-        except DecisionError as e:
-            if self.retry_busy_sec and getattr(e, "status", 0) in BUSY_STATUS:
-                time.sleep(self.retry_busy_sec)
-                try:
-                    ans = self.primary.evaluate(state, questions)
-                    ans.error = f"{self.primary.name}: {e}（待って撃ち直して通った）"
-                    return ans
-                except DecisionError as e2:
-                    e = e2               # 2回目も駄目なら、その理由を残して退避
-            ans = self.secondary.evaluate(state, questions)
-            ans.backend = f"{self.secondary.name}(fallback)"
-            ans.error = f"{self.primary.name}: {e}"
-            return ans
+        errors: list = []
+        for i, engine in enumerate(self.engines):
+            try:
+                return self._tag(engine.evaluate(state, questions), engine, i, errors)
+            except DecisionError as e:
+                if self.retry_busy_sec and getattr(e, "status", 0) in BUSY_STATUS:
+                    time.sleep(self.retry_busy_sec)
+                    try:
+                        ans = self._tag(engine.evaluate(state, questions), engine, i,
+                                        errors)
+                        note = f"{engine.name}: {e}（待って撃ち直して通った）"
+                        ans.error = " / ".join(errors + [note]) if errors else note
+                        return ans
+                    except DecisionError as e2:
+                        e = e2
+                errors.append(f"{engine.name}: {e}")
+        raise DecisionError(" / ".join(errors) or "退避先が1つもない")
+
+
+# 旧名。1段だけの鎖として残す（呼び出し側の書き換えを強いないため）。
+def FallbackEngine(primary, secondary, retry_busy_sec: float = 0.0):   # noqa: N802
+    return ChainEngine([primary, secondary], retry_busy_sec=retry_busy_sec)
+
+
+def build_backend(name: str, bundle: Bundle, meeting: MeetingData, opener=None):
+    """名前1つ → 実装1つ。設定が無ければ SystemExit（黙って代替しない）。"""
+    if name == "rules":
+        return RulesBackend(meeting, bundle)
+    if name == "jev":
+        return JevBackend(bundle.jev, bundle=bundle, opener=opener)
+    if name == "llm":
+        return LLMBackend(bundle.llm, bundle=bundle, opener=opener)
+    raise SystemExit(f"[decisions] 知らない backend: {name!r}"
+                     f"（使えるのは {', '.join(ENGINE_NAMES)}）")
 
 
 def make_engine(kind: str, bundle: Bundle, meeting: MeetingData,
-                opener=None, retry_busy_sec: float = 0.0) -> DecisionEngine:
-    """``rules`` / ``jev``（＝Jev、落ちたら rules へ退避）を組み立てる。"""
-    rules = RulesBackend(meeting, bundle)
-    if kind == "rules":
-        return rules
-    if kind == "jev":
-        return FallbackEngine(JevBackend(bundle.jev, bundle=bundle, opener=opener),
-                              rules, retry_busy_sec=retry_busy_sec)
-    raise SystemExit(f"[decisions] 知らない backend: {kind!r}（rules か jev）")
+                opener=None, retry_busy_sec: float = 0.0,
+                note=None) -> DecisionEngine:
+    """``kind`` から始まる退避の鎖を組み立てる。
+
+    鎖は ``fallback_chain``（既定 jev → llm → rules）で、``kind`` の位置から
+    後ろを使う。``--backend llm`` なら llm → rules になるので、LLM 単独の
+    成績を Jev と並べて測れる。
+
+    🔴 **頼まれた実装が設定されていなければ止まる。** 黙って次へ落ちると、
+       「Jev で測った」つもりの数字が実はルールの数字、が起きる。
+       一方、鎖の**後ろ**にいる実装が未設定なのは普通のこと（LLM を使わない
+       人もいる）なので、そちらは外して先へ進む。
+    """
+    say = note or (lambda m: print(m, file=sys.stderr))
+    chain = list(bundle.fallback_chain)
+    if kind not in chain:
+        raise SystemExit(f"[decisions] backend={kind!r} は fallback_chain "
+                         f"{chain} に入っていません。")
+    engines = []
+    for i, name in enumerate(chain[chain.index(kind):]):
+        try:
+            engines.append(build_backend(name, bundle, meeting, opener))
+        except SystemExit:
+            if i == 0:
+                raise                  # 頼まれた本人。代わりを立てずに止まる
+            say(f"[decisions] {name} は設定されていないので退避先から外します")
+    if not engines:
+        raise SystemExit("[decisions] 使える実装が1つもありません。")
+    if len(engines) == 1:
+        return engines[0]
+    return ChainEngine(engines, retry_busy_sec=retry_busy_sec)
 
 
 # ---------------------------------------------------------------- 記録

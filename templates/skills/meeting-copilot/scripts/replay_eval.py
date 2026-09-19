@@ -10,7 +10,11 @@
     python3 replay_eval.py --transcript <逐語.jsonl> --meeting <会議フォルダ> \\
         --backend rules
 
-    # 外の判定器で（鍵は環境変数。落ちた発話はルールへ退避して続きます）
+    # 小型 LLM 単独で（Jev と並べて的中率を見るとき）
+    python3 replay_eval.py --transcript <逐語.jsonl> --meeting <会議フォルダ> \\
+        --backend llm --labels labels.csv
+
+    # 外の判定器で（鍵は環境変数。落ちた発話は鎖の次へ退避して続きます）
     export AI_GATEWAY_API_KEY=...        # 変数の名前は decisions.yaml の key_env
     python3 replay_eval.py --transcript <逐語.jsonl> --meeting <会議フォルダ> \\
         --backend jev --labels labels.csv
@@ -265,11 +269,16 @@ class Tally:
 
 def show_dry_run(bundle, meeting, masker, rows, limit: int) -> None:
     """送る物だけを見せる。1件も送らない。"""
-    has_key = bool(bundle.jev.key_env and os.environ.get(bundle.jev.key_env))
     print("═══ --dry-run: 送る物（1件も送信しません） ═══")
-    print(f"送り先: {bundle.jev.endpoint or '(未設定)'} / model={bundle.jev.model or '(未設定)'}"
-          f" / 鍵の環境変数={bundle.jev.key_env or '(未設定)'}"
-          f" / 鍵は{'あり' if has_key else 'なし'}")
+    print(f"退避の鎖: {' → '.join(bundle.fallback_chain)}")
+    for label, s in (("jev", bundle.jev), ("llm", bundle.llm)):
+        has_key = bool(s.key_env and os.environ.get(s.key_env))
+        print(f"  {label}: {s.endpoint if s.base_url else '(未設定)'}"
+              f" / model={s.model or '(未設定)'}"
+              f" / 鍵の環境変数={s.key_env or '(未設定)'}"
+              f" / 鍵は{'あり' if has_key else 'なし'}"
+              f" / {s.timeout_sec}秒")
+    print("  ※ 下に出るのは jev の送信形です。llm へは同じ問いを言葉にして送ります")
     print(f"窓: 直近 {bundle.window} 発話 / 最大 {bundle.window_chars} 文字")
     print(f"名簿: {len(masker.pairs)} 件の綴りを役名へ置換")
     print("")
@@ -301,8 +310,9 @@ def main() -> None:
         description="過去の逐語を再生して判定層を採点する（送信は --backend jev のときだけ）")
     ap.add_argument("--transcript", required=True, help="逐語 transcript.jsonl")
     ap.add_argument("--meeting", required=True, help="会議フォルダ（候補と名簿の出どころ）")
-    ap.add_argument("--backend", default="rules", choices=("rules", "jev"),
-                    help="既定 rules（鍵不要・外へ出ない）")
+    ap.add_argument("--backend", default="rules", choices=("rules", "jev", "llm"),
+                    help="どこから退避の鎖を始めるか。既定 rules（鍵不要・外へ出ない）。"
+                         "llm を選ぶと小型 LLM 単独の成績を Jev と並べて測れる")
     ap.add_argument("--decisions", default="", help="問いの束（既定: 会議フォルダ→同梱の例）")
     ap.add_argument("--labels", default="", help="正解表 csv（utterance_id,q,gold）")
     ap.add_argument("--out", default="", help="記録の書き出し先（既定 ./replay_out/decisions.jsonl）")
@@ -341,7 +351,8 @@ def main() -> None:
     # 「出席者を数え上げた」ことにはならない。中身で判定すると、保険が効いた
     # ぶんだけこの関門が黙って開く。
     roster_path = pathlib.Path(a.meeting).expanduser() / bundle.privacy.roster
-    if a.backend == "jev" and not roster_path.exists() and not a.allow_no_roster:
+    # 🔴 rules 以外はどれも外へ出る。jev だけを見張ると、llm を足した日に穴が開く。
+    if a.backend != "rules" and not roster_path.exists() and not a.allow_no_roster:
         raise SystemExit(
             f"[replay] 名簿 {roster_path} がありません。\n"
             f"         このまま送ると、発話に出てくる名前が平文で外へ出ます"
@@ -365,7 +376,8 @@ def main() -> None:
     tally = Tally()
 
     todo = [r for r in rows if not ids or r["utterance_id"] in ids]
-    print(f"[replay] {len(rows)} 発話中 {len(todo)} 本を判定 / backend={a.backend} "
+    print(f"[replay] {len(rows)} 発話中 {len(todo)} 本を判定 / backend={a.backend}"
+          f"（鎖: {' → '.join(bundle.fallback_chain)}） "
           f"/ 問い{len(bundle.questions)}本 / 段{len(meeting.steps)}・"
           f"即答表{len(meeting.quick_facts)}・名簿{len(meeting.roster)}"
           + (f" / 間隔{a.pace}秒" if a.pace else "")
@@ -394,7 +406,7 @@ def main() -> None:
                   state=state, questions=questions, answers=answers, latency_ms=ms)
         tally.add(r["utterance_id"], answers, ms, labels, asked=questions)
         done += 1
-        if a.backend == "jev" and done % 50 == 0:
+        if a.backend != "rules" and done % 50 == 0:
             print(f"  … {done}/{len(todo)}", flush=True)
 
     print(tally.report(bundle, done, out_path))

@@ -58,11 +58,23 @@ CANNED = {
     "usage": {"input_tokens": 1000, "output_tokens": 20},
 }
 
+# 偽の小型 LLM が返す本文（JSON の文字列として message.content に入る）
+LLM_ANSWER = {
+    "q1_step": {"value": "s3", "confidence": 0.7},
+    "q2_phase": {"value": "closing", "confidence": 0.6},
+    "q4_lookup": {"value": "yes", "confidence": 0.9},
+    "q5_quick_fact": {"value": "none", "confidence": 0.55},
+    "q8_commitment": {"value": "no", "confidence": 0.8},
+}
+
 BUNDLE_DICT = {
     "window": {"utterances": 4, "max_chars": 400},
     "privacy": {"roster": "roster.txt"},
     "jev": {"base_url": "", "path": "/v1/systemone", "model": "stub",
             "key_env": TEST_KEY_ENV, "timeout_sec": 2.0},
+    "llm": {"base_url": "", "path": "/v1/chat/completions", "model": "stub-llm",
+            "key_env": TEST_KEY_ENV, "timeout_sec": 3.0},
+    "fallback_chain": ["jev", "llm", "rules"],
     "pricing": {"input_per_mtok": 2.0, "output_per_mtok": 0.0, "currency": "USD"},
     "questions": [
         {"id": "q1_step", "type": "choice", "ask": "any",
@@ -86,12 +98,34 @@ BUNDLE_DICT = {
 class _Handler(BaseHTTPRequestHandler):
     """偽の判定器。受け取った本文を全部ためておく（送信の現物を試験が読む）。"""
 
+    def _json(self, code, obj):
+        payload = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
     def do_POST(self):                                    # noqa: N802
         n = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(n)
         self.server.received.append({
             "path": self.path, "body": body.decode("utf-8"),
             "auth": self.headers.get("Authorization") or ""})
+        # OpenAI 互換のほうは別の道。1台の偽サーバで両方を受ける。
+        if self.path.endswith("/chat/completions"):
+            mode = self.server.llm_mode
+            if mode == "down":
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(b"boom")
+                return
+            text = (self.server.llm_text if mode == "custom"
+                    else json.dumps(LLM_ANSWER, ensure_ascii=False))
+            self._json(200, {"model": "stub-llm",
+                             "choices": [{"message": {"content": text}}],
+                             "usage": {"prompt_tokens": 700, "completion_tokens": 40}})
+            return
         mode = self.server.mode
         if mode == "500":
             self.send_response(500)
@@ -132,10 +166,12 @@ class _Handler(BaseHTTPRequestHandler):
 class StubServer:
     """127.0.0.1 の空きポートに立てる偽の判定器。"""
 
-    def __init__(self, mode="ok"):
+    def __init__(self, mode="ok", llm_mode="ok", llm_text=""):
         self.httpd = HTTPServer(("127.0.0.1", 0), _Handler)
         self.httpd.received = []
         self.httpd.mode = mode
+        self.httpd.llm_mode = llm_mode
+        self.httpd.llm_text = llm_text
         self.httpd.served_one = False
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
@@ -154,9 +190,13 @@ class StubServer:
         self.httpd.server_close()
 
 
-def demo_bundle(**jev) -> de.Bundle:
+def demo_bundle(llm=None, chain=None, **jev) -> de.Bundle:
     d = json.loads(json.dumps(BUNDLE_DICT))
     d["jev"].update(jev)
+    if llm:
+        d["llm"].update(llm)
+    if chain is not None:
+        d["fallback_chain"] = chain
     return de.bundle_from_dict(d)
 
 
@@ -547,6 +587,178 @@ class FallbackTest(unittest.TestCase):
         self.assertEqual(ans.error, "")
 
 
+class LLMBackendTest(unittest.TestCase):
+    """Jev が使えないときの中段。同じ問いの束を JSON で答えさせる。"""
+
+    def setUp(self):
+        self.meeting = de.load_meeting_data(DEMO)
+        self.masker = de.Masker(self.meeting.roster)
+        os.environ[TEST_KEY_ENV] = "test-key-not-a-real-one"
+        self.addCleanup(lambda: os.environ.pop(TEST_KEY_ENV, None))
+
+    def _engine(self, srv, **kw):
+        b = demo_bundle(llm={"base_url": srv.base_url}, **kw)
+        return de.LLMBackend(b.llm, bundle=b), b
+
+    def _ask(self, eng, bundle, speaker="host"):
+        win = window(("guest", "URLは"), ("host", "お待ちください。確認します。"))
+        return eng.evaluate(de.build_state(win, self.masker),
+                            de.build_questions(bundle, self.meeting, speaker, self.masker))
+
+    def test_it_refuses_to_run_without_a_destination(self):
+        with self.assertRaises(SystemExit):
+            de.LLMBackend(de.LLMSettings(key_env=TEST_KEY_ENV))
+
+    def test_the_three_types_come_back_in_the_same_shape_as_jev(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        eng, b = self._engine(srv)
+        ans = self._ask(eng, b)
+        self.assertEqual(ans.backend, "llm")
+        self.assertEqual(ans.by_id["q1_step"].value, "s3")
+        self.assertAlmostEqual(ans.by_id["q1_step"].confidence, 0.7)
+        self.assertEqual(ans.by_id["q2_phase"].value, "closing")
+        self.assertEqual(ans.by_id["q2_phase"].score, 2.0)       # levels の3番目
+        self.assertEqual(ans.by_id["q4_lookup"].value, "yes")
+        self.assertAlmostEqual(ans.by_id["q4_lookup"].p_yes, 0.9)
+        self.assertEqual(ans.usage["input_tokens"], 700)
+
+    def test_the_approximated_distribution_is_marked_as_such(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        eng, b = self._engine(srv)
+        a = self._ask(eng, b).by_id["q1_step"]
+        self.assertTrue(a.approx, "近似なのに印が無い")
+        self.assertIn("approx", a.as_dict())
+        self.assertAlmostEqual(sum(a.probabilities.values()), 1.0, places=2)
+        self.assertTrue(all(v > 0 for v in a.probabilities.values()),
+                        "0 を配ると「起こりえない」と読めてしまう")
+        # Jev の本物の分布には印が付かない（混ぜて読まないための区別）
+        self.assertNotIn("approx", de.parse_answer(
+            "q", {"type": "choice", "choice": "a",
+                  "probabilities": {"a": 1.0}, "confidence": 1.0}, None).as_dict())
+
+    def test_the_prompt_carries_the_allowed_values_and_the_masked_state(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        eng, b = self._engine(srv)
+        win = window(("guest", "山田です。"), ("host", "Acmeさん、確認します。"))
+        eng.evaluate(de.build_state(win, self.masker),
+                     de.build_questions(b, self.meeting, "host", self.masker))
+        sent = srv.received[0]
+        self.assertTrue(sent["path"].endswith("/chat/completions"))
+        self.assertTrue(sent["auth"].startswith("Bearer "))
+        self.assertIn("allowed values", sent["body"])
+        self.assertIn("q8_commitment", sent["body"])
+        for name in ("山田", "Acme"):
+            self.assertNotIn(name, sent["body"], "送信の現物に名前が残っている")
+
+    def test_a_value_outside_the_allowed_list_is_dropped_not_rounded(self):
+        srv = StubServer(llm_mode="custom", llm_text=json.dumps(
+            {"q1_step": {"value": "まったく別の段", "confidence": 0.9},
+             "q4_lookup": {"value": "yes", "confidence": 0.8}}))
+        self.addCleanup(srv.close)
+        eng, b = self._engine(srv)
+        ans = self._ask(eng, b)
+        self.assertNotIn("q1_step", ans.by_id, "選択肢に無い値を丸めて採用している")
+        self.assertEqual(ans.by_id["q4_lookup"].value, "yes")
+
+    def test_broken_json_raises_so_the_chain_moves_on(self):
+        for text in ("これは JSON ではありません", "{\"q1_step\": ", "[1,2,3]",
+                     json.dumps({"q1_step": {"value": "ありえない"}})):
+            srv = StubServer(llm_mode="custom", llm_text=text)
+            self.addCleanup(srv.close)
+            eng, b = self._engine(srv)
+            with self.assertRaises(de.DecisionError, msg=text[:20]):
+                self._ask(eng, b)
+
+    def test_a_fenced_json_block_is_still_read(self):
+        srv = StubServer(llm_mode="custom",
+                         llm_text="```json\n" + json.dumps(LLM_ANSWER) + "\n```")
+        self.addCleanup(srv.close)
+        eng, b = self._engine(srv)
+        self.assertEqual(self._ask(eng, b).by_id["q1_step"].value, "s3")
+
+
+class ChainTest(unittest.TestCase):
+    """退避の鎖: jev → llm → rules。どれが答えたかが記録に残ること。"""
+
+    def setUp(self):
+        self.meeting = de.load_meeting_data(DEMO)
+        self.masker = de.Masker(self.meeting.roster)
+        os.environ[TEST_KEY_ENV] = "test-key-not-a-real-one"
+        self.addCleanup(lambda: os.environ.pop(TEST_KEY_ENV, None))
+        self.quiet = lambda m: None
+
+    def _run(self, srv, kind="jev", **kw):
+        b = demo_bundle(base_url=srv.base_url, llm={"base_url": srv.base_url}, **kw)
+        eng = de.make_engine(kind, b, self.meeting, note=self.quiet)
+        win = window(("guest", "URLは"), ("host", "お待ちください。確認します。"))
+        return eng.evaluate(de.build_state(win, self.masker),
+                            de.build_questions(b, self.meeting, "host", self.masker))
+
+    def test_jev_429_hands_over_to_the_llm(self):
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        ans = self._run(srv)
+        self.assertEqual(ans.backend, "llm(fallback)")
+        self.assertIn("429", ans.error)
+        self.assertEqual(ans.by_id["q1_step"].value, "s3")
+
+    def test_when_the_llm_is_down_too_it_lands_on_rules(self):
+        srv = StubServer(mode="429", llm_mode="down")
+        self.addCleanup(srv.close)
+        ans = self._run(srv)
+        self.assertEqual(ans.backend, "rules(fallback)")
+        self.assertIn("jev", ans.error)
+        self.assertIn("llm", ans.error)
+        self.assertEqual(ans.by_id["q4_lookup"].value, "yes")   # ルールでも答えは出る
+
+    def test_broken_json_from_the_llm_lands_on_rules(self):
+        srv = StubServer(mode="429", llm_mode="custom", llm_text="申し訳ありませんが")
+        self.addCleanup(srv.close)
+        ans = self._run(srv)
+        self.assertEqual(ans.backend, "rules(fallback)")
+        self.assertIn("llm", ans.error)
+
+    def test_a_healthy_jev_never_reaches_the_llm(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        ans = self._run(srv)
+        self.assertEqual(ans.backend, "jev")
+        self.assertEqual(ans.error, "")
+        self.assertFalse([r for r in srv.received
+                          if r["path"].endswith("/chat/completions")])
+
+    def test_backend_llm_starts_the_chain_at_the_llm(self):
+        # LLM 単独の成績を Jev と並べて測るための入口
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        ans = self._run(srv, kind="llm")
+        self.assertEqual(ans.backend, "llm")
+        self.assertFalse([r for r in srv.received
+                          if r["path"].endswith("/systemone")], "jev を叩いている")
+
+    def test_an_unconfigured_middle_link_is_dropped_but_the_asked_one_is_not(self):
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url)          # llm は base_url 空のまま
+        eng = de.make_engine("jev", b, self.meeting, note=self.quiet)
+        win = window(("guest", "はい"), ("host", "確認します。"))
+        ans = eng.evaluate(de.build_state(win, self.masker),
+                           de.build_questions(b, self.meeting, "host", self.masker))
+        self.assertEqual(ans.backend, "rules(fallback)")
+        # 頼まれた実装が未設定なら、黙って代わりを立てずに止まる
+        with self.assertRaises(SystemExit):
+            de.make_engine("llm", demo_bundle(), self.meeting, note=self.quiet)
+
+    def test_the_chain_always_ends_at_rules(self):
+        b = de.bundle_from_dict({"fallback_chain": ["jev"], "questions": []})
+        self.assertEqual(b.fallback_chain[-1], "rules")
+        with self.assertRaises(SystemExit):
+            de.bundle_from_dict({"fallback_chain": ["jev", "haiku"], "questions": []})
+
+
 class ReplayTest(unittest.TestCase):
     """再生ハーネスを丸ごと1回。記録・集計・費用・送信なしを確かめる。"""
 
@@ -675,6 +887,37 @@ class ReplayTest(unittest.TestCase):
         # 正解付き=1（進行役の4番だけ）／対象外=2（相手の1番と3番）
         self.assertRegex(row, r"q4_lookup\s+\d+\s+1\s+2\s")
         self.assertIn("100.0%", row, "聞いた1件は当たっているはず")
+
+    def test_backend_llm_runs_through_the_cli_and_is_recorded(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        d = json.loads(json.dumps(BUNDLE_DICT))
+        d["llm"]["base_url"] = srv.base_url
+        d["fallback_chain"] = ["llm", "rules"]
+        bp = self.dir / "decisions.json"
+        bp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        os.environ[TEST_KEY_ENV] = "test-key-not-a-real-one"
+        self.addCleanup(lambda: os.environ.pop(TEST_KEY_ENV, None))
+        out = self.run_replay("--backend", "llm",
+                              "--decisions", str(bp.with_suffix(".yaml")))
+        self.assertIn("llm=5", out, out[-600:])
+        recs = [json.loads(x) for x in self.out.read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(all(r["backend"] == "llm" for r in recs))
+        self.assertTrue(recs[0]["answers"]["q1_step"]["approx"])
+
+    def test_the_roster_gate_covers_the_llm_too(self):
+        # rules 以外はどれも外へ出る。jev だけ見張ると llm を足した日に穴が開く。
+        with tempfile.TemporaryDirectory() as td:
+            bare = pathlib.Path(td)
+            (bare / "meeting.json").write_text("{}", encoding="utf-8")
+            for backend in ("jev", "llm"):
+                p = subprocess.run(
+                    [sys.executable, str(SCRIPTS / "replay_eval.py"),
+                     "--transcript", str(self.tr), "--meeting", str(bare),
+                     "--out", str(self.out), "--backend", backend],
+                    capture_output=True, text=True, timeout=120, cwd=self.td.name)
+                self.assertNotEqual(p.returncode, 0, backend)
+                self.assertIn("roster.txt がありません", p.stdout + p.stderr, backend)
 
     def test_the_cost_comes_out_of_usage(self):
         srv = StubServer()
