@@ -98,6 +98,15 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"boom")
             return
+        if mode == "wrongtype":
+            bad = {"model": "stub-1", "usage": {"input_tokens": 1},
+                   "answers": {"q4_lookup": {"type": "noul", "noul": "n/a"}}}
+            payload = json.dumps(bad).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
         if mode == "garbage":
             self.send_response(200)
             self.end_headers()
@@ -395,7 +404,7 @@ class JevBackendTest(unittest.TestCase):
             self.assertNotIn(name, sent["body"], "送信の現物に名前が残っている")
 
     def test_a_dead_backend_raises_so_the_caller_can_fall_back(self):
-        for mode in ("500", "garbage"):
+        for mode in ("500", "garbage", "wrongtype"):
             srv = StubServer(mode=mode)
             self.addCleanup(srv.close)
             b = demo_bundle(base_url=srv.base_url)

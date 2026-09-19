@@ -669,10 +669,17 @@ class JevBackend(DecisionEngine):
         raw = payload.get("answers")
         if not isinstance(raw, dict):
             raise DecisionError("answers が入っていない")
+        # 🔴 答えの読み取りも同じ例外に畳む。200 で JSON も正しいのに値の型だけが
+        #    違う（noul に文字列が入っている等）と、ここが素の ValueError を投げて
+        #    **退避を飛び越えて再生ごと落ちる**。2,000発話の途中で死ぬのがいちばん困る。
+        try:
+            by_id = {qid: parse_answer(qid, a if isinstance(a, dict) else {},
+                                       self.bundle.question(qid) if self.bundle else None)
+                     for qid, a in raw.items()}
+        except (ValueError, TypeError, AttributeError) as e:
+            raise DecisionError(f"答えの形が読めない: {e!r}") from e
         return Answers(
-            by_id={qid: parse_answer(qid, a if isinstance(a, dict) else {},
-                                     self.bundle.question(qid) if self.bundle else None)
-                   for qid, a in raw.items()},
+            by_id=by_id,
             backend=self.name,
             usage=payload.get("usage") if isinstance(payload.get("usage"), dict) else {},
             model=str(payload.get("model") or ""))
