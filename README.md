@@ -125,10 +125,11 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 
 ### Bundled skills
 
-The `skills` row above is a symlink, not a description — three skills ship in `templates/skills/`:
+The `skills` row above is a symlink, not a description — four skills ship in `templates/skills/`:
 
 - **`advisor-gate`** — a procedure for consulting a frontier-class external reasoning model on a decision that matters, then auditing the reply. [`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
 - **`codex-chatgpt-consult`** — a Codex Desktop-only workflow for consulting a user-selected ChatGPT Web model through the standard in-app Browser, with duplicate-send stops and verbatim capture. [Install and use](docs/desktop-apps.md#optional-install-the-chatgpt-web-consultation-skill).
+- **`codex-pro-plan-build`** — a Codex Desktop-only workflow that consults Web Pro for authorized high-rework design decisions, audits a design contract, then implements and tests locally. [Install and use](docs/desktop-apps.md#optional-install-the-pro-plan-and-build-workflow).
 - **`meeting-copilot`** — a two-machine meeting copilot. Builds a script from a single agenda sheet, keeps 3-line cards, off-script search assist, and stops itself when the call ends; per-utterance judgment is handed to a swappable model (e.g. a small classifier like Jev/TypeSafe over Vercel AI Gateway) and falls back to plain keyword rules when it can't answer. [`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 
 The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/sessions` (`--ephemeral`): that tree is what the distillation lane harvests, and the machinery's prompts are not your judgment. `AGENT_CLI_RECORD=1` turns recording on while you debug a cron run.

@@ -125,10 +125,11 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 
 ### 同梱スキル
 
-上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には3つ同梱されている。
+上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には4つ同梱されている。
 
 - **`advisor-gate`** — 最上位の外部推論モデルへ重要な判断のレビューを諮問し、回答を検収するための手順。[`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
 - **`codex-chatgpt-consult`** — Codex Desktop専用。標準の内蔵Browserで利用者指定のChatGPT Webモデルへ1回だけ相談し、重複送信を避けて回答全文を保存・照合する。[導入と使い方](docs/desktop-apps.md#任意-chatgpt-web相談スキルを入れる)。
+- **`codex-pro-plan-build`** — Codex Desktop専用。認可された手戻りの大きい設計判断だけWeb Proへ相談し、設計契約を検収してからローカルで実装・試験する。[導入と使い方](docs/desktop-apps.md#任意-pro設計実装ワークフローを入れる)。
 - **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。発話ごとの判定は Jev（TypeSafe・Vercel AI Gateway 経由）等の差し替え可能な判定モデルに任せ、答えられなければルールへ退避する。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 
 このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。

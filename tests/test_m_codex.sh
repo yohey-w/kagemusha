@@ -101,7 +101,7 @@ assert_exit "M2: an unknown flag is refused, not silently ignored" 2 \
   "$M_KIT/scripts/setup.sh" --no-such-flag
 
 # --link-skills, against a fake HOME with both CLIs installed. Shared skills
-# go to both; the in-app-Browser consultation skill is Codex-only.
+# go to both; the in-app-Browser workflows are Codex-only.
 M_SKHOME="$TEST_TMP/m_skillhome"
 mkdir -p "$M_SKHOME/.codex/skills" "$M_SKHOME/.claude/skills"
 printf 'not ours\n' > "$M_SKHOME/.codex/skills/OCCUPIED"
@@ -121,16 +121,18 @@ for m_shared in advisor-gate meeting-copilot; do
 claude: $(ls -ld "$M_SKHOME/.claude/skills/$m_shared" 2>&1)"
   fi
 done
-if [[ -L "$M_SKHOME/.codex/skills/codex-chatgpt-consult" ]]; then
-  pass "M2: Codex consultation skill is symlinked into Codex"
-else
-  fail "M2: Codex consultation skill is symlinked into Codex" \
-    "$(ls -la "$M_SKHOME/.codex/skills" 2>&1)"
-fi
-assert_absent "M2: Codex consultation skill is not linked into Claude" \
-  "$M_SKHOME/.claude/skills/codex-chatgpt-consult"
-assert_grep "M2: setup reports the Codex-only compatibility boundary" \
-  "codex-chatgpt-consult (Codex Desktop only)" "$M_SK/.setup.log"
+for m_codex_only in codex-chatgpt-consult codex-pro-plan-build; do
+  if [[ -L "$M_SKHOME/.codex/skills/$m_codex_only" ]]; then
+    pass "M2: Codex-only skill $m_codex_only is symlinked into Codex"
+  else
+    fail "M2: Codex-only skill $m_codex_only is symlinked into Codex" \
+      "$(ls -la "$M_SKHOME/.codex/skills" 2>&1)"
+  fi
+  assert_absent "M2: Codex-only skill $m_codex_only is not linked into Claude" \
+    "$M_SKHOME/.claude/skills/$m_codex_only"
+  assert_grep "M2: setup reports the Codex-only boundary for $m_codex_only" \
+    "$m_codex_only (Codex Desktop only)" "$M_SK/.setup.log"
+done
 
 # A missing CLI stays missing. This is a separate HOME so the both-installed
 # case above cannot accidentally satisfy the assertion by precreating Claude.
@@ -140,7 +142,7 @@ M_SK_CODEX_ONLY="$TEST_TMP/m_skills_codex_only"; kit_copy "$M_SK_CODEX_ONLY"
 HOME="$M_SKHOME_CODEX_ONLY" "$M_SK_CODEX_ONLY/scripts/setup.sh" --link-skills \
   > "$M_SK_CODEX_ONLY/.setup.log" 2>&1
 assert_eq "M2: Codex-only HOME setup exits 0" "0" "$?"
-for m_codex_skill in advisor-gate meeting-copilot codex-chatgpt-consult; do
+for m_codex_skill in advisor-gate meeting-copilot codex-chatgpt-consult codex-pro-plan-build; do
   if [[ -L "$M_SKHOME_CODEX_ONLY/.codex/skills/$m_codex_skill" ]]; then
     pass "M2: Codex-only HOME links $m_codex_skill into Codex"
   else

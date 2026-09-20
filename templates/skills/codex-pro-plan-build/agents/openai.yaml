@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pro Plan and Build"
+  short_description: "Use Web Pro for pivotal design, then build in Codex"
+  default_prompt: "Use $codex-pro-plan-build to design and implement this change, consulting my chosen ChatGPT Web Pro model only for authorized high-rework decisions."

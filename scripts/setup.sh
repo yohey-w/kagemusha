@@ -283,9 +283,13 @@ if [[ -n "$LINK_SKILLS" ]]; then
       for skill in "$SKILL_SRC"/*/; do
         [[ -d "$skill" ]] || continue
         name="$(basename "$skill")"
-        if [[ "$skills_home" == "$HOME/.claude/skills" && "$name" == "codex-chatgpt-consult" ]]; then
-          echo "  skills:        skip $skills_home/$name (Codex Desktop only)"
-          continue
+        if [[ "$skills_home" == "$HOME/.claude/skills" ]]; then
+          case "$name" in
+            codex-chatgpt-consult|codex-pro-plan-build)
+              echo "  skills:        skip $skills_home/$name (Codex Desktop only)"
+              continue
+              ;;
+          esac
         fi
         if [[ -e "$skills_home/$name" || -L "$skills_home/$name" ]]; then
           echo "  skip (exists): $skills_home/$name"
