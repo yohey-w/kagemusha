@@ -128,7 +128,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には2つ同梱されている。
 
 - **`advisor-gate`** — 最上位の外部推論モデルへ重要な判断のレビューを諮問し、回答を検収するための手順。[`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
-- **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
+- **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。発話ごとの判定は Jev（TypeSafe・Vercel AI Gateway 経由）等の差し替え可能な判定モデルに任せ、答えられなければルールへ退避する。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 
 このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。
 
