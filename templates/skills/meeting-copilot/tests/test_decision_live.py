@@ -151,9 +151,18 @@ class LiveBase(unittest.TestCase):
         cop.call_premise_watch = lambda *a, **k: None
         cop.started = True
         self.fake = FakeEngine()
+        # 本物の鎖は差し替える前に控えておく（どの段が組み立てられたかを見る試験用）
+        self.real_engine = cop.decision["engine"] if cop.decision else None
         if cop.decision:
             cop.decision["engine"] = self.fake
         return cop
+
+    def stage_names(self) -> list:
+        """組み立てられた退避の鎖の段の名前。"""
+        eng = self.real_engine
+        if eng is None:
+            return []
+        return [e.name for e in eng.engines] if hasattr(eng, "engines") else [eng.name]
 
     def say(self, cop, speaker, text, at=None):
         cop.feed({"ts": iso(at or datetime.now()), "speaker": speaker, "text": text})
@@ -263,6 +272,80 @@ class WiringTest(LiveBase):
         self.assertEqual(len(recs), 1)
         self.assertIn("q8_commitment", recs[0]["answers"])
         self.assertEqual(recs[0]["backend"], "fake")
+
+
+class RosterGateTest(LiveBase):
+    """🔴 名簿が無ければ、外へ出す段は会議中も起動しない。
+
+    いちばん起きやすいのは「roster.txt を作り忘れたが meeting.json に相手の
+    呼び方は書いてある」。保険で関門が開くと、**警告なしに実名が外へ出る**
+    （2026-09-20 の独立レビューが、ライブ経路だけこの穴を持っていると指摘）。
+    """
+
+    def test_no_roster_file_means_no_outward_stage_even_with_a_counterpart(self):
+        (self.meeting / "roster.txt").unlink()
+        mj = json.loads((self.meeting / "meeting.json").read_text(encoding="utf-8"))
+        self.assertTrue(mj.get("counterpart"), "この試験は counterpart 前提")
+        cop = self.make()
+        # 判定は動く（ルールだけ）が、外へ出る実装は1つも組み立てられていない
+        self.assertIsNotNone(cop.decision)
+        names = self.stage_names()
+        self.assertEqual(names, ["rules"], f"外へ出る段が残っている: {names}")
+        # 保険（counterpart）は名簿に入っているが、関門は開けていない
+        self.assertTrue(cop.decision["meeting"].roster, "保険そのものは効いている")
+
+    def test_an_empty_roster_file_is_the_same_as_none(self):
+        (self.meeting / "roster.txt").write_text(
+            "# 名前をまだ書いていない\n\n", encoding="utf-8")
+        self.make()
+        self.assertEqual(self.stage_names(), ["rules"])
+
+    def test_a_real_roster_lets_the_outward_stage_through(self):
+        self.make()                # デモの roster.txt はそのまま
+        names = self.stage_names()
+        self.assertIn("jev", names, f"名簿があるのに止めている: {names}")
+
+    def test_the_gate_is_the_same_function_the_replay_uses(self):
+        dec = sys.modules["decision_engine"]
+        ok, why = dec.roster_gate(self.meeting, dec.Privacy())
+        self.assertTrue(ok, why)
+        (self.meeting / "roster.txt").unlink()
+        ok, why = dec.roster_gate(self.meeting, dec.Privacy())
+        self.assertFalse(ok)
+        self.assertIn("roster.txt", why)
+
+
+class DecisionLogConcurrencyTest(LiveBase):
+    """`decisions.jsonl` は班3本から同時に書かれる。1行が割れないこと。"""
+
+    def test_three_threads_never_break_a_line(self):
+        import threading
+        dec = sys.modules["decision_engine"]
+        logf = dec.DecisionLog(self.state / "concurrent.jsonl")
+        # 会議中に伸びうる大きさ（窓8発話＋候補30件）に近い行を書く
+        big = "あ" * 3000
+        ans = dec.Answers(by_id={}, backend="t")
+        n = 40
+
+        def run(k):
+            for i in range(n):
+                logf.write(utterance_id=f"{k}-{i}", ts="t", speaker="host",
+                           state={"recent_utterances": [{"text": big}]},
+                           questions={"q": {"instructions": big}},
+                           answers=ans, latency_ms=1.0)
+
+        ths = [threading.Thread(target=run, args=(k,)) for k in range(3)]
+        for th in ths:
+            th.start()
+        for th in ths:
+            th.join(30)
+        lines = (self.state / "concurrent.jsonl").read_text(
+            encoding="utf-8").splitlines()
+        self.assertEqual(len(lines), 3 * n, "行が落ちている/増えている")
+        ids = set()
+        for ln in lines:
+            ids.add(json.loads(ln)["utterance_id"])   # 壊れていれば例外
+        self.assertEqual(len(ids), 3 * n, "同じ行が二重に書かれている")
 
 
 class CommitCardTest(LiveBase):

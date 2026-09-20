@@ -364,3 +364,23 @@ assert abs(budget - 3.5) < 0.01, budget
 assert b.fallback_chain[1].model == "anthropic/claude-haiku-4.5", b.chain_label
 ' "$L_FX/templates/skills/meeting-copilot/scripts" \
   "$L_FX/templates/skills/meeting-copilot/config/decisions.example.yaml"
+
+# ── L11. one roster gate, not two ──────────────────────────────────────────
+# The replay path refused to send without a roster file; the live path branched
+# on the roster CONTENTS, which the meeting.json fallback fills in — so the very
+# case the design names ("forgot the file, but counterpart is set") sent real
+# names with no warning. Both paths now call the same predicate.
+assert_grep "L11: the gate is one shared predicate" \
+  "def roster_gate" "$L_SCRIPTS/decision_engine.py"
+for l_side in copilot replay_eval; do
+  assert_grep "L11: $l_side uses it" "roster_gate" "$L_SCRIPTS/$l_side.py"
+done
+assert_empty_str "L11: no path decides by roster contents any more" \
+  "$(grep -nE 'if (meeting|self\.decision\[.meeting.\])\.roster\b' \
+     "$L_SCRIPTS/copilot.py" "$L_SCRIPTS/replay_eval.py" 2>/dev/null)"
+# the decision log is written from up to three threads — same lock as the cards
+assert_grep "L11: the decision log serialises its writers" \
+  "self._lock" "$L_SCRIPTS/decision_engine.py"
+# and the startup banner no longer claims the watchdog does not call the layer
+assert_no_grep "L11: the startup line is not the pre-wiring one" \
+  "番人からは呼びません" "$L_SCRIPTS/copilot.py"

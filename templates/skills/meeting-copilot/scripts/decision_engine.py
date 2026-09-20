@@ -41,6 +41,7 @@ import os
 import pathlib
 import re
 import sys
+import threading
 import time
 import typing
 import unicodedata
@@ -458,6 +459,29 @@ def _strip_honorific(name: str) -> str:
         if len(n) > len(h) and n.endswith(h):
             return n[: -len(h)].strip()
     return n
+
+
+def roster_gate(meeting_dir, privacy: "Privacy | None" = None) -> tuple:
+    """外へ送ってよいか。返りは ``(通してよいか, 理由)``。
+
+    🔴 **見るのは名簿ファイルそのもの**（在ること・中身が1件以上あること）。
+    ``meeting.json`` の ``counterpart`` は書き忘れの保険として名簿へ自動で入るが、
+    **この関門は開けない**——保険が効いた件数で関門が開くと、
+    「roster.txt を作り忘れたが meeting.json には相手の呼び方がある」という
+    いちばん起きやすい形で、警告なしに実名が外へ出る。
+
+    再生(replay_eval)と会議中(copilot)で**同じ関数を使う**。片方だけ緩い規則を
+    持つと、緩い方から漏れる（実際そうなっていた・2026-09-20 の独立レビュー）。
+    """
+    privacy = privacy or Privacy()
+    if meeting_dir is None:
+        return False, "会議フォルダが指定されていません"
+    p = pathlib.Path(meeting_dir).expanduser() / privacy.roster
+    if not p.exists():
+        return False, f"名簿 {p} がありません"
+    if not load_roster(p):
+        return False, f"名簿 {p} に名前が1件もありません"
+    return True, ""
 
 
 def load_meeting_data(meeting_dir, privacy: Privacy | None = None,
@@ -1270,6 +1294,11 @@ class DecisionLog:
         self.path = pathlib.Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.n = 0
+        # 🔴 会議中は判定の班が最大3本、同時にここへ書く。カード側(cards.jsonl)は
+        #    同じ理由でロックを掛けてあるのに、**書き手の多いこちらに無かった**
+        #    (2026-09-20 独立レビュー)。1行が途中で割れると、採点のときに
+        #    その1行だけ静かに読み飛ばされる——いちばん気づけない壊れ方。
+        self._lock = threading.Lock()
 
     def write(self, *, utterance_id, ts, speaker, state, questions,
               answers: Answers, latency_ms: float, abandoned: bool = False) -> dict:
@@ -1290,9 +1319,11 @@ class DecisionLog:
             # 会議中に「間に合わなかった」ぶん。採点には使えるが、画面には
             # 出していない——集計で混ぜないよう印を残す。
             rec["abandoned"] = True
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        self.n += 1
+        line = json.dumps(rec, ensure_ascii=False) + "\n"
+        with self._lock:                      # 1行を1回で書き切る
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(line)
+            self.n += 1
         return rec
 
 

@@ -428,6 +428,17 @@ class Copilot:
         try:
             bundle = de.load_bundle(de.resolve_bundle_path(cfgmod.meeting_dir()))
             meeting = de.load_meeting_data(cfgmod.meeting_dir(), bundle.privacy)
+            # 🔴 名簿が無いなら外へ出す段は起動しない。**判定を止めるのではなく、
+            #    外へ出る段だけを落とす**（ルールだけなら1バイトも出ない）。
+            #    見るのは名簿ファイルで、meeting.json の呼び方は関門を開けない
+            #    ——保険で開くと「作り忘れ＋counterpart あり」で黙って実名が出る。
+            ok, why = de.roster_gate(cfgmod.meeting_dir(), bundle.privacy)
+            if kind != "rules" and not ok:
+                log(f"🔴 判定層: {why}。外へ送る段（jev / llm）は**起動しません**。"
+                    f"ルールだけで動きます——会議フォルダに "
+                    f"{bundle.privacy.roster} を置いてから起動し直してください"
+                    f"（meeting.json の呼び方は保険であって、この関門は開けません）")
+                kind = "rules"
             # 🔴 会議中は撃ち直さない(retry_busy_sec=0)。混雑で待つと、その発話の
             #    カードは会話が次へ行ったあとに出る——遅れたカードは邪魔なだけ。
             engine = de.make_engine(kind, bundle, meeting, retry_busy_sec=0.0,
@@ -458,11 +469,11 @@ class Copilot:
             log(f"⚠ 判定に最大{budget:.1f}秒かかりうる鎖です（班{MAX_DECISION_WORKERS}本で"
                 f"捌ける上限は{room:.0f}秒）。取り落としが出ます"
                 f"——timeout_sec を詰めるか、段を減らしてください")
-        if meeting.roster:
-            log(f"判定層: 名簿{len(meeting.roster)}件を役名へ置換して送ります")
+        if kind == "rules":
+            log("判定層: ルールのみ。外へは1バイトも出ません")
         else:
-            log("⚠ 判定層: 名簿が空です。発話に出る名前がそのまま外へ出ます"
-                "（会議フォルダに roster.txt を置いてください）")
+            log(f"判定層: 名簿{len(meeting.roster)}件を役名へ置換して送ります"
+                f"（うち {bundle.privacy.roster} 由来が関門を通した分）")
 
     def kick_decisions(self, speaker: str, text: str, uid: str) -> None:
         """判定を後ろで走らせる。**発話を取り落とさない**のがここの役目。
@@ -1349,12 +1360,12 @@ def main() -> None:
     log(f"探し物の索引: {len(lookup)}件 / 合図{len(LOOKUP_TRIGGERS)}語"
         + (f" / 即答表 {cfgmod.quick_facts_path()}" if cfgmod.quick_facts_path() else
            " / 即答表なし（quick_facts.md を会議フォルダに置くと即答できます）"))
-    # 判定層（decision_engine.py）。**この版では番人はまだ判定層を呼ばない** ——
-    # 通っているのは設定の2つだけ。何で回すつもりか・画面に出すつもりかを
-    # 起動時に読み上げておく（「出るはずだった」を会議の最中に気づく、を防ぐ）。
+    # 判定層（decision_engine.py）。番人は発話ごとにこれを呼ぶ。何で回すか・
+    # 画面に出すかを起動時に読み上げておく（「出るはずだった」を会議の最中に
+    # 気づく、を防ぐ）。組み立ての詳細は Copilot.setup_decisions が続けて出す。
     log(f"判定層: backend={cfgmod.decision_backend()}"
-        f" / カンペに出す={'はい' if cfgmod.show_decision_cards() else 'いいえ'}"
-        "（この版では番人からは呼びません。採点は replay_eval.py で）")
+        f" / カンペに出す={'はい' if cfgmod.show_decision_cards() else 'いいえ（記録だけ）'}"
+        "（発話ごとに判定・閾値の検算は replay_eval.py で）")
     if a.selfcheck:
         log(f"状態ディレクトリ: {STATE_DIR}")
         log(f"段取り: {AGENDA_PATH}")

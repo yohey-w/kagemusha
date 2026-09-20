@@ -353,14 +353,16 @@ def main() -> None:
     # 自動で名簿に入る（load_meeting_data）が、それは書き忘れの保険であって、
     # 「出席者を数え上げた」ことにはならない。中身で判定すると、保険が効いた
     # ぶんだけこの関門が黙って開く。
-    roster_path = pathlib.Path(a.meeting).expanduser() / bundle.privacy.roster
     # 🔴 rules 以外はどれも外へ出る。jev だけを見張ると、llm を足した日に穴が開く。
-    if a.backend != "rules" and not roster_path.exists() and not a.allow_no_roster:
+    #    判定は decision_engine.roster_gate に1本化してある（会議中の経路と同じ規則）。
+    gate_ok, gate_why = de.roster_gate(a.meeting, bundle.privacy)
+    if a.backend != "rules" and not gate_ok and not a.allow_no_roster:
         raise SystemExit(
-            f"[replay] 名簿 {roster_path} がありません。\n"
+            f"[replay] {gate_why}。\n"
             f"         このまま送ると、発話に出てくる名前が平文で外へ出ます"
             f"（いま伏せられるのは meeting.json に書いてある呼び方 {len(meeting.roster)} 件だけ）。\n"
-            f"         対処: そのファイルに1行1名で書く\n"
+            f"         対処: {pathlib.Path(a.meeting).expanduser() / bundle.privacy.roster}"
+            f" に1行1名で書く\n"
             f"         （名前が出ないと確かめたうえで進めるなら --allow-no-roster）\n"
             f"         送る中身は --dry-run で先に確かめられます。")
 
