@@ -18,9 +18,11 @@ Carry one authorized consultation through the standard in-app Browser, preserve 
 
 A direct request to consult ChatGPT Web authorizes one scoped consultation message and retrieval of its answer. It does not authorize sending unrelated workspace material, contacting another person or service, changing account or security settings, or starting an additional consultation. A request to draft or review a prompt without sending does not authorize Send.
 
+When an authorized enclosing workflow such as `$codex-pro-plan-build` invokes this skill, that workflow may authorize multiple consultation messages within its approved purpose and information scope. This skill still handles exactly one outbound message per invocation. Its exactly-once send and uncertain-retry rules prevent duplication of that message; they are not a cap on the enclosing workflow. Honor explicit count, cost, or time limits, and return to the user before the workflow expands its purpose or the information sent.
+
 Follow all higher-priority local outbound restrictions. If a local rule requires separate approval, queue, or user action, stop at that boundary. Never weaken a hook, browser control, account protection, or other security setting to make the consultation work.
 
-`advisor-gate` is optional for checking context sufficiency before sending and auditing the returned answer afterward. It does not expand authorization, replace the user's requested destination, or override stronger local outbound restrictions. Do not launch a second external consultation through it without separate authorization.
+`advisor-gate` is optional for checking context sufficiency before sending and auditing the returned answer afterward. It does not expand authorization, replace the user's requested destination, or override stronger local outbound restrictions. Do not launch a second external consultation through it unless a direct request or an authorized enclosing workflow already covers that send.
 
 ## Prepare the consultation packet
 
@@ -92,5 +94,7 @@ Stop and notify the user when any of these occurs:
 ## 日本語クイック利用
 
 前提は Codex Desktop、標準の内蔵 Browser、ChatGPT Web へのログインです。呼び出し例: `$codex-chatgpt-consult を使い、ChatGPT Web の画面で「<表示どおりのモデル名>」「<表示どおりのモード>」を確認してから、この相談を1回だけ送り、最終回答全文を保存・照合して要点を返して。`
+
+単発依頼は1メッセージだけです。`$codex-pro-plan-build` など認可済みworkflowから呼ばれる場合は、1回の呼び出しで1メッセージをexactly-once送る規則を保ったまま、許可済みの目的・情報範囲内で複数回利用できます。これは重複送信防止でありworkflow全体の回数上限ではありません。明示された回数・費用・時間制限と、範囲拡大時の再確認は守ります。
 
 モデル名・モードを画面で確認できない、ログイン/MFAが必要、送信済みか不明、重複の恐れがある、最終回答全文や保存一致を確認できない場合は停止します。`Latest` などの一般名を `Pro` とみなして自動送信しません。

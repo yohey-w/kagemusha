@@ -112,6 +112,12 @@ Invoke it with an exact target, for example: *Use `$codex-chatgpt-consult` to as
 verbatim, and audit it.* The skill verifies those labels in the visible UI; it never assumes a generic
 label such as `Latest` means `Pro`.
 
+A standalone request authorizes that one message. When an authorized workflow such as
+`codex-pro-plan-build` calls the skill, each invocation still sends one message exactly once, but the
+workflow may make useful follow-up consultations within its approved purpose and information scope
+without per-message approval. Explicit count, cost, or time limits still apply, and any expansion of
+purpose or sent information returns to the user first.
+
 Expect a handoff for sign-in, MFA, recovery, CAPTCHA, or account changes. It also stops when the model
 or mode is ambiguous, local outbound rules do not permit the send, a paste card cannot be reconciled
 with the saved packet, send status is uncertain, a duplicate may exist, the final answer may be
@@ -140,9 +146,9 @@ rsync -a --copy-links templates/skills/codex-pro-plan-build/ \
 Start a new Codex task and confirm that both skills and the bundled in-app Browser skill are listed.
 Invoke it, for example: *Use `$codex-pro-plan-build`; consult only for high-rework decisions, produce
 an audited design contract, then implement and run the full required tests.* For a consultation, it
-asks only when the allowed outbound evidence, Web model/mode, or message budget is unresolved. A new
-chat and private non-overwriting artifact paths follow the consultation skill's defaults unless you
-say otherwise.
+asks only when the external purpose, allowed outbound evidence, or Web model/mode is unresolved. It
+does not require a consultation count in advance. A new chat and private non-overwriting artifact
+paths follow the consultation skill's defaults unless you say otherwise.
 
 The recommended profile is visibly selected Web `Astra Pro` and local `gpt-6-astra` at `high`; it is
 not an automatic setting or guarantee, and another user selection wins. The workflow must verify
@@ -153,10 +159,12 @@ questions; their report says `not consulted`. It never creates a task automatica
 reply as proof, replaces CI, or promises free quota or strongest-model status. After an authorized
 reconsultation it preserves the new raw answer and old contract, versions the contract, updates the
 affected acceptance tests, and only then resumes implementation. A reconsultation already inside the
-approved scope and remaining message budget needs no extra approval, but the changed evidence is
-recorded and reported. If local model/effort proof is found missing later, existing code and evidence
-are preserved, the condition is reported as unverified, and the user chooses whether to relax it or
-request bounded review or tests from a verified executor; a full rewrite is not automatic.
+approved purpose and information scope needs no extra approval. Explicit count, cost, and time limits
+are honored; expanding the purpose or sent information requires confirmation. The workflow avoids
+repeating the same question with the same evidence and stops with a reason when no new question or
+evidence can produce progress. If local model/effort proof is found missing later, existing code and
+evidence are preserved, the condition is reported as unverified, and the user chooses whether to
+relax it or request bounded review or tests from a verified executor; a full rewrite is not automatic.
 
 ### 3. History — add the Windows tree to the harvest
 
@@ -314,6 +322,10 @@ Browserが使えること、ChatGPT Webへ自分でログインできること�
 `<画面に出るモード名>` を確認してから、この相談を1回だけ送り、最終回答全文を保存・検収して。」
 `Latest` のような一般名を `Pro` と自動解釈しません。
 
+単発依頼が認可するのはその1メッセージです。`codex-pro-plan-build` など認可済みworkflowから呼ぶ場合も、
+各呼び出しは1メッセージをexactly-once送りますが、許可済みの目的・情報範囲内の有益な再相談は逐一承認なしで
+続けられます。明示された回数・費用・時間制限は守り、目的や送信情報を広げる前には利用者へ戻ります。
+
 ログイン、MFA、復旧、CAPTCHA、アカウント変更は利用者へ引き継ぎます。モデル/モードが曖昧、ローカルの
 外向き規則が送信を許さない、貼付カードと保存原文が一致しない、送信済みか不明、重複の恐れ、回答が未完、
 保存後のハッシュ/一致検査が失敗した場合も停止します。セキュリティを弱めず、規約適合やアカウント制限回避を
@@ -338,15 +350,18 @@ rsync -a --copy-links templates/skills/codex-pro-plan-build/ \
 
 コピー後に新しいCodexタスクを始め、両スキルと同梱の内蔵Browserスキルが表示されることを確認します。例:
 「`$codex-pro-plan-build` を使い、手戻りの大きい判断だけ相談し、設計契約を検収して実装・全試験まで進めて。」
-相談する場合に質問するのは、外部送信してよい証拠、Webモデル/モード、相談回数のうち未解決な項目だけです。
-別指定がなければ新規chatと非公開・非上書きの保存先は相談スキルの既定を継承します。
+相談する場合に質問するのは、外部送信の目的、送ってよい証拠、Webモデル/モードのうち未解決な項目だけです。
+回数の事前指定は必須にしません。別指定がなければ新規chatと非公開・非上書きの保存先は相談スキルの既定を
+継承します。
 
 推奨プロファイルは、画面で選んだWeb `Astra Pro` とローカル `gpt-6-astra` の `high` です。ただし自動設定でも
 性能保証でもなく、利用者の別選択を優先します。実際のWebモデル/モードとローカルmodel/effortを表示・
 メタデータで確認できない、切替不能、ローカル配分規則と競合、初回または再相談の送信認可が無い場合は利用者へ
 戻して停止します。小変更や承認済み設計ならWeb送信の質問なしで相談を省き、報告は `not consulted` とします。
 再相談後は新しいraw回答と旧契約を残し、契約を版更新して影響する受入試験も更新してから実装へ戻ります。
-再相談が既認可の範囲・残予算内なら追加承認は不要ですが、変化した証拠を記録して利用者へ簡潔に知らせます。
+再相談が既認可の目的・情報範囲内なら逐一の追加承認は不要です。明示された回数・費用・時間制限を守り、目的や
+送信情報を広げる前には確認します。同じ問いと証拠を反復せず、新しい問いや証拠がなく進展しない時は理由を報告して
+相談を停止します。
 後からlocal model/effortの証明不足が判明してもコードと証跡は残し、条件を未検証と報告します。過去実行を
 遡って `high` とせず、要件緩和またはverified executorで必要なreview/testを行うか利用者へ確認し、全再実装を
 自動では要求しません。

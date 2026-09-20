@@ -41,21 +41,22 @@ Consult only when a wrong decision would be expensive to reverse or would affect
 
 Do not consult for naming, ordinary refactors, local implementation details, routine debugging, or a test failure that the local evidence can resolve.
 
-When the change is small or an approved design already supplies enough evidence and acceptance criteria, skip Web consultation. Do not ask the user for outbound-send authorization, model resolution, or a consultation budget on this route. Continue at step 5 to write the local design contract once from repository evidence, and report the consultation model/mode and raw-answer artifact as `not consulted`. If the user explicitly asks for a consultation, respect that intent unless a higher-priority safety or outbound rule forbids it.
+When the change is small or an approved design already supplies enough evidence and acceptance criteria, skip Web consultation. Do not ask the user for Web-consultation details on this route. Continue at step 5 to write the local design contract once from repository evidence, and report the consultation model/mode and raw-answer artifact as `not consulted`. If the user explicitly asks for a consultation, respect that intent unless a higher-priority safety or outbound rule forbids it.
 
-## 3. Authorize one bounded consultation
+## 3. Authorize the consultation scope
 
-Before the first consultation, resolve only these authorization fields from the user's explicit instructions and ask only when a field is missing or ambiguous:
+Before the first consultation, resolve these fields from the user's explicit instructions and ask only when a field is missing or ambiguous:
 
-1. the exact question, repository material allowed to leave the local environment, and exclusions such as secrets, customer data, credentials, and unrelated code;
-2. the Web model and mode; and
-3. the allowed number of consultation messages.
+1. the development purpose and the repository material allowed to leave the local environment, including exclusions such as secrets, customer data, credentials, and unrelated code; and
+2. the Web model and mode.
+
+Do not require the user to choose a consultation count in advance. If the user authorizes this development workflow and its external purpose and information scope, that authorization covers useful follow-up questions, confirmations, and design improvements within the same purpose and scope without approval before every message. Honor any count, cost, or time limit the user does state. Ask again before expanding the purpose, expanding the categories or amount of information sent, or exceeding an explicit limit.
 
 Use `$codex-chatgpt-consult`'s new-chat default unless the user requests an existing chat. Select appropriate non-public, non-overwriting paths for the raw answer and design contract and tell the user what they are; ask for paths only when local rules or the user's instructions require specific locations.
 
-Authorization for one consultation does not authorize a later one. A later consultation is allowed only when it stays inside a previously explicit scope and message-count budget; otherwise obtain fresh authorization first.
+A standalone request handled directly by `$codex-chatgpt-consult` remains authorization for one consultation message. The continuing authorization above applies only because the user requested this development workflow and approved its external purpose and information scope.
 
-Prepare a compact evidence packet containing the decision, constraints, relevant excerpts, alternatives already considered, and the answer format needed. Pass that one bounded consultation to `$codex-chatgpt-consult`. Each consultation sends exactly one user message and inherits all of that skill's stop conditions.
+Prepare a compact evidence packet containing the decision, constraints, relevant excerpts, alternatives already considered, and the answer format needed. Pass each consultation to `$codex-chatgpt-consult` separately. Its one-send rule means exactly once for that message and protects against uncertain resend; it is not a cap on the whole development workflow. Each consultation inherits all of that skill's stop conditions.
 
 ## 4. Preserve and audit the answer
 
@@ -103,9 +104,9 @@ Using the verified executor:
 
 The external answer cannot replace code review, tests, security checks, migration rehearsal, or CI.
 
-## 8. Reconsult only on a boundary change
+## 8. Reconsult only for material design progress
 
-Reconsult only when a contract premise has become false or the implementation reveals a high-cost boundary change, such as:
+Reconsult when it can materially improve or confirm the design, resolve a new high-impact question, or respond to a contract premise becoming false. Boundary-change examples include:
 
 - a public API must change;
 - the data model or migration strategy must change;
@@ -113,7 +114,9 @@ Reconsult only when a contract premise has become false or the implementation re
 - an acceptance condition is impossible or materially different; or
 - the approved design cannot be implemented under the repository's constraints.
 
-Before reconsulting, record the changed evidence, identify the exact contract section affected, and notify the user concisely. Verify that the extra send is inside the authorized scope and remaining message budget. When it is, no additional approval is required. Honor the user's new-chat or existing-chat choice again. If authorization is absent, out of scope, or exhausted, stop and obtain it. Then use `$codex-chatgpt-consult` for one message only.
+Keep ordinary debugging, naming, and small implementation choices local. Do not repeat the same question with the same evidence. If there is no new question or evidence and consultation is no longer producing progress, stop consulting and report why; do not invent a fixed retry limit.
+
+Before reconsulting, record the new question or changed evidence, identify the contract section affected, and notify the user concisely. When the send remains within the authorized workflow purpose and information scope and no explicit count, cost, or time limit has been reached, proceed without additional approval. Ask again before expanding that purpose or sent information, or after an explicit limit is reached. Honor the user's new-chat or existing-chat choice, then invoke `$codex-chatgpt-consult` for one exactly-once message.
 
 After that consultation:
 
@@ -137,4 +140,4 @@ Stop instead of claiming the affected requirement is satisfied when required mod
 
 ## 日本語での短い使い方
 
-「`$codex-pro-plan-build` を使い、外部送信してよい範囲と相談回数を先に確認し、重要設計だけ指定のWeb Proへ相談して設計契約を作り、指定したCodexモデル/effortを実表示で確認してから実装・全試験まで進めて」と依頼します。通常デバッグや小判断では再相談せず、API・データ・セキュリティ・受入条件・実装可能性の前提が崩れた時だけ、残りの送信認可を確認して再相談します。
+「`$codex-pro-plan-build` を使い、外部送信してよい目的と情報範囲を確認し、重要設計を指定のWeb Proへ相談して設計契約を作り、指定したCodexモデル/effortを実表示で確認してから実装・全試験まで進めて」と依頼します。認可済みの目的・範囲内なら、有益な確認や設計改善は逐一承認なしで続けられます。利用者が指定した回数・費用・時間制限は守り、範囲拡大は再確認します。通常デバッグや小判断はローカルで扱い、同じ問いと証拠を反復しません。
