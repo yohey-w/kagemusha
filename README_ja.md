@@ -112,7 +112,7 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 | | Claude Code | Codex CLI | 片方に無いときの代替 |
 |---|---|---|---|
 | 指示ファイル | `CLAUDE.md` ＝ `@AGENTS.md` の1行 | `AGENTS.md` を直読 | 中身は1本・名前が2つ。`setup.sh` が両方作る |
-| スキル | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` が有る方へ symlink |
+| スキル | `~/.claude/skills/` | `~/.codex/skills/` | `setup.sh --link-skills` は共有スキルを両方へ、Codex専用はCodexだけへ symlink |
 | 毎ターンの日時スタンプ | `.claude/settings.json` の `UserPromptSubmit` hook。stdout はそのまま使われる | `.codex/config.toml` の `[[hooks.UserPromptSubmit]]`（プロジェクトの信頼登録が前提）。同じイベントだが形式が違う——stdout は JSON エンベロープ `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"…"}}` 必須。平文は TUI では Hook failed、`codex exec` では無言で破棄される | `AGENTS.md` に「日付は必ず検算」と書く |
 | メモリ | 自動メモリ | memories | **どちらも正本ではない。** 正本はプレーンファイル（[`ssot/README.md`](ssot/README.md)） |
 | ヘッドレス起動 | `claude -p …` | `codex exec … -s read-only\|workspace-write -o …` | argv でプロンプトを取る CLI なら何でも |
@@ -125,9 +125,10 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 
 ### 同梱スキル
 
-上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には2つ同梱されている。
+上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には3つ同梱されている。
 
 - **`advisor-gate`** — 最上位の外部推論モデルへ重要な判断のレビューを諮問し、回答を検収するための手順。[`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
+- **`codex-chatgpt-consult`** — Codex Desktop専用。標準の内蔵Browserで利用者指定のChatGPT Webモデルへ1回だけ相談し、重複送信を避けて回答全文を保存・照合する。[導入と使い方](docs/desktop-apps.md#任意-chatgpt-web相談スキルを入れる)。
 - **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。発話ごとの判定は Jev（TypeSafe・Vercel AI Gateway 経由）等の差し替え可能な判定モデルに任せ、答えられなければルールへ退避する。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 
 このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。

@@ -92,6 +92,32 @@ rsync -a --copy-links \
 The excludes are not optional: measured on one install, 339 files and 3.1 MB with them, 8,004 files
 and 309 MB without. Skills whose scripts are bash keep working, because in WSL mode the shell is WSL.
 
+#### Optional: install the ChatGPT Web consultation skill
+
+`codex-chatgpt-consult` lets Codex Desktop consult the ChatGPT Web model and mode you name through
+the standard in-app Browser. It is intentionally not installed into Claude. From the repository root:
+
+```sh
+./scripts/setup.sh --link-skills
+rsync -a --copy-links templates/skills/codex-chatgpt-consult/ \
+  /mnt/c/Users/<user>/.codex/skills/codex-chatgpt-consult/
+```
+
+Start a new Codex task after copying. Prerequisites are: the bundled Browser skill is listed in that
+task, the in-app Browser is available, and you can sign in to ChatGPT Web yourself. If any is absent,
+the skill stops instead of substituting an external browser, API, CDP client, or custom automation.
+
+Invoke it with an exact target, for example: *Use `$codex-chatgpt-consult` to ask ChatGPT Web's
+`<visible model label>` in `<visible mode label>` this question once, save the complete final answer
+verbatim, and audit it.* The skill verifies those labels in the visible UI; it never assumes a generic
+label such as `Latest` means `Pro`.
+
+Expect a handoff for sign-in, MFA, recovery, CAPTCHA, or account changes. It also stops when the model
+or mode is ambiguous, local outbound rules do not permit the send, a paste card cannot be reconciled
+with the saved packet, send status is uncertain, a duplicate may exist, the final answer may be
+incomplete, or the saved answer fails its hash/equality check. It never weakens security controls and
+does not promise that the workflow complies with every service term or prevents account restrictions.
+
 ### 3. History — add the Windows tree to the harvest
 
 Desktop sessions are written to `C:\Users\<user>\.codex\sessions\**`, so the distillation lane never
@@ -228,6 +254,30 @@ rsync -a --copy-links \
 
 除外は必須です。ある機体での実測で、付ければ 339ファイル・3.1MB、付けなければ 8,004ファイル・309MB。
 bash で書かれたスキルもそのまま動きます——WSL モードならシェルは WSL だからです。
+
+#### 任意: ChatGPT Web相談スキルを入れる
+
+`codex-chatgpt-consult` は、指定したChatGPT Webのモデルとモードへ、Codex Desktopの標準内蔵Browserから
+相談するスキルです。Claudeには入れません。リポジトリ直下で実行します:
+
+```sh
+./scripts/setup.sh --link-skills
+rsync -a --copy-links templates/skills/codex-chatgpt-consult/ \
+  /mnt/c/Users/<user>/.codex/skills/codex-chatgpt-consult/
+```
+
+コピー後は新しいCodexタスクを開始します。前提は、そのタスクに同梱Browserスキルが表示されること、内蔵
+Browserが使えること、ChatGPT Webへ自分でログインできることです。欠ける場合は外部ブラウザ、API、CDP、
+独自自動化へ切り替えず停止します。
+
+例: 「`$codex-chatgpt-consult` を使い、ChatGPT Webの `<画面に出るモデル名>` と
+`<画面に出るモード名>` を確認してから、この相談を1回だけ送り、最終回答全文を保存・検収して。」
+`Latest` のような一般名を `Pro` と自動解釈しません。
+
+ログイン、MFA、復旧、CAPTCHA、アカウント変更は利用者へ引き継ぎます。モデル/モードが曖昧、ローカルの
+外向き規則が送信を許さない、貼付カードと保存原文が一致しない、送信済みか不明、重複の恐れ、回答が未完、
+保存後のハッシュ/一致検査が失敗した場合も停止します。セキュリティを弱めず、規約適合やアカウント制限回避を
+保証しません。
 
 ### 3. 履歴——収穫元に Windows 側を足す
 

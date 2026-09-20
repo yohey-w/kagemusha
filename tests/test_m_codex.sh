@@ -100,9 +100,10 @@ assert_ok "M2: the Codex config template is valid TOML" \
 assert_exit "M2: an unknown flag is refused, not silently ignored" 2 \
   "$M_KIT/scripts/setup.sh" --no-such-flag
 
-# --link-skills, against a fake HOME with only ONE of the two CLIs installed
+# --link-skills, against a fake HOME with both CLIs installed. Shared skills
+# go to both; the in-app-Browser consultation skill is Codex-only.
 M_SKHOME="$TEST_TMP/m_skillhome"
-mkdir -p "$M_SKHOME/.codex/skills"          # codex present, claude absent
+mkdir -p "$M_SKHOME/.codex/skills" "$M_SKHOME/.claude/skills"
 printf 'not ours\n' > "$M_SKHOME/.codex/skills/OCCUPIED"
 M_SK="$TEST_TMP/m_skills"; kit_copy "$M_SK"
 mkdir -p "$M_SK/templates/skills/OCCUPIED"
@@ -111,13 +112,44 @@ assert_eq "M2: setup.sh --link-skills exits 0" "0" "$?"
 assert_eq "M2: an existing skill entry is never replaced" \
   "not ours" "$(cat "$M_SKHOME/.codex/skills/OCCUPIED")"
 assert_grep "M2: …and the run says it skipped it" "skip (exists)" "$M_SK/.setup.log"
-if [[ -L "$M_SKHOME/.codex/skills/meeting-copilot" ]]; then
-  pass "M2: a shipped skill is symlinked (not copied) into the CLI that IS installed"
+for m_shared in advisor-gate meeting-copilot; do
+  if [[ -L "$M_SKHOME/.codex/skills/$m_shared" && -L "$M_SKHOME/.claude/skills/$m_shared" ]]; then
+    pass "M2: shared skill $m_shared is symlinked into both installed CLIs"
+  else
+    fail "M2: shared skill $m_shared is symlinked into both installed CLIs" \
+      "codex: $(ls -ld "$M_SKHOME/.codex/skills/$m_shared" 2>&1)
+claude: $(ls -ld "$M_SKHOME/.claude/skills/$m_shared" 2>&1)"
+  fi
+done
+if [[ -L "$M_SKHOME/.codex/skills/codex-chatgpt-consult" ]]; then
+  pass "M2: Codex consultation skill is symlinked into Codex"
 else
-  fail "M2: a shipped skill is symlinked (not copied) into the CLI that IS installed" \
+  fail "M2: Codex consultation skill is symlinked into Codex" \
     "$(ls -la "$M_SKHOME/.codex/skills" 2>&1)"
 fi
-assert_absent "M2: nothing is created for the CLI that is not installed" "$M_SKHOME/.claude"
+assert_absent "M2: Codex consultation skill is not linked into Claude" \
+  "$M_SKHOME/.claude/skills/codex-chatgpt-consult"
+assert_grep "M2: setup reports the Codex-only compatibility boundary" \
+  "codex-chatgpt-consult (Codex Desktop only)" "$M_SK/.setup.log"
+
+# A missing CLI stays missing. This is a separate HOME so the both-installed
+# case above cannot accidentally satisfy the assertion by precreating Claude.
+M_SKHOME_CODEX_ONLY="$TEST_TMP/m_skillhome_codex_only"
+mkdir -p "$M_SKHOME_CODEX_ONLY/.codex/skills"
+M_SK_CODEX_ONLY="$TEST_TMP/m_skills_codex_only"; kit_copy "$M_SK_CODEX_ONLY"
+HOME="$M_SKHOME_CODEX_ONLY" "$M_SK_CODEX_ONLY/scripts/setup.sh" --link-skills \
+  > "$M_SK_CODEX_ONLY/.setup.log" 2>&1
+assert_eq "M2: Codex-only HOME setup exits 0" "0" "$?"
+for m_codex_skill in advisor-gate meeting-copilot codex-chatgpt-consult; do
+  if [[ -L "$M_SKHOME_CODEX_ONLY/.codex/skills/$m_codex_skill" ]]; then
+    pass "M2: Codex-only HOME links $m_codex_skill into Codex"
+  else
+    fail "M2: Codex-only HOME links $m_codex_skill into Codex" \
+      "$(ls -la "$M_SKHOME_CODEX_ONLY/.codex/skills" 2>&1)"
+  fi
+done
+assert_absent "M2: Codex-only HOME does not create the missing Claude tree" \
+  "$M_SKHOME_CODEX_ONLY/.claude"
 
 # ─── M3. dispatch: the argv each CLI actually receives ─────────────────────
 # The old design was a comment telling you to edit one of three invocation

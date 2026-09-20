@@ -10,7 +10,7 @@
 #   ./scripts/setup.sh              # scaffold into the clone (recommended)
 #   ./scripts/setup.sh ~/work-loop  # …or into a separate directory
 #   ./scripts/setup.sh --codex      # …and write a starter .codex/config.toml
-#   ./scripts/setup.sh --link-skills  # symlink templates/skills/* into the CLIs
+#   ./scripts/setup.sh --link-skills  # symlink compatible skills into the CLIs
 #
 # ONE INSTRUCTIONS FILE, TWO NAMES. AGENTS.md is the file; CLAUDE.md is the
 # single line `@AGENTS.md`, which Claude Code imports (measured on Claude Code
@@ -266,11 +266,11 @@ if [[ -n "$WITH_CODEX" ]]; then
   echo "  → and the hook needs its own approval the first time you open the TUI here."
 fi
 
-# ─── --link-skills : one copy of each skill, both CLIs ─────────────────────
-# Claude Code reads ~/.claude/skills/, Codex reads ~/.codex/skills/. A skill
-# copied into both is a skill that will be edited in one of them. So: symlink,
-# into whichever of the two directories already exists, and NEVER over anything
-# that is already there — an existing entry is somebody's, not ours.
+# ─── --link-skills : one source, compatible CLIs only ──────────────────────
+# Claude Code reads ~/.claude/skills/, Codex reads ~/.codex/skills/. Shared
+# skills are symlinked into whichever directories exist; a skill that depends
+# on Codex Desktop's in-app Browser is Codex-only. NEVER replace an existing
+# entry — it is somebody's, not ours.
 if [[ -n "$LINK_SKILLS" ]]; then
   SKILL_SRC="$REPO_ROOT/templates/skills"
   if [[ ! -d "$SKILL_SRC" ]]; then
@@ -283,6 +283,10 @@ if [[ -n "$LINK_SKILLS" ]]; then
       for skill in "$SKILL_SRC"/*/; do
         [[ -d "$skill" ]] || continue
         name="$(basename "$skill")"
+        if [[ "$skills_home" == "$HOME/.claude/skills" && "$name" == "codex-chatgpt-consult" ]]; then
+          echo "  skills:        skip $skills_home/$name (Codex Desktop only)"
+          continue
+        fi
         if [[ -e "$skills_home/$name" || -L "$skills_home/$name" ]]; then
           echo "  skip (exists): $skills_home/$name"
         else

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Consult ChatGPT Web"
+  short_description: "Consult a chosen ChatGPT model through the in-app Browser"
+  default_prompt: "Use $codex-chatgpt-consult to consult my chosen ChatGPT Web model once, save the complete final answer verbatim, and audit it."
