@@ -94,6 +94,12 @@ ANSWERER = pathlib.Path(__file__).resolve().parent / "answerer.py"
 ANSWERER_MIN_GAP = 30.0   # 第2層の呼び出しは30秒に1回まで(クォータの底が抜けないように)
 PREMISE_WATCH = pathlib.Path(__file__).resolve().parent / "premise_watch.py"
 PREMISE_MIN_LEN = 6           # 相槌・単語だけの断片は撃たない
+# 判定層の班を同時に何本まで走らせるか。1本だと、鎖が遅い日に「走行中につき
+# 見送り」が大半になってカードが出ない。増やしすぎると会議が終わったあとに
+# 答えが届く。4本目が来たら、いちばん古い未完了を諦めて枠を空ける。
+MAX_DECISION_WORKERS = 3
+# 会議はおよそ4秒に1発話。鎖の上限がこれ×本数を超えると、構造的に追いつかない。
+SEC_PER_UTTERANCE = 4.0
 Q_TAILS = ("ですか", "ますか", "んですか", "でしょうか", "？", "?", "ですか。", "ますか。", "どう")
 Q_MIN_LEN = 30    # 疑問終止形でも短い言いさし断片は拾わない
                   # (実測: 相手の言いさし断片への誤発火が18回中18回だった)
@@ -407,7 +413,9 @@ class Copilot:
         見送りはログに出る。
         """
         self.decision = None
-        self.decision_thread: threading.Thread | None = None
+        self.decision_thread: threading.Thread | None = None   # 直近の1本(後方互換)
+        self._jobs: list = []                  # 走行中の班
+        self._jobs_lock = threading.Lock()
         self.decision_seen: set[str] = set()   # 約束カードの重複よけ(発話ごと1回)
         self.ended_streak = 0                  # 「終わった」が続いた回数
         self.suppress_nudge_until = 0.0        # 雑談のあと催促を見送る期限
@@ -443,11 +451,13 @@ class Copilot:
         log(f"判定層: backend={kind} 鎖={bundle.chain_label} "
             f"/ カードに出す={'はい' if self.show_decisions else 'いいえ（記録だけ）'} "
             f"/ 1発話あたり最大{budget:.1f}秒")
-        if budget > 2.0:
-            # 会議は4秒に1発話くらい来る。1発話に2秒以上かけうる鎖だと、
-            # 混んだ時間帯は見送りだらけになって「出るはずのカードが出ない」。
-            log(f"⚠ 判定に最大{budget:.1f}秒かかりうる鎖です。会議では見送りが増えます"
-                f"——fallback_chain を [jev, rules] にするか timeout_sec を詰めてください")
+        room = SEC_PER_UTTERANCE * MAX_DECISION_WORKERS
+        if budget > room:
+            # 班を増やしたぶん、遅い鎖でも追いつける。追いつけないのは
+            # 「1発話あたりの間隔 × 本数」を超えたときだけ。
+            log(f"⚠ 判定に最大{budget:.1f}秒かかりうる鎖です（班{MAX_DECISION_WORKERS}本で"
+                f"捌ける上限は{room:.0f}秒）。取り落としが出ます"
+                f"——timeout_sec を詰めるか、段を減らしてください")
         if meeting.roster:
             log(f"判定層: 名簿{len(meeting.roster)}件を役名へ置換して送ります")
         else:
@@ -455,19 +465,42 @@ class Copilot:
                 "（会議フォルダに roster.txt を置いてください）")
 
     def kick_decisions(self, speaker: str, text: str, uid: str) -> None:
-        """判定を1本だけ後ろで走らせる。走行中なら見送る（本線は止めない）。"""
+        """判定を後ろで走らせる。**発話を取り落とさない**のがここの役目。
+
+        1本ずつだと、鎖が遅い日は「走行中につき見送り」が大半になり、カードが
+        まったく出ない会議になる。だから ``MAX_DECISION_WORKERS`` 本まで重ねて
+        走らせ、それでも溢れたら**いちばん古い未完了を諦める**（新しい発話の方が
+        価値がある。古い判定が今ごろ返ってきても、会話は先へ行っている）。
+
+        🔴 「諦める」は結果を捨てて枠を空けることで、通信を止めることではない
+        （走っているスレッドは外から止められない）。諦めた班はタイムアウトで
+        自然に終わるので、瞬間的に本数を超えることはあっても際限なくは増えない。
+        """
         if not self.decision:
             return
-        th = self.decision_thread
-        if th is not None and th.is_alive():
-            log(f"間引き: 判定層は走行中なので見送り in={text[:24]}")
-            return
         window = list(self.recent)
-        self.decision_thread = threading.Thread(
-            target=self._decide, args=(window, speaker, text, uid), daemon=True)
-        self.decision_thread.start()
+        flag = {"abandoned": False}
+        th = threading.Thread(target=self._decide, daemon=True,
+                              args=(window, speaker, text, uid, flag))
+        with self._jobs_lock:
+            self._jobs = [j for j in self._jobs if j["th"].is_alive()]
+            while len(self._jobs) >= MAX_DECISION_WORKERS:
+                old = self._jobs.pop(0)
+                old["flag"]["abandoned"] = True
+                log(f"判定層が詰まったので古い方を諦めます: uid={old['uid']}"
+                    f"（走行中{len(self._jobs) + 1}本）")
+            self._jobs.append({"th": th, "flag": flag, "uid": uid})
+        self.decision_thread = th
+        th.start()
 
-    def _decide(self, window, speaker: str, text: str, uid: str) -> None:
+    def wait_decisions(self, timeout: float = 5.0) -> None:
+        """走行中の班が終わるのを待つ（試験と、畳む前の後片付けのため）。"""
+        with self._jobs_lock:
+            jobs = list(self._jobs)
+        for j in jobs:
+            j["th"].join(timeout)
+
+    def _decide(self, window, speaker: str, text: str, uid: str, flag) -> None:
         """班の中身。**例外をここから外に出さない**——判定層の不具合で番人が
         落ちたら、会議のあいだ画面が死ぬ。落ちたらログだけ残して次へ。"""
         d = self.decision
@@ -476,9 +509,15 @@ class Copilot:
                 d["engine"], d["bundle"], d["meeting"], d["masker"], window)
             if not questions:
                 return
+            dropped = bool(flag.get("abandoned"))
             d["log"].write(utterance_id=uid, ts=now_iso(), speaker=speaker,
                            state=state, questions=questions, answers=answers,
-                           latency_ms=ms)
+                           latency_ms=ms, abandoned=dropped)
+            if dropped:
+                # 記録には残す（採点の材料になる）が、画面には出さない——
+                # 会話が先へ行ったあとのカードは、読む人の邪魔にしかならない。
+                log(f"諦めた判定が今ごろ返りました。記録だけ残します uid={uid}")
+                return
             self.apply_decisions(answers, speaker, text, uid)
         except Exception as e:                       # noqa: BLE001
             log(f"判定層で例外（会議は続行）: {e!r}")

@@ -157,9 +157,7 @@ class LiveBase(unittest.TestCase):
 
     def say(self, cop, speaker, text, at=None):
         cop.feed({"ts": iso(at or datetime.now()), "speaker": speaker, "text": text})
-        th = cop.decision_thread
-        if th is not None:
-            th.join(5)
+        cop.wait_decisions(5)
 
     def cards(self, kind=None):
         p = self.state / "cards.jsonl"
@@ -186,6 +184,20 @@ class WiringTest(LiveBase):
             cop.decision["meeting"], note=lambda m: None)
         self.assertEqual(real.retry_busy_sec, 0.0)
 
+    def test_the_shipped_chain_fits_inside_the_pool(self):
+        """③ 警告は「4秒/発話 × 班の本数」を超える鎖のときだけ。"""
+        b = cop_bundle = self.make().decision["bundle"]
+        budget = 0.0
+        for st in cop_bundle.fallback_chain:
+            if st.name == "jev" and b.jev.base_url:
+                budget += st.timeout_sec or b.jev.timeout_sec
+            elif st.name == "llm" and b.llm.base_url:
+                budget += st.timeout_sec or b.llm.timeout_sec
+        room = self.c.SEC_PER_UTTERANCE * self.c.MAX_DECISION_WORKERS
+        self.assertLessEqual(budget, room,
+                             f"同梱の鎖({budget}秒)が班で捌ける上限({room}秒)を超えている")
+        self.assertAlmostEqual(budget, 3.5, places=2, msg=f"鎖の上限は3.5秒のはず: {budget}")
+
     def test_the_worker_never_blocks_the_main_loop(self):
         cop = self.make()
         self.fake.delay = 0.6
@@ -195,17 +207,42 @@ class WiringTest(LiveBase):
                   "text": "明日までに資料をお送りします。"})
         spent = time.monotonic() - t0
         self.assertLess(spent, 0.3, f"本線が判定を待っている({spent:.2f}s)")
-        cop.decision_thread.join(5)
+        cop.wait_decisions(5)
         self.assertEqual(len(self.cards("commit")), 1)
 
-    def test_a_second_utterance_while_busy_is_skipped_not_queued(self):
+    def test_utterances_are_not_dropped_while_one_is_in_flight(self):
+        # 🔴 1本ずつだと、鎖が遅い日は見送りだらけでカードが出ない。
+        #    本数ぶんは重ねて走らせて、発話を取り落とさない。
+        cop = self.make()
+        self.fake.delay = 0.4
+        self.fake.set(q8=0.95)
+        for i in range(self.c.MAX_DECISION_WORKERS):
+            cop.feed({"ts": iso(datetime.now() + timedelta(seconds=i)),
+                      "speaker": "host", "text": f"{i}番目の約束をします。"})
+        cop.wait_decisions(10)
+        self.assertEqual(self.fake.calls, self.c.MAX_DECISION_WORKERS,
+                         "重ねて走らせていない（発話を取り落としている）")
+        self.assertEqual(len(self.cards("commit")), self.c.MAX_DECISION_WORKERS)
+
+    def test_the_oldest_in_flight_is_abandoned_when_the_pool_is_full(self):
         cop = self.make()
         self.fake.delay = 0.5
         self.fake.set(q8=0.95)
-        cop.feed({"ts": iso(datetime.now()), "speaker": "host", "text": "ひとつ目の発話です。"})
-        cop.feed({"ts": iso(datetime.now()), "speaker": "host", "text": "ふたつ目の発話です。"})
-        cop.decision_thread.join(5)
-        self.assertEqual(self.fake.calls, 1, "走行中なのに重ねて撃っている")
+        n = self.c.MAX_DECISION_WORKERS
+        for i in range(n + 1):           # 1本ぶん溢れさせる
+            cop.feed({"ts": iso(datetime.now() + timedelta(seconds=i)),
+                      "speaker": "host", "text": f"{i}番目の約束をします。"})
+        cop.wait_decisions(10)
+        time.sleep(0.6)                  # 諦めた班が返ってくるのを待つ
+        # 判定は全部走る（通信は止められない）が、**画面に出るのは諦めなかった分だけ**
+        self.assertEqual(self.fake.calls, n + 1)
+        self.assertEqual(len(self.cards("commit")), n,
+                         "諦めたはずの判定がカードになっている")
+        recs = [json.loads(x) for x in
+                (self.state / "decisions.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(sum(1 for r in recs if r.get("abandoned")), 1,
+                         "諦めた印が記録に残っていない")
+        self.assertEqual(len(recs), n + 1, "記録は全部残すこと（採点の材料）")
 
     def test_an_exception_in_the_worker_does_not_kill_the_watchdog(self):
         cop = self.make()
@@ -368,6 +405,7 @@ class OffTest(LiveBase):
         self.assertIsNone(cop.decision)
         cop.feed({"ts": iso(datetime.now()), "speaker": "host", "text": "お送りします。"})
         self.assertIsNone(cop.decision_thread)
+        self.assertEqual(cop._jobs, [])
         self.assertFalse((self.state / "decisions.jsonl").exists())
 
 

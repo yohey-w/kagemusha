@@ -328,11 +328,39 @@ assert_eq "L8: one record per utterance" "3" "$l_recs"
 assert_file "L9: live-wiring unit tests ship" "$L_TESTS/test_decision_live.py"
 assert_grep "L9: the watchdog runs the judge off the main loop" \
   "threading.Thread" "$L_SCRIPTS/copilot.py"
-assert_grep "L9: …and skips while one is already running" \
-  "判定層は走行中なので見送り" "$L_SCRIPTS/copilot.py"
+assert_grep "L9: …and never makes the main loop wait for a verdict" \
+  "本線" "$L_SCRIPTS/copilot.py"
 assert_grep "L9: the viewer only shows a fresh step hint" \
   "DECISION_HINT_MAX_AGE" "$L_SCRIPTS/viewer2.py"
 # the step high-water mark is moved by the keyword rule ONLY
 assert_empty_str "L9: the decision layer never writes the step high-water mark" \
   "$(grep -nE 'self\.auto_hi[[:space:]]*=' "$L_SCRIPTS/copilot.py" \
      | grep -v 'step_detect' | grep -v 'self\.auto_hi = 0')"
+
+# ── L10. the live judge keeps up with the room ─────────────────────────────
+# One worker meant "skip while busy", which on a slow day is a meeting with no
+# cards at all. A pool that drops the OLDEST is the honest trade: the newest
+# utterance is the one worth judging.
+assert_grep "L10: the judge runs a small pool, not a single slot" \
+  "MAX_DECISION_WORKERS" "$L_SCRIPTS/copilot.py"
+assert_grep "L10: …and abandons the oldest when it overflows" \
+  "古い方を諦めます" "$L_SCRIPTS/copilot.py"
+assert_grep "L10: an abandoned judgement is still recorded, marked" \
+  "abandoned" "$L_SCRIPTS/decision_engine.py"
+# the shipped chain must fit the pool, or the default ships already behind
+assert_ok "L10: the shipped chain fits 4s x workers" \
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import decision_engine as de
+b = de.load_bundle(sys.argv[2])
+budget = 0.0
+for s in b.fallback_chain:
+    if s.name == "jev" and b.jev.base_url:
+        budget += s.timeout_sec or b.jev.timeout_sec
+    elif s.name == "llm" and b.llm.base_url:
+        budget += s.timeout_sec or b.llm.timeout_sec
+assert abs(budget - 3.5) < 0.01, budget
+assert b.fallback_chain[1].model == "anthropic/claude-haiku-4.5", b.chain_label
+' "$L_FX/templates/skills/meeting-copilot/scripts" \
+  "$L_FX/templates/skills/meeting-copilot/config/decisions.example.yaml"

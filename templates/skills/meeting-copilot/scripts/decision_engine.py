@@ -1272,7 +1272,7 @@ class DecisionLog:
         self.n = 0
 
     def write(self, *, utterance_id, ts, speaker, state, questions,
-              answers: Answers, latency_ms: float) -> dict:
+              answers: Answers, latency_ms: float, abandoned: bool = False) -> dict:
         rec = {
             "utterance_id": utterance_id,
             "ts": ts,
@@ -1286,6 +1286,10 @@ class DecisionLog:
             "usage": answers.usage,
             "error": answers.error,
         }
+        if abandoned:
+            # 会議中に「間に合わなかった」ぶん。採点には使えるが、画面には
+            # 出していない——集計で混ぜないよう印を残す。
+            rec["abandoned"] = True
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         self.n += 1

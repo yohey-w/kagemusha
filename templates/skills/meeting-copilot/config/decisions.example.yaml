@@ -89,7 +89,10 @@ llm:
 # decisions.jsonl の backend 欄に、実際に答えた段が**モデル名まで**残ります
 # （jev / llm:anthropic/claude-haiku-4.5(fallback) / rules(fallback)）。
 # どのモデルが答えたのか分からないと、並べて測った意味が無くなるためです。
-fallback_chain: [jev, "llm:anthropic/claude-haiku-4.5", rules]
+fallback_chain:
+  - jev                                                    # 2.0秒（jev: の timeout_sec）
+  - {llm: anthropic/claude-haiku-4.5, timeout_sec: 1.5}    # 鎖全体で 3.5秒に収める
+  - rules                                                  # 外へ出ない。必ず最後
 
 # ── 費用の見方 ─────────────────────────────────────────────────────────────
 # 入力トークン100万あたりの単価。**0 なら費用は計算しません**（この配布物は
