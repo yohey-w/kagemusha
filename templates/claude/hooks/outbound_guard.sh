@@ -121,6 +121,15 @@ set -uo pipefail
 # can thread by itself (`replyThreadId`), so the email side loses nothing.
 GMAIL_PERMITTED_TOOL='mcp__claude_ai_Gmail__send_message'
 SLACK_PERMITTED_TOOL='mcp__slack__slack_post_message'
+# Notion, Claude side only (2026-09-18, operator's ruling): this system keeps
+# its 正本 in the operator's own Notion, so an approved edit of ONE named page
+# is work they asked for. Two acts only — edit one page, create one page. The
+# other Notion writes in OUTBOUND_EXACT (comments, session messages) and the
+# step-6 block (duplicate/move/attachments) keep NO permit path, because the
+# incident recorded there is exactly what happens when one verb opens and the
+# neighbouring one is reached for instead.
+NOTION_UPDATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-update-page'
+NOTION_CREATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-create-pages'
 
 # ─── 4. outward by name. Each entry is anchored against the WHOLE name. ────
 # The operator's ruling, item by item:
@@ -252,21 +261,88 @@ deny() {  # deny <tool_name> <why>
 # repository that would have caught it.
 payload="$(cat)"
 
-# tool_name is an identifier. Matching its closing quote as well as its safe
-# character set prevents partial extraction from becoming JSON interpolation.
+# tool_name is an identifier. It is read with a STRICT JSON PARSER, not with a
+# regex over the raw text.
+#
+# Why this changed (2026-09-18, found by an independent review): a regex takes
+# the FIRST occurrence, and JSON member order is the producer's choice. A
+# payload that puts `tool_input` first and carries the string `"tool_name":
+# "Bash"` INSIDE it, with the real `"tool_name": "mcp__…notion-update-page"`
+# after, was classified as `Bash` and passed — `{}`, no permit, no helper call.
+# Reproduced on this machine against the live hook before the fix. Every
+# observed Claude Code payload puts the real `tool_name` first, so the hole was
+# dormant, not theoretical: nothing in the format forbids the other order, and
+# a tool_input is attacker-influenced whenever its content comes from outside.
+#
+# The parser is python3, which this guard already depends on for the permit
+# path. If it is absent, a connector call cannot be classified safely, so it is
+# denied rather than guessed at; plain tools (Bash, Read, …) are unaffected.
 safe_name=''
-if [[ "$payload" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
-  safe_name="${BASH_REMATCH[1]}"
+SAFE_SESSION=''
+if command -v python3 >/dev/null 2>&1; then
+  _parsed="$(printf '%s' "$payload" | python3 -c '
+import json, re, sys
+SAFE = re.compile(r"\A[A-Za-z0-9_.:/-]+\Z")
+WANTED = ("tool_name", "session_id")
+
+def pairs(items):
+    # A duplicate top-level key is not a payload any honest producer emits, and
+    # every parser gets to choose which copy wins.  Found 2026-09-18 in review:
+    # `{"tool_name":"mcp__…","tool_name":"Bash"}` resolved to Bash here and
+    # passed.  Refuse the whole envelope rather than pick a copy.
+    seen = set()
+    for key, value in items:
+        if key in WANTED and key in seen:
+            raise ValueError("duplicate top-level key")
+        seen.add(key)
+    return dict(items)
+
+try:
+    doc = json.loads(sys.stdin.read(), object_pairs_hook=pairs)
+except ValueError:
+    print("!")          # refuse: unparseable, or a duplicated key
+    raise SystemExit(0)
+except Exception:
+    print("!")
+    raise SystemExit(0)
+
+def pick(key):
+    if not isinstance(doc, dict):
+        return ""
+    value = doc.get(key)
+    return value if isinstance(value, str) and SAFE.match(value) else ""
+
+print("")               # line 1: the refusal marker is absent
+print(pick("tool_name"))
+print(pick("session_id"))
+' 2>/dev/null)" || _parsed='!'
+  if [[ "$(printf '%s' "$_parsed" | sed -n '1p')" == '!' ]]; then
+    deny "unknown-tool" "the payload is not a single well-formed object with unique top-level keys"
+  fi
+  safe_name="$(printf '%s' "$_parsed" | sed -n '2p')"
+  SAFE_SESSION="$(printf '%s' "$_parsed" | sed -n '3p')"
+  unset _parsed
+else
+  # No parser.  Classify with the old regex so that PLAIN tools keep working —
+  # a machine without python3 must not have every Bash call denied — but a
+  # payload naming any connector cannot be classified safely here, so it is
+  # refused instead of guessed at.  (The first version of this fix denied
+  # everything, including Bash, while its own comment claimed otherwise.)
+  if [[ "$payload" =~ \"tool_name\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
+    safe_name="${BASH_REMATCH[1]}"
+  fi
+  if [[ "$payload" == *mcp* ]]; then
+    deny "${safe_name:-unknown-tool}" "no JSON parser available: a connector call cannot be classified safely"
+  fi
+  if [[ "$payload" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
+    SAFE_SESSION="${BASH_REMATCH[1]}"
+  fi
 fi
 
 # The session id travels in the deny reason so the operator knows which value
-# to bind a permit to; `issue` refuses without it. Same safe charset, same
-# reason. transcript_path is deliberately NOT quoted back — it spells out the
-# project slug.
-SAFE_SESSION=''
-if [[ "$payload" =~ \"session_id\"[[:space:]]*:[[:space:]]*\"([A-Za-z0-9_.:/-]+)\" ]]; then
-  SAFE_SESSION="${BASH_REMATCH[1]}"
-fi
+# to bind a permit to; `issue` refuses without it. It is read by the same
+# parser above, for the same reason. transcript_path is deliberately NOT quoted
+# back — it spells out the project slug.
 
 # ─── 1. no tool_name means the schema moved or the payload never arrived ───
 # Deny: the guard being loudly wrong is recoverable; the guard being quietly
@@ -292,7 +368,9 @@ fi
 # The helper strictly parses the entire envelope and claims the matching record
 # by atomic rename before this hook emits the pass document. Any failure is a
 # deny; stderr is hidden so message contents never enter the hook response.
-if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" ]]; then
+if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" \
+   || "$safe_name" == "$NOTION_UPDATE_PERMITTED_TOOL" \
+   || "$safe_name" == "$NOTION_CREATE_PERMITTED_TOOL" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --cli claude --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
       allow "$safe_name (one-shot permit claimed)"

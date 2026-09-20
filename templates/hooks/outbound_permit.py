@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sys
 import time
@@ -33,13 +34,29 @@ GMAIL_TOOL_NAME = "mcp__codex_apps__gmail__send_email"
 SLACK_TOOL_NAME = "mcp__codex_apps__slack__slack_send_message"
 CLAUDE_GMAIL_TOOL_NAME = "mcp__claude_ai_Gmail__send_message"
 CLAUDE_SLACK_TOOL_NAME = "mcp__slack__slack_post_message"
+# Notion, Claude side only: the operator's own workspace is where this system
+# keeps its 正本 (ledgers, logs), so an approved write to ONE page is a real
+# act the operator asks for, not a broadcast.  Two acts, mirroring the email
+# and channel pair: edit one existing page, or create one new page.  The other
+# Notion writes named in the guard's OUTBOUND_EXACT — comments, session
+# messages, duplicate/move — keep no permit path, because the guard's own
+# record says a list that opens one verb invites the neighbouring one.
+CLAUDE_NOTION_UPDATE_TOOL_NAME = "mcp__claude_ai_Notion__notion-update-page"
+CLAUDE_NOTION_CREATE_TOOL_NAME = "mcp__claude_ai_Notion__notion-create-pages"
 
-# The exact wire names a permit may open, per CLI.  Deliberately two acts on
-# each side — one email, one channel message.  Replies, drafts, forwards and
-# edits have no permit path and go through the approval queue.
+# The exact wire names a permit may open, per CLI.  Deliberately narrow: one
+# email and one channel message on each side, plus — Claude only — one page
+# edit and one page creation.  Replies, drafts, forwards and edits have no
+# permit path and go through the approval queue.  Codex has no entry for
+# Notion: its guard names no Notion tool, so there is nothing to open there.
 CLI_TOOL_NAMES = {
     "codex": {"gmail": GMAIL_TOOL_NAME, "slack": SLACK_TOOL_NAME},
-    "claude": {"gmail": CLAUDE_GMAIL_TOOL_NAME, "slack": CLAUDE_SLACK_TOOL_NAME},
+    "claude": {
+        "gmail": CLAUDE_GMAIL_TOOL_NAME,
+        "slack": CLAUDE_SLACK_TOOL_NAME,
+        "notion-update": CLAUDE_NOTION_UPDATE_TOOL_NAME,
+        "notion-create": CLAUDE_NOTION_CREATE_TOOL_NAME,
+    },
 }
 # Where each CLI's guard looks for the store.  The guard derives the project
 # root from its own location, never from caller input.
@@ -48,10 +65,34 @@ DEFAULT_CLI = "codex"
 # Backwards compatibility: the module-level name the Codex guard and the
 # original tests knew.  Selecting a CLI narrows this, it never widens it.
 TOOL_NAMES = CLI_TOOL_NAMES[DEFAULT_CLI]
+# The `--tool` selector is one flag for every CLI, so its argparse choices must
+# be the UNION; the per-CLI table is what actually decides, and asking for a
+# selector this CLI does not have is refused as a usage error (exit 2) rather
+# than silently resolved to some other CLI's wire name.
+ALL_TOOL_SELECTORS = frozenset(
+    selector for table in CLI_TOOL_NAMES.values() for selector in table
+)
 ALL_TOOL_NAMES = frozenset(
     name for table in CLI_TOOL_NAMES.values() for name in table.values()
 )
 VERSION = 1
+
+
+def _tool_name_for(args):
+    """The wire name this (cli, tool) pair selects, or a usage error."""
+    try:
+        return CLI_TOOL_NAMES[args.cli][args.tool]
+    except KeyError:
+        # exit 2 = usage error, the same code argparse uses for a bad choice.
+        # A selector that exists for another CLI must fail the same way as one
+        # that exists nowhere, or the caller learns to retry against the wrong
+        # CLI and the store directories stop meaning what they say.
+        print(
+            f"usage error: --tool {args.tool} is not available for --cli {args.cli} "
+            f"(available: {', '.join(sorted(CLI_TOOL_NAMES[args.cli]))})",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 def _namespace_and_operation(name: str):
     """Split `mcp__<server>__<operation>` into its two halves, or (None, None).
 
@@ -261,6 +302,106 @@ def _validate_claude_gmail(tool_input) -> None:
         raise PermitError("Gmail body or htmlBody must be a non-empty string")
 
 
+# Notion-flavored markdown can reach OTHER pages from inside a body string:
+# `<page url=…>` moves a page, `<database data-source-url=…>` creates a linked
+# view, `<folder …>` attaches one.  A permit that hashed only the body would
+# bind the text and not the act, so a permitted write may not carry them.
+# (Found 2026-09-18 by an independent review of the first version of this file.)
+# Matched as a PATTERN, not as fixed substrings: `<page\turl=`, `<page\nurl=`
+# and `< page url=` all reached another page while a substring check for
+# "<page " let them through (found 2026-09-18 in review).
+_NOTION_REACHING_NOTATION = re.compile(
+    r"<\s*/?\s*(?:page|database|folder)\b", re.IGNORECASE
+)
+# The commands a permit may open.  `replace_content` and `apply_template` are
+# NOT here: the first deletes child pages and databases that the arguments
+# never name, and the second writes whatever the template says TODAY, so the
+# hash binds an id instead of the content that lands.
+_NOTION_PERMITTED_COMMANDS = frozenset(
+    {"update_properties", "update_content", "insert_content"}
+)
+
+
+def _reject_reaching_notation(value, where: str) -> None:
+    """Refuse any string in the payload that can act on a DIFFERENT page."""
+    if isinstance(value, str):
+        found = _NOTION_REACHING_NOTATION.search(value)
+        if found:
+            raise PermitError(
+                f"Notion {where} may not carry `{found.group(0).strip()}` notation "
+                "(it acts on another page or database)"
+            )
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            _reject_reaching_notation(item, f"{where}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_reaching_notation(item, f"{where}[{index}]")
+
+
+def _validate_claude_notion_update(tool_input) -> None:
+    # notion-update-page edits ONE existing page, named by page_id, under one
+    # command.  The hash already binds the whole argument set; these checks keep
+    # a permit from being issued for a call whose EFFECT is not in that set.
+    if not tool_input:
+        raise PermitError("Notion tool_input must not be empty")
+    _require_text(tool_input, "page_id", "Notion")
+    _require_text(tool_input, "command", "Notion")
+    command = tool_input["command"]
+    if command not in _NOTION_PERMITTED_COMMANDS:
+        raise PermitError(
+            f"Notion command {command} has no permit path "
+            f"(permitted: {', '.join(sorted(_NOTION_PERMITTED_COMMANDS))})"
+        )
+    if tool_input.get("allow_async") is True:
+        # a backgrounded write answers before the page is written, so the
+        # approval would cover an outcome nobody has seen.
+        raise PermitError("allow_async is not valid for a permitted Notion write")
+    if tool_input.get("template_id") is not None:
+        raise PermitError("template_id binds an id, not the content that lands")
+    if tool_input.get("is_skill") is not None:
+        # marking a page as a skill turns it into instructions another agent
+        # loads; that is the `convert-page-to-skill` act, which has no path.
+        raise PermitError("is_skill is not valid for a permitted Notion write")
+    if tool_input.get("allow_deleting_content") is True:
+        raise PermitError(
+            "allow_deleting_content deletes child pages the arguments never name"
+        )
+    updates = tool_input.get("content_updates")
+    if updates is not None:
+        if not isinstance(updates, list) or len(updates) != 1:
+            raise PermitError("a Notion permit may name exactly one content update")
+        if updates[0].get("replace_all_matches") is True:
+            raise PermitError("replace_all_matches makes one permit many edits")
+    _reject_reaching_notation(tool_input, "update")
+
+
+def _validate_claude_notion_create(tool_input) -> None:
+    # notion-create-pages takes a LIST.  One permit opens one act, so a permit
+    # may name exactly one page.  A parent is required: without it the call
+    # creates a workspace-level private page, and the operator would be
+    # approving a destination that the arguments never state.
+    if not tool_input:
+        raise PermitError("Notion tool_input must not be empty")
+    pages = tool_input.get("pages")
+    if not isinstance(pages, list) or len(pages) != 1:
+        raise PermitError("a Notion permit may name exactly one page")
+    if not isinstance(pages[0], dict) or not pages[0]:
+        raise PermitError("Notion page must be a non-empty object")
+    parent = tool_input.get("parent")
+    if not isinstance(parent, dict) or not parent:
+        raise PermitError("Notion create needs an explicit parent")
+    if tool_input.get("creation_mode") is not None:
+        raise PermitError("creation_mode is not valid alongside an explicit parent")
+    if tool_input.get("allow_async") is True:
+        raise PermitError("allow_async is not valid for a permitted Notion write")
+    if pages[0].get("template_id") is not None:
+        raise PermitError("template_id binds an id, not the content that lands")
+    if pages[0].get("is_skill") is not None:
+        raise PermitError("is_skill is not valid for a permitted Notion write")
+    _reject_reaching_notation(tool_input, "create")
+
+
 # Keyed by the exact wire tool name, which is unique across both CLIs, so the
 # right shape check is selected without the caller having to say which CLI it
 # came from.  A tool with no entry is bound by its hash alone.
@@ -268,6 +409,8 @@ INPUT_VALIDATORS = {
     SLACK_TOOL_NAME: _validate_codex_slack,
     CLAUDE_SLACK_TOOL_NAME: _validate_claude_slack,
     CLAUDE_GMAIL_TOOL_NAME: _validate_claude_gmail,
+    CLAUDE_NOTION_UPDATE_TOOL_NAME: _validate_claude_notion_update,
+    CLAUDE_NOTION_CREATE_TOOL_NAME: _validate_claude_notion_create,
 }
 
 
@@ -314,7 +457,7 @@ def issue(args) -> None:
     if args.ttl_seconds < 1 or args.ttl_seconds > MAX_TTL:
         raise PermitError(f"ttl-seconds must be between 1 and {MAX_TTL}")
 
-    tool_name = CLI_TOOL_NAMES[args.cli][args.tool]
+    tool_name = _tool_name_for(args)
     tool_input = load_tool_input(args.tool_input)
     actual_hash = print_review(tool_name, tool_input)
     if actual_hash != args.expected_sha256.lower():
@@ -483,12 +626,16 @@ def parser() -> argparse.ArgumentParser:
     sub = result.add_subparsers(dest="command", required=True)
     review_cmd = sub.add_parser("review", help="show canonical payload and SHA-256; write nothing")
     review_cmd.add_argument("--tool-input", type=Path, required=True)
-    review_cmd.add_argument("--tool", choices=sorted(TOOL_NAMES), default="gmail")
+    review_cmd.add_argument(
+        "--tool", choices=sorted(ALL_TOOL_SELECTORS), default="gmail"
+    )
     add_cli_flag(review_cmd)
 
     issue_cmd = sub.add_parser("issue", help="write a short-lived one-shot permit")
     issue_cmd.add_argument("--tool-input", type=Path, required=True)
-    issue_cmd.add_argument("--tool", choices=sorted(TOOL_NAMES), default="gmail")
+    issue_cmd.add_argument(
+        "--tool", choices=sorted(ALL_TOOL_SELECTORS), default="gmail"
+    )
     issue_cmd.add_argument("--expected-sha256", required=True)
     issue_cmd.add_argument("--project-root", required=True)
     issue_cmd.add_argument("--session-id", required=True)
@@ -508,7 +655,7 @@ def main() -> int:
     args = parser().parse_args()
     try:
         if args.command == "review":
-            print_review(CLI_TOOL_NAMES[args.cli][args.tool],
+            print_review(_tool_name_for(args),
                          load_tool_input(args.tool_input))
         elif args.command == "issue":
             issue(args)
