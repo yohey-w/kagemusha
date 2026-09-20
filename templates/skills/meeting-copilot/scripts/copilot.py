@@ -41,16 +41,19 @@ transcript.jsonl を tail し、**ルールと文字列照合だけ**でカー�
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import os
 import pathlib
 import re
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import decision_engine as de  # noqa: E402
 import lookup_assist  # noqa: E402
 import meetlive_config as cfgmod  # noqa: E402
 import mode_signal  # noqa: E402
@@ -67,10 +70,12 @@ SCRIPT_PATH = cfgmod.input_path("MEETLIVE_SCRIPT", "talk_script.example.md", req
 
 STOP_FILE = cfgmod.stop_file()
 LOOKUP_MISSES = STATE_DIR / "lookup_misses.jsonl"
+DECISIONS = STATE_DIR / "decisions.jsonl"
+DECISION_HINT = STATE_DIR / "decision_hint.json"
 
 POLL_SEC = 0.3
 TTL = {"call": 60, "warn": 45, "topic": 90, "wrap": 60, "lookup": 90,
-       "premise_warn": 60, "premise_ok": 45, "premise_new": 45}
+       "premise_warn": 60, "premise_ok": 45, "premise_new": 45, "commit": 90}
 # topic(取り漏れ催促)の TTL は再発火間隔(SILENCE_COOLDOWN)より長くしてある。
 # 短いと「表示が消えてから次が出るまでの間」に見逃す。
 
@@ -386,6 +391,198 @@ class Copilot:
         self._call_chars = re.compile(
             "[" + re.escape("".join(set("".join(CALL_WORDS)))) + "、。 　]"
         )
+        # カードは番人の本線と判定層の班の両方から書かれる。順番は前後してよいが、
+        # 1枚が途中で割れると読み手(viewer2)が行の途中を JSON として読む。
+        self._card_lock = threading.Lock()
+        self.setup_decisions()
+
+    # ---- 判定層 (decision_engine) ----------------------------------------
+    def setup_decisions(self) -> None:
+        """会議中に判定層を使う構えを作る。使わないなら ``self.decision = None``。
+
+        🔴 **判定は本線(逐語を読む輪)の外で走らせる。** 1発話ごとに最大で
+        「判定器のタイムアウト＋退避先のタイムアウト」だけ待つ作りにすると、
+        発話が4秒に1本来る会議では本線が二度と追いつかない。だから班は1本だけ
+        走らせ、走っている間に来た発話は**判定を見送る**(前提監視と同じ作法)。
+        見送りはログに出る。
+        """
+        self.decision = None
+        self.decision_thread: threading.Thread | None = None
+        self.decision_seen: set[str] = set()   # 約束カードの重複よけ(発話ごと1回)
+        self.ended_streak = 0                  # 「終わった」が続いた回数
+        self.suppress_nudge_until = 0.0        # 雑談のあと催促を見送る期限
+        self.recent: collections.deque = collections.deque(maxlen=de.DEFAULT_WINDOW)
+        kind = cfgmod.decision_backend()
+        self.show_decisions = cfgmod.show_decision_cards()
+        if kind == "rules" and not self.show_decisions:
+            log("判定層: 使いません（decision_backend=rules・カードも出さない）")
+            return
+        try:
+            bundle = de.load_bundle(de.resolve_bundle_path(cfgmod.meeting_dir()))
+            meeting = de.load_meeting_data(cfgmod.meeting_dir(), bundle.privacy)
+            # 🔴 会議中は撃ち直さない(retry_busy_sec=0)。混雑で待つと、その発話の
+            #    カードは会話が次へ行ったあとに出る——遅れたカードは邪魔なだけ。
+            engine = de.make_engine(kind, bundle, meeting, retry_busy_sec=0.0,
+                                    note=log)
+        except SystemExit as e:
+            log(f"判定層を組み立てられないので使いません（続行）: {e}")
+            return
+        self.recent = collections.deque(maxlen=bundle.window)
+        self.decision = {
+            "bundle": bundle, "meeting": meeting, "engine": engine,
+            "masker": de.Masker(meeting.roster, bundle.privacy.host_alias,
+                                bundle.privacy.guest_alias),
+            "log": de.DecisionLog(DECISIONS),
+        }
+        budget = bundle.jev.timeout_sec + (bundle.llm.timeout_sec
+                                           if "llm" in bundle.fallback_chain
+                                           and bundle.llm.base_url else 0.0)
+        log(f"判定層: backend={kind} 鎖={' → '.join(bundle.fallback_chain)} "
+            f"/ カードに出す={'はい' if self.show_decisions else 'いいえ（記録だけ）'} "
+            f"/ 1発話あたり最大{budget:.1f}秒")
+        if budget > 2.0:
+            # 会議は4秒に1発話くらい来る。1発話に2秒以上かけうる鎖だと、
+            # 混んだ時間帯は見送りだらけになって「出るはずのカードが出ない」。
+            log(f"⚠ 判定に最大{budget:.1f}秒かかりうる鎖です。会議では見送りが増えます"
+                f"——fallback_chain を [jev, rules] にするか timeout_sec を詰めてください")
+        if meeting.roster:
+            log(f"判定層: 名簿{len(meeting.roster)}件を役名へ置換して送ります")
+        else:
+            log("⚠ 判定層: 名簿が空です。発話に出る名前がそのまま外へ出ます"
+                "（会議フォルダに roster.txt を置いてください）")
+
+    def kick_decisions(self, speaker: str, text: str, uid: str) -> None:
+        """判定を1本だけ後ろで走らせる。走行中なら見送る（本線は止めない）。"""
+        if not self.decision:
+            return
+        th = self.decision_thread
+        if th is not None and th.is_alive():
+            log(f"間引き: 判定層は走行中なので見送り in={text[:24]}")
+            return
+        window = list(self.recent)
+        self.decision_thread = threading.Thread(
+            target=self._decide, args=(window, speaker, text, uid), daemon=True)
+        self.decision_thread.start()
+
+    def _decide(self, window, speaker: str, text: str, uid: str) -> None:
+        """班の中身。**例外をここから外に出さない**——判定層の不具合で番人が
+        落ちたら、会議のあいだ画面が死ぬ。落ちたらログだけ残して次へ。"""
+        d = self.decision
+        try:
+            state, questions, answers, ms = de.evaluate_utterance(
+                d["engine"], d["bundle"], d["meeting"], d["masker"], window)
+            if not questions:
+                return
+            d["log"].write(utterance_id=uid, ts=now_iso(), speaker=speaker,
+                           state=state, questions=questions, answers=answers,
+                           latency_ms=ms)
+            self.apply_decisions(answers, speaker, text, uid)
+        except Exception as e:                       # noqa: BLE001
+            log(f"判定層で例外（会議は続行）: {e!r}")
+
+    def apply_decisions(self, answers, speaker: str, text: str, uid: str) -> None:
+        """判定の答えを会議の画面と状態へ配る。
+
+        出す/出さないの境目は問いごと（decisions.yaml の thresholds）。
+        **確信が足りないものは何もしない**——外れたカードは、無いカードより悪い。
+        """
+        d = self.decision
+        bundle = d["bundle"]
+        by = answers.by_id
+
+        def conf(qid):
+            a = by.get(qid)
+            return a, (a.confidence if a else 0.0)
+
+        # --- Q8 約束: 進行役がいま約束した ---------------------------------
+        a, c = conf("q8_commitment")
+        if a is not None and a.value == "yes" and a.p_yes >= de.threshold(bundle, "q8_commitment"):
+            key = f"commit:{uid}"
+            if key in self.decision_seen:
+                log(f"間引き: 約束カードは同じ発話で既出 in={text[:24]}")
+            else:
+                self.decision_seen.add(key)
+                self.emit("commit", [], "high",
+                          f"約束 p={a.p_yes:.2f} 担当={answers.backend} in={text[:28]}",
+                          target=self.commit_target(),
+                          status=f"進行役がいま約束した「{shorten(text, 40)}」",
+                          say="確定なら「はい」と一声 → 台帳（commitments）へ記帳",
+                          to="進行役へ")
+
+        # --- Q4 探し物: 合図の語と **OR**（言い回しが毎回違うので両方で拾う）---
+        a, c = conf("q4_lookup")
+        if (speaker == "host" and a is not None and a.value == "yes"
+                and a.p_yes >= de.threshold(bundle, "q4_lookup")):
+            # try_lookup は自分で合図語を見るので、ここでは索引だけ引く。
+            # 同じ探し物の撃ち直しは try_lookup 側の間引きが効く。
+            self.lookup_from_decision(text, a.p_yes)
+
+        # --- Q1 段: 画面の上に小さく「推定の段」。**自動切替はしない** -------
+        a, c = conf("q1_step")
+        if (self.show_decisions and a is not None and a.value
+                and a.value != de.NONE_KEY and c >= de.threshold(bundle, "q1_step")):
+            self.write_hint(a.value, c)
+
+        # --- Q3 種類: 内部だけ。雑談のあとは催促を見送る ---------------------
+        a, c = conf("q3_kind")
+        if a is not None and c >= de.threshold(bundle, "q3_kind") and a.value == "small_talk":
+            self.suppress_nudge_until = time.time() + SILENCE_COOLDOWN
+            log(f"雑談と判定（p={c:.2f}）。次の催促は{int(SILENCE_COOLDOWN)}秒見送ります")
+
+        # --- Q2 局面: 「終わった」が続いたら終話の**予鈴**だけ鳴らす ---------
+        #     🔴 予鈴は停止ではない。畳むには無音が続くことが従来どおり必要。
+        a, c = conf("q2_phase")
+        if a is not None:
+            if a.value == "ended" and c >= de.threshold(bundle, "q2_phase"):
+                self.ended_streak += 1
+                need = int(de.threshold(bundle, "q2_phase", "streak"))
+                if self.ended_streak >= need and self.farewell_at is None:
+                    self.farewell_at = time.time()
+                    log(f"終話の予鈴: 「終わった」が{self.ended_streak}発話続きました"
+                        f"（畳むには無音が続くことが必要）")
+            elif a.value:
+                self.ended_streak = 0
+
+    def commit_target(self) -> str:
+        """約束カードの【対象】。いまの段の名前、無ければ相手の直前の発話の要旨。"""
+        i = self.cur
+        if 0 <= i < len(self.kb.steps):
+            title = (self.kb.steps[i].get("title") or "").strip()
+            if title:
+                return shorten(title, 28)
+        return shorten(self.last_guest, 28) if self.last_guest else "この会議の約束"
+
+    def lookup_from_decision(self, text: str, p: float) -> bool:
+        """判定層が「探している」と言ったときの索引引き。
+
+        合図の語には当たらなかった発話のための経路なので、当たらなくても
+        answerer(LLM)へは回さない（合図が無い＝探していない可能性も残るため、
+        外れたときに黙って引き下がる方が安全）。
+        """
+        hit = self.lookup.find(text, self.last_guest)
+        if hit is None:
+            log(f"探し物(判定層 p={p:.2f}): 索引に当たりなし in={text[:28]}")
+            return False
+        key = f"lookup:{hit['target']}"
+        if time.time() - self.looked_up.get(key, 0.0) < LOOKUP_COOLDOWN:
+            log(f"間引き: 『{hit['target']}』は直近に出した")
+            return True
+        self.looked_up[key] = time.time()
+        self.emit("lookup", [], "high", f"探し物(判定層 p={p:.2f}) in={text[:28]}",
+                  target=hit["target"], status=hit["status"], say=hit["say"],
+                  ref=hit.get("ref", ""))
+        return True
+
+    def write_hint(self, step_key: str, c: float) -> None:
+        """画面の上に出す「推定の段」。カードではないので1ファイルを上書きする。"""
+        title = next((s.title for s in self.decision["meeting"].steps
+                      if s.key == step_key), step_key)
+        try:
+            DECISION_HINT.write_text(json.dumps(
+                {"ts": now_iso(), "step": step_key, "title": title,
+                 "confidence": round(c, 3)}, ensure_ascii=False), encoding="utf-8")
+        except OSError as e:
+            log(f"推定の段を書けず（続行）: {e!r}")
 
     def reset_state(self, why: str) -> None:
         self.all_blob = ""       # 両者の発話(必須取得物の検知に使う)
@@ -468,9 +665,11 @@ class Copilot:
             rec["ref"] = ref
         if extra:
             rec.update(extra)
-        with CARDS.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        self.card_count += 1
+        # 本線と判定層の班の2箇所から書かれる。1枚が途中で割れると読み手が壊れる。
+        with self._card_lock:
+            with CARDS.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            self.card_count += 1
         log(f"CARD {kind}/{confidence} 宛={to} 理由={reason} → {target} / {status} / {say}")
 
     def nudge(self, key: str, target: str, status: str, say: str, reason: str,
@@ -726,6 +925,14 @@ class Copilot:
                 prev, self.cur = self.cur, new
                 self.topic_card(prev)
 
+        # --- 判定層（本線の外で1本だけ走らせる。ここまでの処理は止めない）---
+        #     🔴 この位置なのは、上の層（警報・探し物・前提監視・進行）が
+        #     **判定層の有無に関わらず同じに動く**ようにするため。判定層は
+        #     足すだけで、既にあるものを置き換えない。
+        self.recent.append({"speaker": speaker, "text": text})
+        if self.decision and self.started:
+            self.kick_decisions(speaker, text, rec.get("ts") or now_iso())
+
     # ---- 台本外の質問 → 第2層 -------------------------------------------
     def is_question(self, text: str) -> bool:
         """発火は「明確な疑問形の語尾 かつ 30字以上」、または「台本が分岐で想定している
@@ -794,6 +1001,9 @@ class Copilot:
         # 「行が来た受信時刻」を使うと、STT の再接続でチャンネルごとに時刻がずれたときに
         # 沈黙の判定まで巻き添えになる。
         idle = (datetime.now() - self.last_line_ts).total_seconds()
+        if now < self.suppress_nudge_until:
+            # 直前が雑談だと判定された。催促を差し込む間ではない。
+            return
         if idle >= SILENCE_SEC and (self.auto_step() > 0 or self.delta > 0):
             if now - self.last_silence.get(self.cur, 0.0) >= SILENCE_COOLDOWN:
                 miss = [

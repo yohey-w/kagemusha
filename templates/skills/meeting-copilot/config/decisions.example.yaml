@@ -99,11 +99,19 @@ questions:
     ask: any
     candidates: agenda_steps
     include_none: true
+    # 🔴 本文を日本語にしてあるのは、逐語が日本語だからです（2026-09-20 の実測で、
+    #    英語の問いだと「見出しの語が出ていない段」を取りこぼしました）。
     instructions: >-
-      The meeting has a fixed agenda. Each option below is one agenda step.
-      Looking only at the most recent utterance in current_utterance, and using
-      the earlier utterances as context, which agenda step is the conversation
-      in right now? Answer "none" if the recent utterance belongs to no step.
+      この会議には決まった進行表があり、下の選択肢はその段です。current_utterance
+      （最新の発話）を主に、recent_utterances を文脈として、いま会話はどの段に
+      いますか。話題がその段の内容に触れていれば、**段の見出しの言葉が出ていなくても**
+      その段を選んでください。どの段にも当たらない雑談・接続確認・進行表に無い
+      脱線だけ "none" にしてください。なお音声認識は似た音の語に化けることがあります
+      （例:「研修」「検証」が「検収」になる）。見出しに近い意味の語が出ていれば、
+      綴りが違ってもその段とみなしてください。
+    # 会議中にこの推定を画面へ添える境目（確信度）。段そのものは動かしません。
+    thresholds:
+      act: 0.8
     # 候補の説明に、進行表の「取る答え」を添えるか（既定 false）。
     # 見出しだけでは判定材料が薄いことがある——実測(2026-09-20)で、検収の段を
     # 「該当なし」と答える誤りが 48 件中 11 件あった。見出しは4〜8文字しかない。
@@ -134,6 +142,11 @@ questions:
           discussed.
     instructions: >-
       Which phase of the meeting does the most recent utterance belong to?
+    # ended がこの確信度で streak 発話つづいたら、終話の**予鈴**を鳴らします。
+    # 🔴 予鈴は停止ではありません。畳むには従来どおり無音が続くことが必要です。
+    thresholds:
+      act: 0.8
+      streak: 3
 
   # Q3 発話の種類。後ろの問いを効かせる/切るための仕分け。
   - id: q3_kind
@@ -159,19 +172,27 @@ questions:
         desc: A problem, a failure, a delay, or a complaint is being reported.
       - key: small_talk
         desc: Greetings, filler, or chat unrelated to the work.
+    # 内部だけで使います（雑談と判定したら、直後の催促を見送る）。
+    thresholds:
+      act: 0.8
 
   # Q4 探し物（進行役の発話のときだけ送る）。
   - id: q4_lookup
     type: noul
     ask: host
     instructions: >-
-      In current_utterance, is the host looking for a piece of information
-      right now - for example a URL, an account name, a count, a date, a price,
-      or where a document is - typically by saying they will check, or by
-      asking themselves where something was?
+      current_utterance（進行役の発話）で、進行役は相手に答えるための情報や資料を
+      探して手を止めていますか。「ちょっと待ってください」「少々お待ちください」
+      「確認します」「どこだっけ」「〜でしたっけ」「今チャットに送ります」のように、
+      何かを探す・確認する・取ってくるために会話を止めている発話は「はい」です。
+      言いさし（途中で切れた文）でも、探している途中なら「はい」にしてください。
+      探しているものは URL・アカウント名・件数・日付・金額・資料の置き場などです。
     criteria:
-      "true": The host is searching for something and needs it on screen now.
-      "false": The host is not searching for anything.
+      "true": 進行役が情報や資料を探す・確認する・取ってくるために手を止めている。
+      "false": 進行役は探しておらず、話を続けている。
+    # 既存の「合図の語」の規則と **OR** で効かせるので、低めから始めます。
+    thresholds:
+      act: 0.5
 
   # Q5 探し物は即答表のどれか。候補は quick_facts.md の見出し＋「該当なし」。
   - id: q5_quick_fact
@@ -196,3 +217,6 @@ questions:
     criteria:
       "true": The host promised to do something after the meeting.
       "false": The host made no such promise in this utterance.
+    # 約束のカードを出す境目。外れたカードは無いカードより悪いので高めです。
+    thresholds:
+      act: 0.8

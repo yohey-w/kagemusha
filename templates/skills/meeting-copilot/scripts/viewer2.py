@@ -529,6 +529,7 @@ DOC_CSS = """html,body{margin:0;background:#12151a;color:#e8ecf2;
  font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic UI",system-ui,sans-serif;
  line-height:1.7;font-size:17px}
 .wrap{max-width:860px;margin:0 auto;padding:22px 20px 80px}
+.dhint{margin-left:10px;opacity:.62;font-size:11px}
 .meta{color:#8b93a1;font-size:12px;border-bottom:1px solid #2a2f39;padding-bottom:8px;
  margin-bottom:18px}
 h1{font-size:26px;margin:22px 0 10px} h2{font-size:22px;margin:24px 0 8px;
@@ -1106,6 +1107,30 @@ def build_health(outdir: pathlib.Path, lines: list) -> dict:
     }
 
 
+# 判定層の「推定の段」を画面の上に出すときの鮮度。これより古い推定は出さない
+# ——古い推定が残り続けると、止まった時計を見て段を勘違いする。
+DECISION_HINT_MAX_AGE = 90.0
+
+
+def decision_hint(outdir: pathlib.Path):
+    """判定層が書いた「推定の段」。新しいものだけ返す。無ければ None。
+
+    🔴 これは**表示だけ**。段を進めるのは従来どおりキーワードの規則で、
+    判定層は画面に一言添えるだけ(切替まで任せると、外したときに台本が飛ぶ)。
+    """
+    p = outdir / "decision_hint.json"
+    try:
+        if time.time() - p.stat().st_mtime > DECISION_HINT_MAX_AGE:
+            return None
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict) or not d.get("title"):
+        return None
+    return {"title": str(d.get("title"))[:40],
+            "confidence": float(d.get("confidence") or 0.0)}
+
+
 def build_state(outdir: pathlib.Path, agenda, start_epoch, total_min=None):
     # 逐語は切り詰めない。番人 copilot の blob は同席開始から累積で、こちらが末尾N行だけ
     # 見ると、長い会議で古い発話が窓から落ちて段が巻き戻る (✓が□に戻る・警報が誤爆する)。
@@ -1232,6 +1257,7 @@ def build_state(outdir: pathlib.Path, agenda, start_epoch, total_min=None):
 
     return {
         "nav": nav,
+        "decision_hint": decision_hint(outdir),
         "card": card,                   # 後方互換 (display_log の署名など)
         "cards": stack,
         "history": history,
@@ -1731,8 +1757,12 @@ function render(d){
     drawBar(nav); drawMusts(nav);
     // 中段が段の名前を出すので、ここは「予定とのズレ」だけを出す
     const due=nav.chips.filter(function(c){return c.due})[0];
-    $('#pos').innerHTML = nav.waiting ? '開始前・【1】を待機'
-      : (due && due.n!==nav.i ? '予定では<b>【'+due.n+'】'+ttl(due.title)+'</b>' : '');
+    const dh=d.decision_hint;
+    // 判定層の見立ては**添えるだけ**。段を動かすのは従来どおり規則の側。
+    const hint=dh ? '<span class="dhint">推定の段: '+esc(dh.title)+'</span>' : '';
+    $('#pos').innerHTML = (nav.waiting ? '開始前・【1】を待機'
+      : (due && due.n!==nav.i ? '予定では<b>【'+due.n+'】'+ttl(due.title)+'</b>' : ''))
+      + hint;
     $('#unmet').innerHTML = nav.unmet.length
       ? '　未取得 <b>'+nav.unmet.length+'</b>: '+esc(nav.unmet.slice(0,2).join(' / '))
       : '';

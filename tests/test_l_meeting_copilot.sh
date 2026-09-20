@@ -319,3 +319,20 @@ assert_ok "L8: replay_eval runs the demo folder with no key (backend rules)" \
 assert_file "L8: the replay left a decision log" "$L_REPLAY_DIR/decisions.jsonl"
 l_recs="$(wc -l < "$L_REPLAY_DIR/decisions.jsonl" | tr -d ' ')"
 assert_eq "L8: one record per utterance" "3" "$l_recs"
+
+# ── L9. the decision layer's live wiring stays inward by default ───────────
+# The layer now draws cards during a real meeting. Two invariants a stranger
+# must get for free: it does not run at all unless the meeting folder asks for
+# it, and it never takes over the step machinery (a wrong step throws the
+# teleprompter away, which is worse than no hint at all).
+assert_file "L9: live-wiring unit tests ship" "$L_TESTS/test_decision_live.py"
+assert_grep "L9: the watchdog runs the judge off the main loop" \
+  "threading.Thread" "$L_SCRIPTS/copilot.py"
+assert_grep "L9: …and skips while one is already running" \
+  "判定層は走行中なので見送り" "$L_SCRIPTS/copilot.py"
+assert_grep "L9: the viewer only shows a fresh step hint" \
+  "DECISION_HINT_MAX_AGE" "$L_SCRIPTS/viewer2.py"
+# the step high-water mark is moved by the keyword rule ONLY
+assert_empty_str "L9: the decision layer never writes the step high-water mark" \
+  "$(grep -nE 'self\.auto_hi[[:space:]]*=' "$L_SCRIPTS/copilot.py" \
+     | grep -v 'step_detect' | grep -v 'self\.auto_hi = 0')"

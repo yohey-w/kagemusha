@@ -155,6 +155,7 @@ class Question:
     candidates: str = ""            # "" | "agenda_steps" | "quick_facts"
     include_none: bool = False
     criteria_detail: bool = False   # 候補の説明に「取る答え」を添えるか
+    thresholds: dict = dataclasses.field(default_factory=dict)  # 会議中に動かす境目
 
     def applies_to(self, speaker: str) -> bool:
         return self.ask == "any" or self.ask == speaker
@@ -231,6 +232,8 @@ def bundle_from_dict(d: dict) -> Bundle:
             candidates=str(raw.get("candidates") or "").strip(),
             include_none=bool(raw.get("include_none")),
             criteria_detail=bool(raw.get("criteria_detail")),
+            thresholds={str(k): float(v) for k, v in
+                        (raw.get("thresholds") or {}).items()},
         ))
     return Bundle(
         questions=tuple(qs),
@@ -591,6 +594,33 @@ def build_questions(bundle: Bundle, meeting: MeetingData, speaker: str,
                 item["criteria"] = {k: masker.text(v) for k, v in q.criteria.items()}
             out[q.qid] = item
     return out
+
+
+# 会議中にカードを出す境目の既定。設定が無ければこれ（decisions.yaml の
+# 各問いの thresholds: で上書きできる）。保守的な側から始めて、再生の的中率を
+# 見てから緩めること。
+DEFAULT_THRESHOLDS = {
+    "q1_step": 0.8,          # 段の推定を画面に出す
+    "q2_phase": 0.8,         # 「終わった」の判定
+    "q3_kind": 0.8,          # 発話の種類で後段を効かせる/切る
+    "q4_lookup": 0.5,        # 探し物の起動（既存の合図語と OR なので低め）
+    "q5_quick_fact": 0.6,
+    "q8_commitment": 0.8,    # 約束のカード
+}
+# 「終わった」が何発話続いたら終話の予鈴とみなすか。
+DEFAULT_ENDED_STREAK = 3
+
+
+def threshold(bundle: Bundle, qid: str, name: str = "act") -> float:
+    """その問いを会議中に効かせる境目。設定 → 既定表 → 1.0（出さない）。"""
+    q = bundle.question(qid)
+    if q is not None and name in q.thresholds:
+        return q.thresholds[name]
+    if name == "act":
+        return DEFAULT_THRESHOLDS.get(qid, 1.0)
+    if name == "streak":
+        return float(DEFAULT_ENDED_STREAK)
+    return 1.0
 
 
 def label_map(bundle: Bundle, meeting: MeetingData) -> dict:
