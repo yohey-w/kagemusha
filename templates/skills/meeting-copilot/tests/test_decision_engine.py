@@ -701,7 +701,11 @@ class ChainTest(unittest.TestCase):
         srv = StubServer(mode="429")
         self.addCleanup(srv.close)
         ans = self._run(srv)
-        self.assertEqual(ans.backend, "llm(fallback)")
+        # 段はモデル名まで名乗る（同じ鎖に別のモデルを何段も置けるので、
+        # どのモデルが答えたのかが分からないと記録の意味が無い）
+        self.assertTrue(ans.backend.startswith("llm"), ans.backend)
+        self.assertIn("stub-llm", ans.backend)
+        self.assertTrue(ans.backend.endswith("(fallback)"), ans.backend)
         self.assertIn("429", ans.error)
         self.assertEqual(ans.by_id["q1_step"].value, "s3")
 
@@ -735,7 +739,8 @@ class ChainTest(unittest.TestCase):
         srv = StubServer()
         self.addCleanup(srv.close)
         ans = self._run(srv, kind="llm")
-        self.assertEqual(ans.backend, "llm")
+        self.assertTrue(ans.backend.startswith("llm"), ans.backend)
+        self.assertFalse(ans.backend.endswith("(fallback)"), ans.backend)
         self.assertFalse([r for r in srv.received
                           if r["path"].endswith("/systemone")], "jev を叩いている")
 
@@ -752,9 +757,71 @@ class ChainTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             de.make_engine("llm", demo_bundle(), self.meeting, note=self.quiet)
 
+    def test_two_llm_stages_are_tried_in_order(self):
+        # 退避先の LLM は複数書ける。1つ目が落ちたら2つ目へ。
+        srv = StubServer(mode="429", llm_mode="down")      # jev も llm も落ちる
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url, llm={"base_url": srv.base_url},
+                        chain=["jev", "llm:model-a", "llm:model-b", "rules"])
+        self.assertEqual([s.name for s in b.fallback_chain],
+                         ["jev", "llm", "llm", "rules"])
+        self.assertEqual(b.fallback_chain[1].model, "model-a")
+        self.assertEqual(b.fallback_chain[2].model, "model-b")
+        eng = de.make_engine("jev", b, self.meeting, note=self.quiet)
+        self.assertEqual([e.name for e in eng.engines],
+                         ["jev", "llm:model-a", "llm:model-b", "rules"])
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "rules(fallback)")
+        # 両方のモデルを試した跡が残る（どちらで落ちたか分かること）
+        self.assertIn("model-a", ans.error)
+        self.assertIn("model-b", ans.error)
+
+    def test_the_second_llm_answers_when_the_first_is_down(self):
+        srv = StubServer(mode="429")
+        self.addCleanup(srv.close)
+        # 1段目は宛先を持たない（＝設定されていないので外れる）
+        b = demo_bundle(base_url=srv.base_url, llm={"base_url": srv.base_url},
+                        chain=["jev", "llm:model-a", "rules"])
+        eng = de.make_engine("jev", b, self.meeting, note=self.quiet)
+        ans = eng.evaluate({"recent_utterances": []}, {"q4_lookup": {"type": "noul"}})
+        self.assertEqual(ans.backend, "llm:model-a(fallback)")
+        body = json.loads([r for r in srv.received
+                           if r["path"].endswith("/chat/completions")][0]["body"])
+        self.assertEqual(body["model"], "model-a", "段のモデルが送られていない")
+
+    def test_a_stage_can_carry_its_own_timeout(self):
+        b = demo_bundle(chain=["jev", {"llm": "model-a", "timeout_sec": 1.5}, "rules"])
+        self.assertEqual(b.fallback_chain[1].timeout_sec, 1.5)
+        self.assertIn("1.5秒", b.chain_label)
+
+    def test_llm_model_override_names_the_model_being_measured(self):
+        srv = StubServer()
+        self.addCleanup(srv.close)
+        b = demo_bundle(base_url=srv.base_url, llm={"base_url": srv.base_url},
+                        chain=["jev", "llm:model-a", "llm:model-b", "rules"])
+        eng = de.make_engine("llm", b, self.meeting, note=self.quiet,
+                             llm_model="model-z")
+        # 測ると名指ししたモデル1つ + rules。途中で入れ替わらない
+        self.assertEqual([e.name for e in eng.engines], ["llm:model-z", "rules"])
+
+    def test_the_shipped_default_chain_is_jev_haiku_rules(self):
+        try:
+            import yaml  # noqa: F401
+        except ImportError:
+            self.skipTest_not_used = True
+            b = None
+        else:
+            b = de.load_bundle(EXAMPLE_BUNDLE)
+        if b is None:
+            # yaml が無い機体でも、既定は**コードの側**にあるので確かめられる
+            b = de.bundle_from_dict({"questions": []})
+        names = [s.name for s in b.fallback_chain]
+        self.assertEqual(names, ["jev", "llm", "rules"])
+        self.assertEqual(b.fallback_chain[1].model, "anthropic/claude-haiku-4.5")
+
     def test_the_chain_always_ends_at_rules(self):
         b = de.bundle_from_dict({"fallback_chain": ["jev"], "questions": []})
-        self.assertEqual(b.fallback_chain[-1], "rules")
+        self.assertEqual(b.fallback_chain[-1].name, "rules")
         with self.assertRaises(SystemExit):
             de.bundle_from_dict({"fallback_chain": ["jev", "haiku"], "questions": []})
 
@@ -900,9 +967,9 @@ class ReplayTest(unittest.TestCase):
         self.addCleanup(lambda: os.environ.pop(TEST_KEY_ENV, None))
         out = self.run_replay("--backend", "llm",
                               "--decisions", str(bp.with_suffix(".yaml")))
-        self.assertIn("llm=5", out, out[-600:])
+        self.assertIn("llm:stub-llm=5", out, out[-600:])
         recs = [json.loads(x) for x in self.out.read_text(encoding="utf-8").splitlines()]
-        self.assertTrue(all(r["backend"] == "llm" for r in recs))
+        self.assertTrue(all(r["backend"].startswith("llm") for r in recs))
         self.assertTrue(recs[0]["answers"]["q1_step"]["approx"])
 
     def test_the_roster_gate_covers_the_llm_too(self):

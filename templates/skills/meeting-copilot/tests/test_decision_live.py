@@ -175,10 +175,12 @@ class WiringTest(LiveBase):
     def test_the_layer_is_built_and_never_retries_during_a_meeting(self):
         cop = self.make()
         self.assertIsNotNone(cop.decision, "判定層が組み立てられていない")
-        eng = de.make_engine("rules", cop.decision["bundle"], cop.decision["meeting"])
+        # 番人が読み込んだのと同じモジュールを使う（読み直すと別クラスになる）
+        dec = sys.modules["decision_engine"]
+        eng = dec.make_engine("rules", cop.decision["bundle"], cop.decision["meeting"])
         self.assertTrue(hasattr(eng, "evaluate"))
         # 🔴 会議中に混雑で待つと、そのカードは会話が次へ行ったあとに出る
-        real = de.make_engine("jev", de.bundle_from_dict({
+        real = dec.make_engine("jev", dec.bundle_from_dict({
             "jev": {"base_url": "x", "key_env": "K"},
             "fallback_chain": ["jev", "rules"], "questions": []}),
             cop.decision["meeting"], note=lambda m: None)

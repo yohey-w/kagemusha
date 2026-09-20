@@ -434,10 +434,13 @@ class Copilot:
                                 bundle.privacy.guest_alias),
             "log": de.DecisionLog(DECISIONS),
         }
-        budget = bundle.jev.timeout_sec + (bundle.llm.timeout_sec
-                                           if "llm" in bundle.fallback_chain
-                                           and bundle.llm.base_url else 0.0)
-        log(f"判定層: backend={kind} 鎖={' → '.join(bundle.fallback_chain)} "
+        budget = 0.0
+        for st in bundle.fallback_chain:
+            if st.name == "jev" and bundle.jev.base_url:
+                budget += st.timeout_sec or bundle.jev.timeout_sec
+            elif st.name == "llm" and bundle.llm.base_url:
+                budget += st.timeout_sec or bundle.llm.timeout_sec
+        log(f"判定層: backend={kind} 鎖={bundle.chain_label} "
             f"/ カードに出す={'はい' if self.show_decisions else 'いいえ（記録だけ）'} "
             f"/ 1発話あたり最大{budget:.1f}秒")
         if budget > 2.0:

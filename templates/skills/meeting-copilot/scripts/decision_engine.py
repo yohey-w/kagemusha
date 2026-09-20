@@ -65,9 +65,11 @@ DEFAULT_WINDOW = 8
 DEFAULT_WINDOW_CHARS = 1200
 DEFAULT_TIMEOUT = 2.0
 NONE_KEY = "none"
-# 退避の既定の順序。Jev（判定器）→ 小型 LLM → ルール。
-DEFAULT_CHAIN = ("jev", "llm", "rules")
 ENGINE_NAMES = ("jev", "llm", "rules")
+# 退避の既定の順序。判定器 → 小型 LLM → ルール。
+# 段は ``llm:<モデル>`` と書けて、**同じ名前の段を何段でも**並べられる
+# （1つ目の小型 LLM が落ちたら2つ目へ、という鎖が組める）。
+DEFAULT_CHAIN_RAW = ("jev", "llm:anthropic/claude-haiku-4.5", "rules")
 
 _ASCII_KEY = re.compile(r"[^A-Za-z0-9_]")
 
@@ -174,7 +176,15 @@ class Bundle:
     pricing: Pricing = dataclasses.field(default_factory=Pricing)
     # 退避の順序。前から順に試して、答えた実装で止まる。最後は必ず rules
     # （外へ出ない実装で終わらないと、全部落ちたときに会議が止まる）。
-    fallback_chain: tuple = DEFAULT_CHAIN
+    fallback_chain: tuple = ()          # (Stage, ...)
+
+    @property
+    def chain_label(self) -> str:
+        return " → ".join(s.label for s in self.fallback_chain)
+
+    @property
+    def chain_names(self) -> tuple:
+        return tuple(s.name for s in self.fallback_chain)
 
     def question(self, qid: str) -> "Question | None":
         return next((q for q in self.questions if q.qid == qid), None)
@@ -204,14 +214,14 @@ def bundle_from_dict(d: dict) -> Bundle:
     pv = d.get("privacy") if isinstance(d.get("privacy"), dict) else {}
     pr = d.get("pricing") if isinstance(d.get("pricing"), dict) else {}
     lm = d.get("llm") if isinstance(d.get("llm"), dict) else {}
-    chain = [str(x).strip().lower() for x in (d.get("fallback_chain") or DEFAULT_CHAIN)]
-    unknown = [x for x in chain if x not in ENGINE_NAMES]
+    chain = [parse_stage(x) for x in (d.get("fallback_chain") or DEFAULT_CHAIN_RAW)]
+    unknown = [s.name for s in chain if s.name not in ENGINE_NAMES]
     if unknown:
         raise SystemExit(f"[decisions] fallback_chain に知らない名前: {unknown}"
                          f"（使えるのは {', '.join(ENGINE_NAMES)}）")
-    if not chain or chain[-1] != "rules":
+    if not chain or chain[-1].name != "rules":
         # 外へ出る実装で終わると、全部落ちたときに答えが1つも出ない。
-        chain = chain + ["rules"]
+        chain = chain + [Stage("rules")]
     qs = []
     for raw in (d.get("questions") or []):
         if not isinstance(raw, dict) or not raw.get("id"):
@@ -339,6 +349,45 @@ def _key(raw: str, fallback: str) -> str:
     """
     k = _ASCII_KEY.sub("", (raw or "").strip())
     return k[:24] if k else fallback
+
+
+class Stage(typing.NamedTuple):
+    """退避の鎖の1段。``llm:<モデル>`` のモデル指定と、段ごとのタイムアウト。"""
+
+    name: str                     # "jev" | "llm" | "rules"
+    model: str = ""               # 段で上書きするモデル（空なら設定ブロックの値）
+    timeout_sec: float = 0.0      # 0 なら設定ブロックの値
+
+    @property
+    def label(self) -> str:
+        s = f"{self.name}:{self.model}" if self.model else self.name
+        return f"{s}({self.timeout_sec}秒)" if self.timeout_sec else s
+
+
+def parse_stage(raw) -> Stage:
+    """``"llm:モデル"`` か ``{llm: モデル, timeout_sec: 2}`` を Stage に。
+
+    すでに段になっているものはそのまま通す。**型の同一性では見ない**——
+    この配布物は同じモジュールを読み直して使う場面があり（試験・再読込）、
+    そのとき ``isinstance`` は「同じ形の別クラス」を弾いてしまう。弾かれた段は
+    文字列に直されて "stage(name=...)" という名前の実装を探しに行き、
+    「知らない backend」で止まる。だから**形（name を持つか）で見る**。
+    """
+    if hasattr(raw, "name") and not isinstance(raw, (str, bytes)):
+        return Stage(str(raw.name), str(getattr(raw, "model", "") or ""),
+                     float(getattr(raw, "timeout_sec", 0.0) or 0.0))
+    if isinstance(raw, dict):
+        # {jev: null} / {llm: モデル名, timeout_sec: 2.0} のどちらの書き方も通す
+        timeout = raw.get("timeout_sec")
+        keys = [k for k in raw if k != "timeout_sec"]
+        if len(keys) != 1:
+            raise SystemExit(f"[decisions] fallback_chain の段が読めません: {raw!r}")
+        name = str(keys[0]).strip().lower()
+        model = "" if raw[keys[0]] is None else str(raw[keys[0]]).strip()
+        return Stage(name, model, float(timeout or 0.0))
+    s = str(raw).strip()
+    name, _, model = s.partition(":")
+    return Stage(name.strip().lower(), model.strip(), 0.0)
 
 
 class Step(typing.NamedTuple):
@@ -1134,21 +1183,36 @@ def FallbackEngine(primary, secondary, retry_busy_sec: float = 0.0):   # noqa: N
     return ChainEngine([primary, secondary], retry_busy_sec=retry_busy_sec)
 
 
-def build_backend(name: str, bundle: Bundle, meeting: MeetingData, opener=None):
-    """名前1つ → 実装1つ。設定が無ければ SystemExit（黙って代替しない）。"""
-    if name == "rules":
+def build_backend(stage, bundle: Bundle, meeting: MeetingData, opener=None):
+    """段1つ → 実装1つ。設定が無ければ SystemExit（黙って代替しない）。"""
+    stage = parse_stage(stage)       # 文字列でも段でも、ここで1つの形にする
+    if stage.name == "rules":
         return RulesBackend(meeting, bundle)
-    if name == "jev":
-        return JevBackend(bundle.jev, bundle=bundle, opener=opener)
-    if name == "llm":
-        return LLMBackend(bundle.llm, bundle=bundle, opener=opener)
-    raise SystemExit(f"[decisions] 知らない backend: {name!r}"
+    if stage.name == "jev":
+        s = bundle.jev
+        if stage.model or stage.timeout_sec:
+            s = dataclasses.replace(
+                s, model=stage.model or s.model,
+                timeout_sec=stage.timeout_sec or s.timeout_sec)
+        return JevBackend(s, bundle=bundle, opener=opener)
+    if stage.name == "llm":
+        # 同じ鎖に別のモデルを何段でも置けるよう、設定ブロックは共通で
+        # **モデルとタイムアウトだけ段ごとに差し替える**。
+        s = bundle.llm
+        if stage.model or stage.timeout_sec:
+            s = dataclasses.replace(
+                s, model=stage.model or s.model,
+                timeout_sec=stage.timeout_sec or s.timeout_sec)
+        eng = LLMBackend(s, bundle=bundle, opener=opener)
+        eng.name = f"llm:{s.model}" if s.model else "llm"
+        return eng
+    raise SystemExit(f"[decisions] 知らない backend: {stage.name!r}"
                      f"（使えるのは {', '.join(ENGINE_NAMES)}）")
 
 
 def make_engine(kind: str, bundle: Bundle, meeting: MeetingData,
                 opener=None, retry_busy_sec: float = 0.0,
-                note=None) -> DecisionEngine:
+                note=None, llm_model: str = "") -> DecisionEngine:
     """``kind`` から始まる退避の鎖を組み立てる。
 
     鎖は ``fallback_chain``（既定 jev → llm → rules）で、``kind`` の位置から
@@ -1162,17 +1226,28 @@ def make_engine(kind: str, bundle: Bundle, meeting: MeetingData,
     """
     say = note or (lambda m: print(m, file=sys.stderr))
     chain = list(bundle.fallback_chain)
-    if kind not in chain:
+    names = [s.name for s in chain]
+    if kind not in names:
         raise SystemExit(f"[decisions] backend={kind!r} は fallback_chain "
-                         f"{chain} に入っていません。")
+                         f"{bundle.chain_label} に入っていません。")
+    chain = chain[names.index(kind):]
+    if llm_model:
+        # 「このモデルを測る」と名指しされたとき。先頭の llm 段をそのモデルにして、
+        # 後ろの llm 段は落とす（測っているモデルが途中で入れ替わらないように）。
+        # Stage は NamedTuple なので _replace（dataclasses.replace は通らない）
+        head = chain[0]._replace(model=llm_model) \
+            if chain[0].name == "llm" else chain[0]
+        chain = [head] + [s for s in chain[1:] if s.name != "llm"]
+        say(f"[decisions] llm のモデルを {llm_model} に差し替えました"
+            f"（鎖: {' → '.join(s.label for s in chain)}）")
     engines = []
-    for i, name in enumerate(chain[chain.index(kind):]):
+    for i, stage in enumerate(chain):
         try:
-            engines.append(build_backend(name, bundle, meeting, opener))
+            engines.append(build_backend(stage, bundle, meeting, opener))
         except SystemExit:
             if i == 0:
                 raise                  # 頼まれた本人。代わりを立てずに止まる
-            say(f"[decisions] {name} は設定されていないので退避先から外します")
+            say(f"[decisions] {stage.label} は設定されていないので退避先から外します")
     if not engines:
         raise SystemExit("[decisions] 使える実装が1つもありません。")
     if len(engines) == 1:

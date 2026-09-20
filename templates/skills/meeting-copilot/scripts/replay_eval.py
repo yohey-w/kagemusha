@@ -270,7 +270,7 @@ class Tally:
 def show_dry_run(bundle, meeting, masker, rows, limit: int) -> None:
     """送る物だけを見せる。1件も送らない。"""
     print("═══ --dry-run: 送る物（1件も送信しません） ═══")
-    print(f"退避の鎖: {' → '.join(bundle.fallback_chain)}")
+    print(f"退避の鎖: {bundle.chain_label}")
     for label, s in (("jev", bundle.jev), ("llm", bundle.llm)):
         has_key = bool(s.key_env and os.environ.get(s.key_env))
         print(f"  {label}: {s.endpoint if s.base_url else '(未設定)'}"
@@ -314,6 +314,9 @@ def main() -> None:
                     help="どこから退避の鎖を始めるか。既定 rules（鍵不要・外へ出ない）。"
                          "llm を選ぶと小型 LLM 単独の成績を Jev と並べて測れる")
     ap.add_argument("--decisions", default="", help="問いの束（既定: 会議フォルダ→同梱の例）")
+    ap.add_argument("--llm-model", default="",
+                    help="小型 LLM のモデルを差し替えて測る（例: 別ベンダの軽い版）。"
+                         "先頭の llm 段がこのモデルになり、後ろの llm 段は外れます")
     ap.add_argument("--labels", default="", help="正解表 csv（utterance_id,q,gold）")
     ap.add_argument("--out", default="", help="記録の書き出し先（既定 ./replay_out/decisions.jsonl）")
     ap.add_argument("--limit", type=int, default=0, help="先頭から何発話だけ流すか（0=全部）")
@@ -367,7 +370,8 @@ def main() -> None:
         raise SystemExit("[replay] --retry-on-429 は --pace <秒> と一緒に使ってください"
                          "（待つ長さが 0 では撃ち直しても同じ結果になります）。")
     engine = de.make_engine(a.backend, bundle, meeting,
-                            retry_busy_sec=a.pace if a.retry_on_429 else 0.0)
+                            retry_busy_sec=a.pace if a.retry_on_429 else 0.0,
+                            llm_model=a.llm_model)
     out_path = pathlib.Path(a.out).expanduser() if a.out \
         else pathlib.Path.cwd() / "replay_out" / "decisions.jsonl"
     if out_path.exists() and not a.append:
@@ -377,7 +381,7 @@ def main() -> None:
 
     todo = [r for r in rows if not ids or r["utterance_id"] in ids]
     print(f"[replay] {len(rows)} 発話中 {len(todo)} 本を判定 / backend={a.backend}"
-          f"（鎖: {' → '.join(bundle.fallback_chain)}） "
+          f"（鎖: {bundle.chain_label}） "
           f"/ 問い{len(bundle.questions)}本 / 段{len(meeting.steps)}・"
           f"即答表{len(meeting.quick_facts)}・名簿{len(meeting.roster)}"
           + (f" / 間隔{a.pace}秒" if a.pace else "")
