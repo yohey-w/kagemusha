@@ -128,7 +128,7 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 The `skills` row above is a symlink, not a description — two skills ship in `templates/skills/`:
 
 - **`advisor-gate`** — a procedure for consulting a frontier-class external reasoning model on a decision that matters, then auditing the reply. [`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
-- **`meeting-copilot`** — a two-machine meeting copilot. Builds a script from a single agenda sheet, keeps 3-line cards, off-script search assist, and stops itself when the call ends. [`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
+- **`meeting-copilot`** — a two-machine meeting copilot. Builds a script from a single agenda sheet, keeps 3-line cards, off-script search assist, and stops itself when the call ends; per-utterance judgment is handed to a swappable model (e.g. a small classifier like Jev/TypeSafe over Vercel AI Gateway) and falls back to plain keyword rules when it can't answer. [`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 
 The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/sessions` (`--ephemeral`): that tree is what the distillation lane harvests, and the machinery's prompts are not your judgment. `AGENT_CLI_RECORD=1` turns recording on while you debug a cron run.
 
