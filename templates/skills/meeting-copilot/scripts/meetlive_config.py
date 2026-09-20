@@ -62,6 +62,12 @@ MEETING_DEFAULTS: dict = {
     "auto_stop": {},             # 終話検知の効き方 (stop_policy() 参照)
     "features": {"copilot": True, "responder": True,
                  "premise_watch": True, "stage": True},
+    # 判定層 (decision_engine.py)。既定は **rules**（外へ1バイトも出ない）。
+    # "jev" にすると decisions.yaml の宛先へ発話ごとに1往復する。
+    "decision_backend": "rules",
+    # 判定層の答えをカンペに出すか。既定は **false**（出さずに記録だけ）。
+    # 実測で閾値を決めるまで、判定は画面に出さずに decisions.jsonl へ溜める。
+    "show_decision_cards": False,
     "stage": {"set_label": "", "order": []},
     "card_policy": {"auto_dismiss_kinds": ["warn", "premise_warn"]},
     "call_words": [],
@@ -466,6 +472,25 @@ def features() -> dict:
         for k, v in raw.items():
             out[str(k)] = bool(v)
     return out
+
+
+def decision_backend() -> str:
+    """判定層をどれで回すか。``"rules"``（既定・外へ出ない）か ``"jev"``。
+
+    🔴 既定を外向きにしない。会議フォルダに1行書いた人だけが外へ出す、の向き。
+    知らない値は rules に倒す（綴り間違いで黙って外へ出るのを防ぐ）。
+    """
+    raw = str(load_meeting().get("decision_backend") or "rules").strip().lower()
+    return raw if raw in ("rules", "jev") else "rules"
+
+
+def show_decision_cards() -> bool:
+    """判定層の答えをカンペに出すか。既定 False（記録だけ）。
+
+    出すかどうかと、判定するかどうかは別。``decision_backend`` が動いていても
+    これが False なら画面は変わらず、``decisions.jsonl`` にだけ残る。
+    """
+    return bool(load_meeting().get("show_decision_cards"))
 
 
 def stage_setinfo() -> dict:

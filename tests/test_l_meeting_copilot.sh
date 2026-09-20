@@ -40,10 +40,14 @@ assert_file "L1: responder.py ships"               "$L_SCRIPTS/responder.py"
 assert_file "L1: unit tests ship (responder)"      "$L_TESTS/test_responder.py"
 assert_file "L1: run.sh ships"                     "$L_SCRIPTS/run.sh"
 assert_file "L1: stop.sh ships"                    "$L_SCRIPTS/stop.sh"
+assert_file "L1: decision_engine.py ships"         "$L_SCRIPTS/decision_engine.py"
+assert_file "L1: replay_eval.py ships"             "$L_SCRIPTS/replay_eval.py"
+assert_file "L1: unit tests ship (decision layer)" "$L_TESTS/test_decision_engine.py"
+assert_file "L1: decisions.example.yaml ships"     "$L_CONFIG/decisions.example.yaml"
 
 # the demo meeting folder is the "does it run at all" answer for a new user
 for f in meeting.json agenda_steps.json talk_script.md phrasebook.json \
-         stage_resources.json bank.json; do
+         stage_resources.json bank.json decisions.yaml roster.txt; do
   assert_file "L1: demo meeting folder has $f" "$L_DEMO/$f"
 done
 assert_dir "L1: demo meeting folder has docs/" "$L_DEMO/docs"
@@ -243,3 +247,140 @@ else
   fail "L7: could not hold a port to test the guard with" \
     "the helper never wrote its port number"
 fi
+
+# ── L8. the decision layer ships pointed at nothing ────────────────────────
+# The layer sends utterances to an outside judge. Two things must therefore be
+# true of what a stranger unpacks: the destination is NOT in the code (L2's URL
+# scan covers the scripts), and the default is inward — a meeting folder that
+# says nothing about it runs on the local rules and draws no card. The failure
+# this closes is the one nobody would see: a kit that starts shipping a
+# client's words to a third party because a default was set the other way.
+assert_ok "L8: the decision layer defaults inward (rules, no cards)" \
+  env -u MEETLIVE_AGENDA -u MEETLIVE_SCRIPT -u MEETLIVE_STAGE -u MEETLIVE_CREDS_FILE \
+      MEETLIVE_MEETING="$L_FX/templates/skills/meeting-copilot/config/example_meeting" \
+      MEETLIVE_DIR="$L_STATE" \
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import meetlive_config as c
+# the demo folder says nothing about the decision layer — so these are the
+# defaults a stranger gets, not values someone wrote down
+assert c.decision_backend() == "rules", c.decision_backend()
+assert c.show_decision_cards() is False, c.show_decision_cards()
+' "$L_FX/templates/skills/meeting-copilot/scripts"
+
+# a misspelt backend must fall back to rules, not to "whatever was typed"
+assert_ok "L8: an unknown backend name falls back to rules" \
+  env -u MEETLIVE_AGENDA -u MEETLIVE_SCRIPT -u MEETLIVE_STAGE -u MEETLIVE_CREDS_FILE \
+      MEETLIVE_DIR="$L_STATE" \
+  python3 -c '
+import json, pathlib, os, sys, tempfile
+scripts = sys.argv[1]
+src = pathlib.Path(sys.argv[2])
+with tempfile.TemporaryDirectory() as td:
+    d = pathlib.Path(td)
+    m = json.loads((src / "meeting.json").read_text(encoding="utf-8"))
+    m["decision_backend"] = "jevv"
+    (d / "meeting.json").write_text(json.dumps(m), encoding="utf-8")
+    os.environ["MEETLIVE_MEETING"] = str(d)
+    sys.path.insert(0, scripts)
+    import meetlive_config as c
+    assert c.decision_backend() == "rules", c.decision_backend()
+' "$L_FX/templates/skills/meeting-copilot/scripts" \
+  "$L_FX/templates/skills/meeting-copilot/config/example_meeting"
+
+# the shipped question bundle names the ENV VAR that holds the key — never a key
+assert_grep "L8: the example bundle names an env var for the key" \
+  "key_env:" "$L_CONFIG/decisions.example.yaml"
+assert_empty_str "L8: no api key literal in the shipped bundles" \
+  "$(grep -nEi '(api[_-]?key|bearer|secret)[[:space:]]*[:=][[:space:]]*[A-Za-z0-9_-]{16,}' \
+     "$L_CONFIG/decisions.example.yaml" "$L_DEMO/decisions.yaml" 2>/dev/null)"
+# ...and that detector is shown detecting
+L_KPROBE="$TEST_TMP/l_key_probe.yaml"
+printf 'api_key: %s\n' "abcdefghijklmnopqrstuvwx" > "$L_KPROBE"
+assert_nonempty_str "L8: the key detector actually detects" \
+  "$(grep -nEi '(api[_-]?key|bearer|secret)[[:space:]]*[:=][[:space:]]*[A-Za-z0-9_-]{16,}' \
+     "$L_KPROBE")"
+
+# the replay harness runs the demo folder end to end with no key and no network
+L_REPLAY_DIR="$TEST_TMP/l_replay"
+mkdir -p "$L_REPLAY_DIR"
+cat > "$L_REPLAY_DIR/t.jsonl" <<'JSONL'
+{"ts": "2026-01-01T10:00:00", "speaker": "guest", "text": "よろしくお願いします。"}
+{"ts": "2026-01-01T10:00:10", "speaker": "host", "text": "今日決めたいことは3つです。"}
+{"ts": "2026-01-01T10:01:00", "speaker": "host", "text": "ちょっとお待ちください。確認します。"}
+JSONL
+assert_ok "L8: replay_eval runs the demo folder with no key (backend rules)" \
+  env -u MEETLIVE_MEETING -u MEETLIVE_DIR \
+  timeout 120 python3 "$L_FX/templates/skills/meeting-copilot/scripts/replay_eval.py" \
+    --transcript "$L_REPLAY_DIR/t.jsonl" \
+    --meeting "$L_FX/templates/skills/meeting-copilot/config/example_meeting" \
+    --backend rules --out "$L_REPLAY_DIR/decisions.jsonl"
+assert_file "L8: the replay left a decision log" "$L_REPLAY_DIR/decisions.jsonl"
+l_recs="$(wc -l < "$L_REPLAY_DIR/decisions.jsonl" | tr -d ' ')"
+assert_eq "L8: one record per utterance" "3" "$l_recs"
+
+# ── L9. the decision layer's live wiring stays inward by default ───────────
+# The layer now draws cards during a real meeting. Two invariants a stranger
+# must get for free: it does not run at all unless the meeting folder asks for
+# it, and it never takes over the step machinery (a wrong step throws the
+# teleprompter away, which is worse than no hint at all).
+assert_file "L9: live-wiring unit tests ship" "$L_TESTS/test_decision_live.py"
+assert_grep "L9: the watchdog runs the judge off the main loop" \
+  "threading.Thread" "$L_SCRIPTS/copilot.py"
+assert_grep "L9: …and never makes the main loop wait for a verdict" \
+  "本線" "$L_SCRIPTS/copilot.py"
+assert_grep "L9: the viewer only shows a fresh step hint" \
+  "DECISION_HINT_MAX_AGE" "$L_SCRIPTS/viewer2.py"
+# the step high-water mark is moved by the keyword rule ONLY
+assert_empty_str "L9: the decision layer never writes the step high-water mark" \
+  "$(grep -nE 'self\.auto_hi[[:space:]]*=' "$L_SCRIPTS/copilot.py" \
+     | grep -v 'step_detect' | grep -v 'self\.auto_hi = 0')"
+
+# ── L10. the live judge keeps up with the room ─────────────────────────────
+# One worker meant "skip while busy", which on a slow day is a meeting with no
+# cards at all. A pool that drops the OLDEST is the honest trade: the newest
+# utterance is the one worth judging.
+assert_grep "L10: the judge runs a small pool, not a single slot" \
+  "MAX_DECISION_WORKERS" "$L_SCRIPTS/copilot.py"
+assert_grep "L10: …and abandons the oldest when it overflows" \
+  "古い方を諦めます" "$L_SCRIPTS/copilot.py"
+assert_grep "L10: an abandoned judgement is still recorded, marked" \
+  "abandoned" "$L_SCRIPTS/decision_engine.py"
+# the shipped chain must fit the pool, or the default ships already behind
+assert_ok "L10: the shipped chain fits 4s x workers" \
+  python3 -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import decision_engine as de
+b = de.load_bundle(sys.argv[2])
+budget = 0.0
+for s in b.fallback_chain:
+    if s.name == "jev" and b.jev.base_url:
+        budget += s.timeout_sec or b.jev.timeout_sec
+    elif s.name == "llm" and b.llm.base_url:
+        budget += s.timeout_sec or b.llm.timeout_sec
+assert abs(budget - 3.5) < 0.01, budget
+assert b.fallback_chain[1].model == "anthropic/claude-haiku-4.5", b.chain_label
+' "$L_FX/templates/skills/meeting-copilot/scripts" \
+  "$L_FX/templates/skills/meeting-copilot/config/decisions.example.yaml"
+
+# ── L11. one roster gate, not two ──────────────────────────────────────────
+# The replay path refused to send without a roster file; the live path branched
+# on the roster CONTENTS, which the meeting.json fallback fills in — so the very
+# case the design names ("forgot the file, but counterpart is set") sent real
+# names with no warning. Both paths now call the same predicate.
+assert_grep "L11: the gate is one shared predicate" \
+  "def roster_gate" "$L_SCRIPTS/decision_engine.py"
+for l_side in copilot replay_eval; do
+  assert_grep "L11: $l_side uses it" "roster_gate" "$L_SCRIPTS/$l_side.py"
+done
+assert_empty_str "L11: no path decides by roster contents any more" \
+  "$(grep -nE 'if (meeting|self\.decision\[.meeting.\])\.roster\b' \
+     "$L_SCRIPTS/copilot.py" "$L_SCRIPTS/replay_eval.py" 2>/dev/null)"
+# the decision log is written from up to three threads — same lock as the cards
+assert_grep "L11: the decision log serialises its writers" \
+  "self._lock" "$L_SCRIPTS/decision_engine.py"
+# and the startup banner no longer claims the watchdog does not call the layer
+assert_no_grep "L11: the startup line is not the pre-wiring one" \
+  "番人からは呼びません" "$L_SCRIPTS/copilot.py"

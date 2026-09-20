@@ -1,0 +1,234 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# decisions.yaml — 判定層に投げる「問いの束」。会議フォルダ直下に置きます。
+#
+# 発話が1本届くたびに、ここに書いた問いを**全部まとめて1回**投げます。問いを
+# 足しても往復は増えません（判定器は1回の呼び出しの中で並列に答えます）。
+#
+# 置き場の解決順:
+#   1. replay_eval.py --decisions <ファイル>
+#   2. <会議フォルダ>/decisions.yaml
+#   3. このファイル（同梱の例）
+# 問いの束は案件に依りません。**候補だけ**が会議フォルダから来ます
+# （段＝agenda_steps.json の見出し、即答表＝quick_facts.md の見出し）。
+# だから会議フォルダに置かなくても、この例のままで正しく動きます。
+#
+# 型は3つだけ:
+#   choice … 選択肢から1つ。確率分布と確信度が返る
+#   score  … 順序のある段階。レベルの間の実数と確信度が返る（最低2段階）
+#   noul   … はい/いいえ。「はい」の確率だけが返る（**確信度は無い**）
+#
+# 🔴 閾値は型ごとに別で調整してください。同じ問いでも choice と noul では
+#    返る数字の大きさが違います（片方で決めた閾値をもう片方に流用しない）。
+# 🔴 instructions は書いたとおりにしか読まれません。含みを持たせず、
+#    「誰の」「いつの」発話について聞いているかを毎回明示してください。
+# 🔴 日本語は受け付けますが英語より精度が落ちます。閾値は保守的に始めて、
+#    replay_eval.py の的中率を見てから緩めてください。
+# ═══════════════════════════════════════════════════════════════════════════
+
+version: 1
+
+# ── 送る範囲 ───────────────────────────────────────────────────────────────
+# 逐語の蓄積は送りません。判定器は state が伸びるほど精度が落ちます
+# （判定に関係のない材料が答えを引っ張る）。窓は発話数と文字数の両方で切ります。
+window:
+  utterances: 8
+  max_chars: 1200
+
+# ── 人名の伏せ方 ───────────────────────────────────────────────────────────
+# 会議フォルダの roster.txt にある名前を、送る直前に役名へ置き換えます。
+# 置き換えは state だけでなく**選択肢の説明にも**掛かります（段の見出しに
+# 相手の名前が入っていることがあるため）。roster.txt が無ければ話者名だけ伏せます。
+privacy:
+  roster: roster.txt
+  host_alias: 〈進行役〉
+  guest_alias: 〈相手〉
+
+# ── 送り先 ─────────────────────────────────────────────────────────────────
+# 🔴 鍵はここに書かないこと。書くのは**環境変数の名前**だけです。
+#    export AI_GATEWAY_API_KEY=... のように、走らせる側の環境に置きます。
+# base_url を空にすると Jev は起動しません（--backend rules だけが動きます）。
+# 直契約の経路に変えるときは base_url と key_env と model を差し替えてください。
+jev:
+  base_url: https://ai-gateway.vercel.sh/typesafe
+  path: /v1/systemone
+  model: typesafe-ai/jev
+  key_env: AI_GATEWAY_API_KEY
+  # 会議中の判定は2秒で出ないなら要りません（遅れて出るカードは邪魔になるだけ）。
+  # 再試行はしません。落ちたらルール判定へ退避します。
+  timeout_sec: 2.0
+
+# ── 退避先の小型 LLM ───────────────────────────────────────────────────────
+# Jev が使えないとき（枠のレート制限・障害・契約前）の中段。同じ問いの束を、
+# OpenAI 互換の chat completions に JSON で答えさせます。
+#
+# 🔴 判定器ではないので、返るのは確信度1つだけです。確率分布は**近似**して
+#    埋め、答えに approx: true が付きます。校正の表に混ぜて読まないこと。
+# 🔴 鍵はここに書かない（環境変数の名前だけ）。ゲートウェイ経由なら Jev と
+#    同じ鍵が使えます。
+# base_url を空にすると、この段は鎖から自動で外れます（Jev → ルール）。
+llm:
+  base_url: https://ai-gateway.vercel.sh
+  path: /v1/chat/completions
+  # 鎖の段で `llm:<モデル>` と書けば段ごとに上書きできます。
+  # 差し替え例（遅延を優先する軽い版）: llm:openai/gpt-5.6-luna-fast
+  model: anthropic/claude-haiku-4.5
+  key_env: AI_GATEWAY_API_KEY
+  timeout_sec: 3.0
+  max_tokens: 400
+
+# ── 退避の順序 ─────────────────────────────────────────────────────────────
+# 前から順に試して、答えた実装で止まります。**最後は必ず rules**（外へ出ない
+# 実装で終わらないと、全部落ちたときに会議が止まる）。書き忘れても足されます。
+# 使わない段は外してよい: [jev, rules] なら LLM を挟みません。
+#
+# 段は `llm:<モデル>` と書けて、**同じ名前の段を何段でも**並べられます:
+#   fallback_chain: [jev, "llm:openai/gpt-5.6-luna-fast", "llm:anthropic/claude-haiku-4.5", rules]
+# 段ごとにタイムアウトを変えるなら辞書で書きます:
+#   - {llm: anthropic/claude-haiku-4.5, timeout_sec: 2.0}
+#
+# decisions.jsonl の backend 欄に、実際に答えた段が**モデル名まで**残ります
+# （jev / llm:anthropic/claude-haiku-4.5(fallback) / rules(fallback)）。
+# どのモデルが答えたのか分からないと、並べて測った意味が無くなるためです。
+fallback_chain:
+  - jev                                                    # 2.0秒（jev: の timeout_sec）
+  - {llm: anthropic/claude-haiku-4.5, timeout_sec: 1.5}    # 鎖全体で 3.5秒に収める
+  - rules                                                  # 外へ出ない。必ず最後
+
+# ── 費用の見方 ─────────────────────────────────────────────────────────────
+# 入力トークン100万あたりの単価。**0 なら費用は計算しません**（この配布物は
+# 他所の値段を内蔵しません）。自分が契約した単価を書いてください。
+pricing:
+  input_per_mtok: 0.042
+  output_per_mtok: 0.0
+  currency: USD
+
+# ── 問いの束 ───────────────────────────────────────────────────────────────
+questions:
+
+  # Q1 段。候補は agenda_steps.json の段の見出し＋「該当なし」。
+  - id: q1_step
+    type: choice
+    ask: any
+    candidates: agenda_steps
+    include_none: true
+    # 🔴 本文を日本語にしてあるのは、逐語が日本語だからです（2026-09-20 の実測で、
+    #    英語の問いだと「見出しの語が出ていない段」を取りこぼしました）。
+    instructions: >-
+      この会議には決まった進行表があり、下の選択肢はその段です。current_utterance
+      （最新の発話）を主に、recent_utterances を文脈として、いま会話はどの段に
+      いますか。話題がその段の内容に触れていれば、**段の見出しの言葉が出ていなくても**
+      その段を選んでください。どの段にも当たらない雑談・接続確認・進行表に無い
+      脱線だけ "none" にしてください。なお音声認識は似た音の語に化けることがあります
+      （例:「研修」「検証」が「検収」になる）。見出しに近い意味の語が出ていれば、
+      綴りが違ってもその段とみなしてください。
+    # 会議中にこの推定を画面へ添える境目（確信度）。段そのものは動かしません。
+    thresholds:
+      act: 0.8
+    # 候補の説明に、進行表の「取る答え」を添えるか（既定 false）。
+    # 見出しだけでは判定材料が薄いことがある——実測(2026-09-20)で、検収の段を
+    # 「該当なし」と答える誤りが 48 件中 11 件あった。見出しは4〜8文字しかない。
+    # 立てると1問が長くなる（＝入力トークンが増える）ので、再生で効き目を
+    # 確かめてから本番に入れること。
+    criteria_detail: false
+
+  # Q2 局面。順序のある4段階（締めの促しと自動停止の材料）。
+  - id: q2_phase
+    type: score
+    ask: any
+    levels:
+      - key: opening
+        desc: >-
+          Opening: greetings, audio check, small talk, or stating what the
+          meeting is for. The substance has not started.
+      - key: body
+        desc: >-
+          Body: the participants are working through the substance of the
+          meeting.
+      - key: closing
+        desc: >-
+          Closing: wrapping up, confirming next steps or the next date, or
+          saying goodbye.
+      - key: ended
+        desc: >-
+          Ended: the goodbyes are finished and nothing further is being
+          discussed.
+    instructions: >-
+      Which phase of the meeting does the most recent utterance belong to?
+    # ended がこの確信度で streak 発話つづいたら、終話の**予鈴**を鳴らします。
+    # 🔴 予鈴は停止ではありません。畳むには従来どおり無音が続くことが必要です。
+    thresholds:
+      act: 0.8
+      streak: 3
+
+  # Q3 発話の種類。後ろの問いを効かせる/切るための仕分け。
+  - id: q3_kind
+    type: choice
+    ask: any
+    instructions: >-
+      What kind of utterance is current_utterance? Judge only that one
+      utterance; the earlier ones are context.
+    options:
+      - key: fact
+        desc: A statement of fact about the work, the schedule, or the numbers.
+      - key: question_to_host
+        desc: The other party is asking the host a question.
+      - key: question_to_guest
+        desc: The host is asking the other party a question.
+      - key: decision
+        desc: Something is being decided or agreed right now.
+      - key: commitment
+        desc: Someone promises to do something after this meeting.
+      - key: request
+        desc: Someone asks the other side to do something.
+      - key: trouble
+        desc: A problem, a failure, a delay, or a complaint is being reported.
+      - key: small_talk
+        desc: Greetings, filler, or chat unrelated to the work.
+    # 内部だけで使います（雑談と判定したら、直後の催促を見送る）。
+    thresholds:
+      act: 0.8
+
+  # Q4 探し物（進行役の発話のときだけ送る）。
+  - id: q4_lookup
+    type: noul
+    ask: host
+    instructions: >-
+      current_utterance（進行役の発話）で、進行役は相手に答えるための情報や資料を
+      探して手を止めていますか。「ちょっと待ってください」「少々お待ちください」
+      「確認します」「どこだっけ」「〜でしたっけ」「今チャットに送ります」のように、
+      何かを探す・確認する・取ってくるために会話を止めている発話は「はい」です。
+      言いさし（途中で切れた文）でも、探している途中なら「はい」にしてください。
+      探しているものは URL・アカウント名・件数・日付・金額・資料の置き場などです。
+    criteria:
+      "true": 進行役が情報や資料を探す・確認する・取ってくるために手を止めている。
+      "false": 進行役は探しておらず、話を続けている。
+    # 既存の「合図の語」の規則と **OR** で効かせるので、低めから始めます。
+    thresholds:
+      act: 0.5
+
+  # Q5 探し物は即答表のどれか。候補は quick_facts.md の見出し＋「該当なし」。
+  - id: q5_quick_fact
+    type: choice
+    ask: any
+    candidates: quick_facts
+    include_none: true
+    instructions: >-
+      Each option below is one entry in the host's quick-reference sheet. Which
+      entry answers what is being asked for or looked for in the recent
+      utterances? Answer "none" if no entry answers it.
+
+  # Q8 約束（進行役の発話のときだけ送る）。9/19 に1件も記録に残らなかった穴。
+  - id: q8_commitment
+    type: noul
+    ask: host
+    instructions: >-
+      In current_utterance, did the host commit to doing something after this
+      meeting - for example to send, to check, to prepare, to reply, or to
+      decide by a date? A commitment the other party makes does not count, and
+      neither does something the host is doing during the meeting itself.
+    criteria:
+      "true": The host promised to do something after the meeting.
+      "false": The host made no such promise in this utterance.
+    # 約束のカードを出す境目。外れたカードは無いカードより悪いので高めです。
+    thresholds:
+      act: 0.8
