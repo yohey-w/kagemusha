@@ -15,7 +15,7 @@ Nothing else differs: canonicalization, the SHA-256 binding over the complete ar
 
 | `--cli` | `--tool gmail` | `--tool slack` | `--tool notion-update` | `--tool notion-create` | `--tool calendar-create` | `--tool calendar-update` | permit store |
 |---|---|---|---|---|---|---|---|
-| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | `mcp__codex_apps__google_calendar__create_event` (no attendees only) | `mcp__codex_apps__google_calendar__update_event` (attendees unchanged) | `<project>/.codex/outbound-permits/` |
+| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | `mcp__codex_apps__google_calendar__create_event` (no attendees only) | — | `<project>/.codex/outbound-permits/` |
 | `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `mcp__claude_ai_Google_Calendar__create_event` | `mcp__claude_ai_Google_Calendar__update_event` | `<project>/.claude/outbound-permits/` |
 
 `--tool` is one flag for every CLI, so its allowed values are the union; asking
@@ -78,8 +78,8 @@ Two limits, stated rather than discovered:
 **direct** `google_calendar` create/update/respond call passed the Codex guard
 with no permit — none of those names carries a verb from its `OUTBOUND_VERBS`,
 yet each mails other people (inside `exec` the write-token scanner already
-denied them). The Codex guard now routes create/update to the permit step and
-denies respond, in every spelling (`__`/`_`, `mcp__`/`mcp_`). The direct-call
+denied them). The Codex guard now routes create to the permit step and denies
+update and respond, in every spelling (`__`/`_`, `mcp__`/`mcp_`). The direct-call
 spelling `mcp__codex_apps__google_calendar__create_event` is inferred from the
 Gmail twin and has not been observed in a real envelope [未確認]; the permit
 accepts the one-underscore catalogue spelling too.
@@ -93,12 +93,12 @@ be bound, the permit does not open:
   queue and is created by hand. `attendee_optionality`, `decline_message` and an
   `auto_decline_mode` other than `declineNone` are refused too: an auto-declining
   status event answers other people's invitations.
-- Codex `calendar-update` requires `event_id` and refuses `attendees_to_add` /
-  `attendees_to_remove`. **It cannot see or silence the event's existing
-  attendees**: if the event already has guests, they are mailed. `review` says
-  so; read the event (`read_event`) and approve only an event that has nobody
-  but you on it. This is the one place the rule above is kept by the approver
-  rather than by the helper.
+- **Codex has no `calendar-update`** (parent's ruling, 2026-09-26). An update
+  mails the event's existing attendees, who are not in the arguments, and this
+  connector cannot silence them — so neither who is mailed nor whether anyone
+  is can be bound, and what cannot be bound is not opened. A Codex update goes
+  through the queue and is done by hand (or on the Claude side, where
+  `notificationLevel: "NONE"` can be bound).
 
 A permit issued for one CLI cannot be claimed through the other: the wire name, the store directory and the selector all have to agree.
 One connector answers to two spellings, and a permit accepts both. Measured 2026-09-13/14 on the ChatGPT desktop app: the JavaScript wrapper inside `exec` writes one underscore (`mcp__codex_apps__gmail_send_email`, `mcp__codex_apps__slack_slack_send_message`) while the `PreToolUse` envelope for the same call carries two.
@@ -255,7 +255,7 @@ python3 "$PROJECT_ROOT/.claude/hooks/outbound_permit.py" review \
   --tool-input "$INPUT_FILE"
 ```
 
-Use `--tool slack` for Slack. The selector is a closed choice — `gmail`, `slack`, `calendar-create` or `calendar-update` on Codex; on Claude Code also `notion-update` and `notion-create` — and omitting it preserves the Gmail default.
+Use `--tool slack` for Slack. The selector is a closed choice — `gmail`, `slack` or `calendar-create` on Codex; on Claude Code also `notion-update`, `notion-create` and `calendar-update` — and omitting it preserves the Gmail default.
 
 `review` writes nothing. It prints the complete canonical input and its `sha256`.
 Present the reviewed recipients, headers, body, and attachments to the user and obtain explicit approval for that exact payload.

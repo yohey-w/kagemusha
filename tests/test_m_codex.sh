@@ -1398,15 +1398,17 @@ M_CAL_TOOL='mcp__codex_apps__google_calendar__create_event'
 M_CALU_TOOL='mcp__codex_apps__google_calendar__update_event'
 M_CAL_INPUT="$M_PERMIT_ROOT/cal-create.json"
 printf '%s\n' '{"title":"集中作業","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"timezone_str":"Asia/Tokyo"}' > "$M_CAL_INPUT"
-M_CALU_INPUT="$M_PERMIT_ROOT/cal-update.json"
+M_CALU_INPUT="$M_PERMIT_ROOT/cal-update.json"  # an update permit must NOT exist on Codex
 printf '%s\n' '{"event_id":"evt123","start_time":"2030-01-08T10:00:00+09:00","end_time":"2030-01-08T11:00:00+09:00","timezone_str":"Asia/Tokyo"}' > "$M_CALU_INPUT"
 
 M_CAL_REVIEW="$(m_review "$M_CAL_INPUT" calendar-create)"
 assert_grep_str "M9: calendar review binds the Codex wire name" "$M_CAL_TOOL" "$M_CAL_REVIEW"
 assert_grep_str "M9: …and says only attendee-free events have a path" \
   'only attendee-free events' "$M_CAL_REVIEW"
-assert_grep_str "M9: an update review warns that existing attendees are mailed" \
-  'CANNOT suppress notification' "$(m_review "$M_CALU_INPUT" calendar-update)"
+# no update path on Codex (parent's ruling 2026-09-26): an update mails the
+# event's existing attendees, who cannot be bound, so it is not opened.
+assert_exit "M9: there is no calendar-update selector on Codex" 2 \
+  python3 "$M_PERMIT" review --tool calendar-update --tool-input "$M_CALU_INPUT"
 
 assert_eq "M9: a calendar create without a permit is denied" "deny" \
   "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-none "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
@@ -1418,10 +1420,10 @@ m_issue "$M_CAL_INPUT" cal-one-us 300 calendar-create
 assert_eq "M9: the permit is claimed through the one-underscore catalogue spelling too" "allow" \
   "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-one-us "$M_PERMIT_ROOT" mcp__codex_apps__google_calendar_create_event)")"
 
-m_issue "$M_CALU_INPUT" cal-upd 300 calendar-update
-M_CALU_ENV="$(m_envelope "$M_CALU_INPUT" cal-upd "$M_PERMIT_ROOT" "$M_CALU_TOOL")"
-assert_eq "M9: an exact approved update is allowed once" "allow" "$(m_decision "$M_CALU_ENV")"
-assert_eq "M9: …and the second identical update is denied" "deny" "$(m_decision "$M_CALU_ENV")"
+# even with a create permit in hand for the same session, an update is denied.
+m_issue "$M_CAL_INPUT" cal-upd 300 calendar-create
+assert_eq "M9: a Codex update is denied even beside an unspent create permit" "deny" \
+  "$(m_decision "$(m_envelope "$M_CALU_INPUT" cal-upd "$M_PERMIT_ROOT" "$M_CALU_TOOL")")"
 
 # one character different is a different act, and a miss leaves the permit.
 m_cal_variant() {  # name mutation → path
@@ -1474,12 +1476,6 @@ m_cal_reject "…and an auto-decline that answers other people's invitations is 
   '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"event_type":"outOfOffice","auto_decline_mode":"declineAllConflictingInvitations"}' decl
 m_cal_reject "…and a decline message is refused" calendar-create \
   '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"decline_message":"sorry"}' declmsg
-m_cal_reject "a Codex update that adds an attendee is refused" calendar-update \
-  '{"event_id":"e","attendees_to_add":["guest@example.invalid"]}' uadd
-m_cal_reject "…and one that removes an attendee is refused" calendar-update \
-  '{"event_id":"e","attendees_to_remove":["guest@example.invalid"]}' urem
-m_cal_reject "…and one that names no event is refused" calendar-update \
-  '{"start_time":"2030-01-08T10:00:00+09:00"}' uevt
 assert_exit "M9: there is no calendar-delete selector on Codex" 2 \
   python3 "$M_PERMIT" review --tool calendar-delete --tool-input "$M_CALU_INPUT"
 

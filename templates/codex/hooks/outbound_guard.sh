@@ -171,15 +171,15 @@ SLACK_PERMITTED_TOOL='mcp__codex_apps__slack__slack_send_message'
 # Google Calendar (2026-09-26, operator's ruling 「Codex 側の穴をふさいでよい」).
 # Until this change a DIRECT create/update/respond passed this guard: none of
 # them carries a verb from OUTBOUND_VERBS, yet each one mails other people (an
-# invitation, an update notice, an RSVP to the organizer). Create and update
-# now reach the permit step below and are denied without a one-shot permit;
-# the helper opens them only for an event with NO attendees, because this
-# connector has no notification-level argument to bind who is mailed.
-# respond_event has no permit path and is denied by CALENDAR_OUTBOUND.
+# invitation, an update notice, an RSVP to the organizer). Create reaches the
+# permit step below and is denied without a one-shot permit; the helper opens
+# it only for an event with NO attendees, because this connector has no
+# notification-level argument to bind who is mailed. update_event and
+# respond_event have no permit path (an update mails the event's existing
+# attendees, who cannot be bound) and are denied by CALENDAR_OUTBOUND.
 # The two-underscore spelling is inferred from the Gmail twin; the catalogue
 # shows one underscore. same_permit_tool accepts both. [未確認: no real envelope]
 CALENDAR_CREATE_PERMITTED_TOOL='mcp__codex_apps__google_calendar__create_event'
-CALENDAR_UPDATE_PERMITTED_TOOL='mcp__codex_apps__google_calendar__update_event'
 # Matched against the whole name with every `__` flattened to `_`, so all
 # spellings of the namespace (`mcp__…`, `mcp_…`, one or two underscores before
 # the operation) meet the same rule.
@@ -447,8 +447,6 @@ elif same_permit_tool "$safe_name" "$SLACK_PERMITTED_TOOL"; then
   permit_canonical="$SLACK_PERMITTED_TOOL"
 elif same_permit_tool "$safe_name" "$CALENDAR_CREATE_PERMITTED_TOOL"; then
   permit_canonical="$CALENDAR_CREATE_PERMITTED_TOOL"
-elif same_permit_tool "$safe_name" "$CALENDAR_UPDATE_PERMITTED_TOOL"; then
-  permit_canonical="$CALENDAR_UPDATE_PERMITTED_TOOL"
 fi
 if [[ -n "$permit_canonical" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then

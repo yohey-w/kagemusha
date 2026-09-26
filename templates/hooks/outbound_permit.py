@@ -64,24 +64,25 @@ CLAUDE_CALENDAR_UPDATE_TOOL_NAME = "mcp__claude_ai_Google_Calendar__update_event
 # The Codex twin (2026-09-26, operator's ruling 「Codex 側の穴をふさいでよい」).
 # This connector's schema has NO notification-level argument, so who is mailed
 # cannot be bound — and when it cannot be bound, the permit does not open.
-# A Codex calendar permit is therefore for an event nobody else is on:
-# create requires `attendees: []`; update may not add or remove anyone.
+# A Codex calendar permit is therefore for creating an event nobody else is
+# on (`attendees: []`), and nothing more.  There is NO Codex update path
+# (parent's ruling, 2026-09-26): an update mails the event's EXISTING
+# attendees, who are not in the arguments, and this connector cannot silence
+# them — what cannot be bound is not opened.  update_event stays denied.
 CODEX_CALENDAR_CREATE_TOOL_NAME = "mcp__codex_apps__google_calendar__create_event"
-CODEX_CALENDAR_UPDATE_TOOL_NAME = "mcp__codex_apps__google_calendar__update_event"
 
 # The exact wire names a permit may open, per CLI.  Deliberately narrow: one
 # email and one channel message on each side, plus — Claude only — one page
 # edit and one page creation.  Replies, drafts, forwards and edits have no
 # permit path and go through the approval queue.  Codex has no entry for
 # Notion: its guard names no Notion tool, so there is nothing to open there.
-# Codex's Calendar pair is narrower than Claude's: its connector cannot say
-# "do not notify", so it opens only events with no other attendees.
+# Codex's Calendar entry is narrower than Claude's: its connector cannot say
+# "do not notify", so it opens only the creation of an attendee-free event.
 CLI_TOOL_NAMES = {
     "codex": {
         "gmail": GMAIL_TOOL_NAME,
         "slack": SLACK_TOOL_NAME,
         "calendar-create": CODEX_CALENDAR_CREATE_TOOL_NAME,
-        "calendar-update": CODEX_CALENDAR_UPDATE_TOOL_NAME,
     },
     "claude": {
         "gmail": CLAUDE_GMAIL_TOOL_NAME,
@@ -559,20 +560,6 @@ def _validate_codex_calendar_create(tool_input) -> None:
     _refuse_auto_decline(tool_input)
 
 
-def _validate_codex_calendar_update(tool_input) -> None:
-    # One event, and no change to who is on it.  The event's EXISTING attendees
-    # are not in the arguments and this connector cannot silence them — see
-    # the review note and docs/outbound-permits.md.
-    if not tool_input:
-        raise PermitError("Calendar tool_input must not be empty")
-    _require_text(tool_input, "event_id", "Calendar")
-    for key in ("attendees_to_add", "attendees_to_remove"):
-        _refuse_present(tool_input, key, "it changes who is on the event and mails them")
-    for key, why in _CODEX_CALENDAR_REACHING.items():
-        _refuse_present(tool_input, key, why)
-    _refuse_auto_decline(tool_input)
-
-
 def calendar_attention(tool_name: str, tool_input) -> dict | None:
     """The lines an approver must see before a calendar write, pulled forward.
 
@@ -617,20 +604,6 @@ def calendar_attention(tool_name: str, tool_input) -> dict | None:
             "recurrence": tool_input.get("recurrence"),
             "note": "Codex cannot set a notification level; only attendee-free events have a permit path",
         }
-    if tool_name == CODEX_CALENDAR_UPDATE_TOOL_NAME:
-        return {
-            "act": "update one existing event, attendees unchanged",
-            "event_id": tool_input.get("event_id"),
-            "calendar_id": tool_input.get("calendar_id", "primary (default)"),
-            "start_time": tool_input.get("start_time"),
-            "end_time": tool_input.get("end_time"),
-            "update_scope": tool_input.get("update_scope", "this_instance (default)"),
-            "note": (
-                "this connector CANNOT suppress notification: if the event already "
-                "has attendees, they are mailed. Read the event first "
-                "(read_event) and approve only if it has none but you"
-            ),
-        }
     return None
 
 
@@ -643,7 +616,6 @@ INPUT_VALIDATORS = {
     CLAUDE_CALENDAR_CREATE_TOOL_NAME: _validate_claude_calendar_create,
     CLAUDE_CALENDAR_UPDATE_TOOL_NAME: _validate_claude_calendar_update,
     CODEX_CALENDAR_CREATE_TOOL_NAME: _validate_codex_calendar_create,
-    CODEX_CALENDAR_UPDATE_TOOL_NAME: _validate_codex_calendar_update,
 }
 
 
