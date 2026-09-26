@@ -1017,32 +1017,26 @@ assert_exit "M9: issue uses the same closed tool selector" 2 \
     --approval-ref TEST --approval-quote approved --confirm-user-approved
 assert_absent "M9: review alone writes no permit" "$M_PERMIT_ROOT/.codex/outbound-permits"
 
-# ── Calendar has NO Codex selector (2026-09-26) ─────────────────────────────
-# The Claude side gained calendar-create / calendar-update. The Codex side did
-# not, deliberately: the Codex connector's measured schema has no notification
-# level to bind, and the Codex guard does not deny create/update today, so a
-# selector here could only add a new deny — the operator's decision, not this
-# change's. Asking for one must fail as a usage error, not resolve to the
-# Claude wire name.
-printf '%s\n' '{"summary":"x","startTime":"2030-01-01T10:00:00+09:00","endTime":"2030-01-01T11:00:00+09:00","attendees":[],"notificationLevel":"NONE"}' \
-  > "$M_PERMIT_ROOT/cal-input.json"
-for m_cal in calendar-create calendar-update; do
-  assert_exit "M9: the $m_cal selector does not exist on the Codex side" 2 \
-    python3 "$M_PERMIT" review --tool-input "$M_PERMIT_ROOT/cal-input.json" --tool "$m_cal"
-done
-# DOCUMENTS CURRENT BEHAVIOUR, and current behaviour is a known gap: the Codex
-# guard's verb rule has no `create`/`update`/`respond`, so these calendar
-# writes pass it today as DIRECT calls, invitations included (inside `exec`
-# the write-token scanner denies them). The two-underscore spelling below is
-# inferred from the Gmail twin, not observed in a real envelope [未確認].
-# Pinned so that closing the gap is a deliberate change that flips these
-# lines, not a silent one. The delete carries a verb and is denied.
+# ── Calendar writes are outward on Codex too (2026-09-26) ──────────────────
+# Until the operator's ruling 「Codex 側の穴をふさいでよい」 a DIRECT calendar
+# create/update/respond passed this guard with no permit: none of those names
+# carries a verb from OUTBOUND_VERBS, and each one mails other people. Every
+# spelling in circulation must now deny without a permit. (The two-underscore
+# spelling is inferred from the Gmail twin; the catalogue shows one.)
 for m_cal_op in create_event update_event respond_event; do
-  assert_eq "M9: [known gap] Codex calendar $m_cal_op passes the guard today" "allow" \
-    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__google_calendar__$m_cal_op\",\"tool_input\":{}}")"
+  for m_cal_name in "mcp__codex_apps__google_calendar__$m_cal_op" \
+                    "mcp__codex_apps__google_calendar_$m_cal_op" \
+                    "mcp_codex_apps__google_calendar_$m_cal_op"; do
+    assert_eq "M9: calendar $m_cal_name is denied without a permit" "deny" \
+      "$(m_decision "{\"tool_name\":\"$m_cal_name\",\"tool_input\":{},\"session_id\":\"s\",\"cwd\":\"/tmp\"}")"
+  done
 done
-assert_eq "M9: Codex calendar delete_event is denied by the verb rule" "deny" \
+assert_eq "M9: calendar delete_event is still denied by the verb rule" "deny" \
   "$(m_decision '{"tool_name":"mcp__codex_apps__google_calendar__delete_event","tool_input":{}}')"
+for m_cal_read in read_event search_events get_availability list_calendars fetch; do
+  assert_eq "M9: calendar $m_cal_read still passes (a read is not a send)" "allow" \
+    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__google_calendar__$m_cal_read\",\"tool_input\":{}}")"
+done
 assert_exit "M9: issue refuses to treat a permit as approval" 1 \
   python3 "$M_PERMIT" issue --tool-input "$M_SEND_INPUT" \
     --expected-sha256 "$(m_hash "$M_SEND_INPUT")" --project-root "$M_PERMIT_ROOT" \
@@ -1394,6 +1388,100 @@ for m_out in "$M_PERMIT_ROOT"/slack-race-*.out; do
   [[ "$(m_output_decision "$(cat "$m_out")")" == allow ]] && M_SLACK_RACE_ALLOW=$((M_SLACK_RACE_ALLOW + 1))
 done
 assert_eq "M9: two concurrent Slack claims allow exactly one send" "1" "$M_SLACK_RACE_ALLOW"
+
+# ── one-shot Calendar permit (Codex): attendee-free events only ────────────
+# The Codex connector has no notification-level argument, so who is mailed
+# cannot be bound. The permit therefore opens only an event nobody else is on.
+# Placed BEFORE the corrupt-store test below: that test leaves a damaged record
+# in pending/ on purpose, and a claim scanned after it fails closed by design.
+M_CAL_TOOL='mcp__codex_apps__google_calendar__create_event'
+M_CALU_TOOL='mcp__codex_apps__google_calendar__update_event'
+M_CAL_INPUT="$M_PERMIT_ROOT/cal-create.json"
+printf '%s\n' '{"title":"集中作業","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"timezone_str":"Asia/Tokyo"}' > "$M_CAL_INPUT"
+M_CALU_INPUT="$M_PERMIT_ROOT/cal-update.json"
+printf '%s\n' '{"event_id":"evt123","start_time":"2030-01-08T10:00:00+09:00","end_time":"2030-01-08T11:00:00+09:00","timezone_str":"Asia/Tokyo"}' > "$M_CALU_INPUT"
+
+M_CAL_REVIEW="$(m_review "$M_CAL_INPUT" calendar-create)"
+assert_grep_str "M9: calendar review binds the Codex wire name" "$M_CAL_TOOL" "$M_CAL_REVIEW"
+assert_grep_str "M9: …and says only attendee-free events have a path" \
+  'only attendee-free events' "$M_CAL_REVIEW"
+assert_grep_str "M9: an update review warns that existing attendees are mailed" \
+  'CANNOT suppress notification' "$(m_review "$M_CALU_INPUT" calendar-update)"
+
+assert_eq "M9: a calendar create without a permit is denied" "deny" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-none "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
+m_issue "$M_CAL_INPUT" cal-once 300 calendar-create
+M_CAL_ENV="$(m_envelope "$M_CAL_INPUT" cal-once "$M_PERMIT_ROOT" "$M_CAL_TOOL")"
+assert_eq "M9: an exact approved attendee-free create is allowed once" "allow" "$(m_decision "$M_CAL_ENV")"
+assert_eq "M9: …and the second identical create is denied" "deny" "$(m_decision "$M_CAL_ENV")"
+m_issue "$M_CAL_INPUT" cal-one-us 300 calendar-create
+assert_eq "M9: the permit is claimed through the one-underscore catalogue spelling too" "allow" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-one-us "$M_PERMIT_ROOT" mcp__codex_apps__google_calendar_create_event)")"
+
+m_issue "$M_CALU_INPUT" cal-upd 300 calendar-update
+M_CALU_ENV="$(m_envelope "$M_CALU_INPUT" cal-upd "$M_PERMIT_ROOT" "$M_CALU_TOOL")"
+assert_eq "M9: an exact approved update is allowed once" "allow" "$(m_decision "$M_CALU_ENV")"
+assert_eq "M9: …and the second identical update is denied" "deny" "$(m_decision "$M_CALU_ENV")"
+
+# one character different is a different act, and a miss leaves the permit.
+m_cal_variant() {  # name mutation → path
+  local out="$M_PERMIT_ROOT/cal-var-$1.json"
+  M_IN="$M_CAL_INPUT" M_OUT="$out" M_MUT="$2" python3 -c '
+import json, os
+with open(os.environ["M_IN"], encoding="utf-8") as f: d = json.load(f)
+exec(os.environ["M_MUT"])
+with open(os.environ["M_OUT"], "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)'
+  printf '%s' "$out"
+}
+M_CV_TIME="$(m_cal_variant time 'd["start_time"]="2030-01-07T10:01:00+09:00"')"
+M_CV_GUEST="$(m_cal_variant guest 'd["attendees"]=["guest@example.invalid"]')"
+m_issue "$M_CAL_INPUT" cal-var 300 calendar-create
+assert_eq "M9: a calendar permit does not open another start time" "deny" \
+  "$(m_decision "$(m_envelope "$M_CV_TIME" cal-var "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
+assert_eq "M9: …nor the same event with a guest added" "deny" \
+  "$(m_decision "$(m_envelope "$M_CV_GUEST" cal-var "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
+assert_eq "M9: …nor an update instead of a create" "deny" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-var "$M_PERMIT_ROOT" "$M_CALU_TOOL")")"
+assert_eq "M9: …nor an RSVP" "deny" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-var "$M_PERMIT_ROOT" mcp__codex_apps__google_calendar__respond_event)")"
+assert_eq "M9: …and after those misses the exact permit still opens once" "allow" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-var "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
+
+m_issue "$M_CAL_INPUT" cal-expired 300 calendar-create
+M_PENDING="$M_PERMIT_ROOT/.codex/outbound-permits/pending" python3 -c '
+import json, os, pathlib, time
+for p in pathlib.Path(os.environ["M_PENDING"]).glob("*.json"):
+    d=json.load(open(p))
+    if d["session_id"] == "cal-expired":
+        now=int(time.time()); d["created_at"]=now - 2; d["expires_at"]=now - 1
+        json.dump(d, open(p, "w"))'
+assert_eq "M9: an expired calendar permit is denied" "deny" \
+  "$(m_decision "$(m_envelope "$M_CAL_INPUT" cal-expired "$M_PERMIT_ROOT" "$M_CAL_TOOL")")"
+
+# where who is mailed cannot be bound, the permit does not open.
+m_cal_reject() {  # label tool json name
+  local f="$M_PERMIT_ROOT/cal-reject-$4.json"
+  printf '%s\n' "$3" > "$f"
+  assert_exit "M9: $1" 1 python3 "$M_PERMIT" review --tool "$2" --tool-input "$f"
+}
+m_cal_reject "a Codex create with any attendee is refused (no notification control)" calendar-create \
+  '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":["guest@example.invalid"]}' guest
+m_cal_reject "…and one that omits attendees is refused (write [] for none)" calendar-create \
+  '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00"}' noatt
+m_cal_reject "…and attendee_optionality is refused (it names attendees)" calendar-create \
+  '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"attendee_optionality":[{"email":"g@example.invalid","optional":true}]}' opt
+m_cal_reject "…and an auto-decline that answers other people's invitations is refused" calendar-create \
+  '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"event_type":"outOfOffice","auto_decline_mode":"declineAllConflictingInvitations"}' decl
+m_cal_reject "…and a decline message is refused" calendar-create \
+  '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"decline_message":"sorry"}' declmsg
+m_cal_reject "a Codex update that adds an attendee is refused" calendar-update \
+  '{"event_id":"e","attendees_to_add":["guest@example.invalid"]}' uadd
+m_cal_reject "…and one that removes an attendee is refused" calendar-update \
+  '{"event_id":"e","attendees_to_remove":["guest@example.invalid"]}' urem
+m_cal_reject "…and one that names no event is refused" calendar-update \
+  '{"start_time":"2030-01-08T10:00:00+09:00"}' uevt
+assert_exit "M9: there is no calendar-delete selector on Codex" 2 \
+  python3 "$M_PERMIT" review --tool calendar-delete --tool-input "$M_CALU_INPUT"
 
 # A damaged record is never skipped as if it were trustworthy.
 printf '{not-json' > "$M_PERMIT_ROOT/.codex/outbound-permits/pending/corrupt.json"

@@ -168,6 +168,22 @@ set -uo pipefail
 OUTBOUND_VERBS='send|post|create_draft|update_draft|reply|forward|publish|delete'
 GMAIL_PERMITTED_TOOL='mcp__codex_apps__gmail__send_email'
 SLACK_PERMITTED_TOOL='mcp__codex_apps__slack__slack_send_message'
+# Google Calendar (2026-09-26, operator's ruling 「Codex 側の穴をふさいでよい」).
+# Until this change a DIRECT create/update/respond passed this guard: none of
+# them carries a verb from OUTBOUND_VERBS, yet each one mails other people (an
+# invitation, an update notice, an RSVP to the organizer). Create and update
+# now reach the permit step below and are denied without a one-shot permit;
+# the helper opens them only for an event with NO attendees, because this
+# connector has no notification-level argument to bind who is mailed.
+# respond_event has no permit path and is denied by CALENDAR_OUTBOUND.
+# The two-underscore spelling is inferred from the Gmail twin; the catalogue
+# shows one underscore. same_permit_tool accepts both. [未確認: no real envelope]
+CALENDAR_CREATE_PERMITTED_TOOL='mcp__codex_apps__google_calendar__create_event'
+CALENDAR_UPDATE_PERMITTED_TOOL='mcp__codex_apps__google_calendar__update_event'
+# Matched against the whole name with every `__` flattened to `_`, so all
+# spellings of the namespace (`mcp__…`, `mcp_…`, one or two underscores before
+# the operation) meet the same rule.
+CALENDAR_OUTBOUND='^mcp_codex_apps_google_calendar_(create_event|update_event|respond_event)$'
 SLACK_READ_OPERATIONS='slack_get_reactions|slack_list_channel_members|slack_list_starred_items|slack_list_user_channels|slack_list_user_conversations|slack_list_user_groups|slack_list_workspaces|slack_read_canvas|slack_read_channel|slack_read_file|slack_read_thread|slack_read_user_profile|slack_search_channels|slack_search_emojis|slack_search_public|slack_search_public_and_private|slack_search_users'
 
 # Tools that run CODE, and can therefore reach a connector from inside their
@@ -429,6 +445,10 @@ if same_permit_tool "$safe_name" "$GMAIL_PERMITTED_TOOL"; then
   permit_canonical="$GMAIL_PERMITTED_TOOL"
 elif same_permit_tool "$safe_name" "$SLACK_PERMITTED_TOOL"; then
   permit_canonical="$SLACK_PERMITTED_TOOL"
+elif same_permit_tool "$safe_name" "$CALENDAR_CREATE_PERMITTED_TOOL"; then
+  permit_canonical="$CALENDAR_CREATE_PERMITTED_TOOL"
+elif same_permit_tool "$safe_name" "$CALENDAR_UPDATE_PERMITTED_TOOL"; then
+  permit_canonical="$CALENDAR_UPDATE_PERMITTED_TOOL"
 fi
 if [[ -n "$permit_canonical" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
@@ -437,6 +457,13 @@ if [[ -n "$permit_canonical" ]]; then
     fi
   fi
   deny "$safe_name" "no valid one-shot permit matched the complete send arguments, project, session, and expiry"
+fi
+
+# Calendar writes that mail other people, in any spelling the permit step above
+# did not recognise, and the RSVP that has no permit path at all.
+calendar_flat="${safe_name//__/_}"
+if [[ "$calendar_flat" =~ $CALENDAR_OUTBOUND ]]; then
+  deny "$safe_name" "a calendar create/update/respond mails the other attendees"
 fi
 
 # The Slack connector includes write operations whose names do not contain one

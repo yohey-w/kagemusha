@@ -44,7 +44,7 @@ CLAUDE_SLACK_TOOL_NAME = "mcp__slack__slack_post_message"
 CLAUDE_NOTION_UPDATE_TOOL_NAME = "mcp__claude_ai_Notion__notion-update-page"
 CLAUDE_NOTION_CREATE_TOOL_NAME = "mcp__claude_ai_Notion__notion-create-pages"
 
-# Google Calendar, Claude side only (2026-09-26, operator's instruction
+# Google Calendar, Claude side (Codex twin below; 2026-09-26, operator's instruction
 # 「カレンダーへの許可ルートを作ってくれ」).  Two acts: create one event, update
 # one event.  An event with attendees makes Google mail each of them, so the
 # attendee list and the notification level are REQUIRED to be written out in
@@ -61,20 +61,28 @@ CLAUDE_NOTION_CREATE_TOOL_NAME = "mcp__claude_ai_Notion__notion-create-pages"
 # was not asked for.
 CLAUDE_CALENDAR_CREATE_TOOL_NAME = "mcp__claude_ai_Google_Calendar__create_event"
 CLAUDE_CALENDAR_UPDATE_TOOL_NAME = "mcp__claude_ai_Google_Calendar__update_event"
+# The Codex twin (2026-09-26, operator's ruling 「Codex 側の穴をふさいでよい」).
+# This connector's schema has NO notification-level argument, so who is mailed
+# cannot be bound — and when it cannot be bound, the permit does not open.
+# A Codex calendar permit is therefore for an event nobody else is on:
+# create requires `attendees: []`; update may not add or remove anyone.
+CODEX_CALENDAR_CREATE_TOOL_NAME = "mcp__codex_apps__google_calendar__create_event"
+CODEX_CALENDAR_UPDATE_TOOL_NAME = "mcp__codex_apps__google_calendar__update_event"
 
 # The exact wire names a permit may open, per CLI.  Deliberately narrow: one
 # email and one channel message on each side, plus — Claude only — one page
 # edit and one page creation.  Replies, drafts, forwards and edits have no
 # permit path and go through the approval queue.  Codex has no entry for
 # Notion: its guard names no Notion tool, so there is nothing to open there.
-# Codex has no Calendar entry either, for a different reason: its connector's
-# measured schema (the local codex_apps tool cache, 2026-09-26) carries no
-# notification-level argument at all, and its guard does not deny
-# create/update today — so a Codex selector could neither bind who is mailed
-# nor add anything but a new deny.  That is the operator's call, not this
-# file's; see docs/outbound-permits.md.
+# Codex's Calendar pair is narrower than Claude's: its connector cannot say
+# "do not notify", so it opens only events with no other attendees.
 CLI_TOOL_NAMES = {
-    "codex": {"gmail": GMAIL_TOOL_NAME, "slack": SLACK_TOOL_NAME},
+    "codex": {
+        "gmail": GMAIL_TOOL_NAME,
+        "slack": SLACK_TOOL_NAME,
+        "calendar-create": CODEX_CALENDAR_CREATE_TOOL_NAME,
+        "calendar-update": CODEX_CALENDAR_UPDATE_TOOL_NAME,
+    },
     "claude": {
         "gmail": CLAUDE_GMAIL_TOOL_NAME,
         "slack": CLAUDE_SLACK_TOOL_NAME,
@@ -506,6 +514,65 @@ def _validate_claude_calendar_update(tool_input) -> None:
     _require_notification_level(tool_input)
 
 
+def _refuse_present(tool_input, key: str, why: str) -> None:
+    value = tool_input.get(key)
+    if value is not None and value != [] and value != "":
+        raise PermitError(f"Calendar {key} is not valid for a Codex permit: {why}")
+
+
+# Arguments that reach other people on the Codex connector.  auto_decline_mode
+# and decline_message make a status event DECLINE other people's invitations,
+# with a message to their organizers — speech, whatever the attendee list says.
+_CODEX_CALENDAR_REACHING = {
+    "attendee_optionality": "it names attendees",
+    "decline_message": "it is sent to the organizers of declined invitations",
+}
+
+
+def _refuse_auto_decline(tool_input) -> None:
+    mode = tool_input.get("auto_decline_mode")
+    if mode is not None and mode != "declineNone":
+        raise PermitError(
+            "Calendar auto_decline_mode is not valid for a Codex permit: "
+            "it declines other people's invitations"
+        )
+
+
+def _validate_codex_calendar_create(tool_input) -> None:
+    # The Codex connector has no notification level, so the only event whose
+    # mail can be bound is one that mails nobody: attendees must be written
+    # out and must be empty.
+    if not tool_input:
+        raise PermitError("Calendar tool_input must not be empty")
+    for key in ("title", "start_time", "end_time"):
+        _require_text(tool_input, key, "Calendar")
+    attendees = tool_input.get("attendees")
+    if not isinstance(attendees, list):
+        raise PermitError("Calendar create must write out attendees as []")
+    if attendees:
+        raise PermitError(
+            "a Codex calendar permit opens only an event with no attendees "
+            "(this connector cannot bind who is notified); use the approval queue"
+        )
+    for key, why in _CODEX_CALENDAR_REACHING.items():
+        _refuse_present(tool_input, key, why)
+    _refuse_auto_decline(tool_input)
+
+
+def _validate_codex_calendar_update(tool_input) -> None:
+    # One event, and no change to who is on it.  The event's EXISTING attendees
+    # are not in the arguments and this connector cannot silence them — see
+    # the review note and docs/outbound-permits.md.
+    if not tool_input:
+        raise PermitError("Calendar tool_input must not be empty")
+    _require_text(tool_input, "event_id", "Calendar")
+    for key in ("attendees_to_add", "attendees_to_remove"):
+        _refuse_present(tool_input, key, "it changes who is on the event and mails them")
+    for key, why in _CODEX_CALENDAR_REACHING.items():
+        _refuse_present(tool_input, key, why)
+    _refuse_auto_decline(tool_input)
+
+
 def calendar_attention(tool_name: str, tool_input) -> dict | None:
     """The lines an approver must see before a calendar write, pulled forward.
 
@@ -540,6 +607,30 @@ def calendar_attention(tool_name: str, tool_input) -> dict | None:
                 "(get_event) to see who they are"
             ),
         }
+    if tool_name == CODEX_CALENDAR_CREATE_TOOL_NAME:
+        return {
+            "act": "create one event with no attendees",
+            "attendees_invited": [],
+            "calendar_id": tool_input.get("calendar_id", "primary (default)"),
+            "start_time": tool_input.get("start_time"),
+            "end_time": tool_input.get("end_time"),
+            "recurrence": tool_input.get("recurrence"),
+            "note": "Codex cannot set a notification level; only attendee-free events have a permit path",
+        }
+    if tool_name == CODEX_CALENDAR_UPDATE_TOOL_NAME:
+        return {
+            "act": "update one existing event, attendees unchanged",
+            "event_id": tool_input.get("event_id"),
+            "calendar_id": tool_input.get("calendar_id", "primary (default)"),
+            "start_time": tool_input.get("start_time"),
+            "end_time": tool_input.get("end_time"),
+            "update_scope": tool_input.get("update_scope", "this_instance (default)"),
+            "note": (
+                "this connector CANNOT suppress notification: if the event already "
+                "has attendees, they are mailed. Read the event first "
+                "(read_event) and approve only if it has none but you"
+            ),
+        }
     return None
 
 
@@ -551,6 +642,8 @@ INPUT_VALIDATORS = {
     CLAUDE_NOTION_CREATE_TOOL_NAME: _validate_claude_notion_create,
     CLAUDE_CALENDAR_CREATE_TOOL_NAME: _validate_claude_calendar_create,
     CLAUDE_CALENDAR_UPDATE_TOOL_NAME: _validate_claude_calendar_update,
+    CODEX_CALENDAR_CREATE_TOOL_NAME: _validate_codex_calendar_create,
+    CODEX_CALENDAR_UPDATE_TOOL_NAME: _validate_codex_calendar_update,
 }
 
 

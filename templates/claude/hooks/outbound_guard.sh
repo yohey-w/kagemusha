@@ -130,7 +130,7 @@ SLACK_PERMITTED_TOOL='mcp__slack__slack_post_message'
 # neighbouring one is reached for instead.
 NOTION_UPDATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-update-page'
 NOTION_CREATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-create-pages'
-# Google Calendar, Claude side only (2026-09-26, operator's instruction): create
+# Google Calendar, Claude side (the Codex twin is narrower; 2026-09-26, operator's instruction): create
 # one event, update one event. The helper refuses a permit whose arguments do
 # not write out who is invited and at what notification level, because an
 # event with attendees is mail to each of them. delete_event and
