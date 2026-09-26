@@ -130,6 +130,15 @@ SLACK_PERMITTED_TOOL='mcp__slack__slack_post_message'
 # neighbouring one is reached for instead.
 NOTION_UPDATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-update-page'
 NOTION_CREATE_PERMITTED_TOOL='mcp__claude_ai_Notion__notion-create-pages'
+# Google Calendar, Claude side only (2026-09-26, operator's instruction): create
+# one event, update one event. The helper refuses a permit whose arguments do
+# not write out who is invited and at what notification level, because an
+# event with attendees is mail to each of them. delete_event and
+# respond_to_event keep NO permit path — a delete names only an id, so the
+# reviewer cannot see what is cancelled or who is told, and nothing here can
+# undo it. Both stay on the outward list at step 4.
+CALENDAR_CREATE_PERMITTED_TOOL='mcp__claude_ai_Google_Calendar__create_event'
+CALENDAR_UPDATE_PERMITTED_TOOL='mcp__claude_ai_Google_Calendar__update_event'
 
 # ─── 4. outward by name. Each entry is anchored against the WHOLE name. ────
 # The operator's ruling, item by item:
@@ -370,7 +379,9 @@ fi
 # deny; stderr is hidden so message contents never enter the hook response.
 if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" \
    || "$safe_name" == "$NOTION_UPDATE_PERMITTED_TOOL" \
-   || "$safe_name" == "$NOTION_CREATE_PERMITTED_TOOL" ]]; then
+   || "$safe_name" == "$NOTION_CREATE_PERMITTED_TOOL" \
+   || "$safe_name" == "$CALENDAR_CREATE_PERMITTED_TOOL" \
+   || "$safe_name" == "$CALENDAR_UPDATE_PERMITTED_TOOL" ]]; then
   if [[ -n "$PROJECT_ROOT" && -f "$PERMIT_HELPER" ]] && command -v python3 >/dev/null 2>&1; then
     if printf '%s' "$payload" | python3 "$PERMIT_HELPER" claim --cli claude --project-root "$PROJECT_ROOT" >/dev/null 2>&1; then
       allow "$safe_name (one-shot permit claimed)"

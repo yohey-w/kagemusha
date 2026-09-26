@@ -1,6 +1,6 @@
 # One-shot outbound permits
 
-This procedure opens exactly one approved Gmail or Slack send call — and, on the Claude side, one approved Notion page write. It does not approve a message.
+This procedure opens exactly one approved Gmail or Slack send call — and, on the Claude side, one approved Notion page write or one approved Google Calendar event create/update. It does not approve a message.
 Use it only after the user has explicitly approved the exact message shown by `review`.
 
 ## Scope and threat model
@@ -13,10 +13,10 @@ One helper serves both CLIs. `--cli` selects which pair of exact wire operations
 It defaults to `codex`, so an install that predates the shared helper keeps working with the arguments it already passes.
 Nothing else differs: canonicalization, the SHA-256 binding over the complete argument set, the project/session/expiry binding, and the single atomic claim are shared, because those are the parts that must not drift apart.
 
-| `--cli` | `--tool gmail` | `--tool slack` | `--tool notion-update` | `--tool notion-create` | permit store |
-|---|---|---|---|---|---|
-| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | `<project>/.codex/outbound-permits/` |
-| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `<project>/.claude/outbound-permits/` |
+| `--cli` | `--tool gmail` | `--tool slack` | `--tool notion-update` | `--tool notion-create` | `--tool calendar-create` | `--tool calendar-update` | permit store |
+|---|---|---|---|---|---|---|---|
+| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | — | — | `<project>/.codex/outbound-permits/` |
+| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `mcp__claude_ai_Google_Calendar__create_event` | `mcp__claude_ai_Google_Calendar__update_event` | `<project>/.claude/outbound-permits/` |
 
 `--tool` is one flag for every CLI, so its allowed values are the union; asking
 for a selector the chosen CLI does not have is a usage error (exit 2), never a
@@ -33,11 +33,65 @@ must name its `page_id` and its `command`, a create must carry an explicit
 (a backgrounded write answers before the page is written, so the approval would
 cover an outcome nobody has seen).
 
+The Calendar pair was added 2026-09-26 on the operator's instruction
+(「カレンダーへの許可ルートを作ってくれ」). An event with attendees is not a
+private note: Google mails each attendee an invitation, and an update mails
+them again. So the one thing a Calendar permit adds to the shared rules is that
+**who is mailed, and how, must be written out in the arguments** — never left to
+a default the approver cannot see:
+
+- `calendar-create` requires `summary`, `startTime`, `endTime`, an explicit
+  `attendees` array (`[]` when nobody is invited; each entry an object with an
+  `email`) and an explicit `notificationLevel` of `NONE`, `EXTERNAL_ONLY` or
+  `ALL`. Omitting it — or writing `NOTIFICATION_LEVEL_UNSPECIFIED` — is refused,
+  because the connector treats both as `ALL`. The deprecated `attendeeEmails` is
+  refused: it would invite people who do not appear under `attendees`.
+- `calendar-update` requires `eventId` and an explicit `notificationLevel`.
+  Attendee changes go through `addedAttendees` / `removedAttendeeEmails`; the
+  deprecated `addedAttendeeEmails` is refused.
+- `review` prints a `calendar_attention` block ahead of the payload: the
+  invited/added/removed addresses, the notification level, the calendar, and
+  the times. It is display only; the hash is over the full canonical payload.
+
+**`delete_event` has no permit path, by decision.** Its arguments are an
+`eventId` and a notification level, so the reviewer cannot see what is being
+cancelled or who receives the cancellation, and nothing here can undo it — it
+fails the operator's own test ("can it be undone?") in a way no review can make
+up for. `respond_to_event` (an RSVP to the organizer) has none either. Both stay
+on the guard's outward list and go through the queue.
+
+Two limits, stated rather than discovered:
+
+- **An update mails the event's EXISTING attendees, and they are not in the
+  arguments.** The permit binds the change, not the audience. Read the event
+  (`get_event`) and show its attendee list to the approver before approving an
+  update with any `notificationLevel` other than `NONE`. `review` says so in its
+  `note`.
+- **Fields other than attendees and notification are bound but not
+  restricted**: `attachments` (a Drive link attached to an invited event),
+  `guestPermissions`, `visibility`, `recurrenceData`, `calendarId`,
+  `addGoogleMeetUrl`. They are in the hash and in the payload `review` prints;
+  the approver has to read them.
+
+Codex has no Calendar row, for a different reason than Notion. Its connector's
+schema (read from the local Codex tool cache, 2026-09-26) has **no
+notification-level argument at all**, so the requirement above cannot be met
+there; and the Codex guard's verb rule does not contain `create`, `update` or
+`respond`, so a **direct** `google_calendar` create/update/respond call **passes
+the Codex guard today without any permit** (delete is denied by its verb; the
+same calls written inside `exec` are denied by its write-token scanner). The
+direct-call spelling `mcp__codex_apps__google_calendar__create_event` is
+inferred from the Gmail twin and has not been observed in a real envelope
+[未確認]. Adding a Codex route
+would mean adding a new deny first. That is recorded as a known gap
+(`tests/test_m_codex.sh`, M9 `[known gap]`) for the operator to decide, not
+changed here.
+
 A permit issued for one CLI cannot be claimed through the other: the wire name, the store directory and the selector all have to agree.
 One connector answers to two spellings, and a permit accepts both. Measured 2026-09-13/14 on the ChatGPT desktop app: the JavaScript wrapper inside `exec` writes one underscore (`mcp__codex_apps__gmail_send_email`, `mcp__codex_apps__slack_slack_send_message`) while the `PreToolUse` envelope for the same call carries two.
 Only that `__`/`_` difference inside the operation segment is absorbed; the `mcp__<server>__` prefix must match exactly, so another connector, another verb, a hyphen or a missing separator stay different tools with no permit path.
 A permit still opens one act: it is spent by whichever spelling claims it, exactly once.
-No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling.
+No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling, nor for Calendar deletion or RSVPs.
 On the Notion side the same rule holds for everything but the two page writes: `notion-create-comment`, `notion-send-message-to-session`, `notion-duplicate-page` and `notion-move-pages` keep no permit path and go through the queue. That narrowness is the point — the incident recorded in the guard is one verb being denied while the neighbouring one went straight through.
 On the Claude side this also means `mcp__slack__slack_reply_to_thread` has no permit path: a threaded Slack reply cannot be approved through a ticket and has to go through the queue.
 Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
@@ -135,6 +189,36 @@ For Slack on Codex, include the destination and every message option:
 `draft_id` with a non-null value is rejected because a permit for a new send must not be reused to send and delete an existing draft.
 A schema-supplied `draft_id: null` is equivalent to omission under the canonicalization rule above.
 
+For a Calendar event on Claude Code (`--tool calendar-create`), write out the
+invitees and the notification level even when they are "nothing":
+
+```json
+{
+  "summary": "Approved title",
+  "startTime": "2030-01-07T10:00:00+09:00",
+  "endTime": "2030-01-07T11:00:00+09:00",
+  "attendees": [{"email": "guest@example.invalid"}],
+  "notificationLevel": "ALL"
+}
+```
+
+For `--tool calendar-update`, name the event and the notification level; add
+`addedAttendees` / `removedAttendeeEmails` only when the approved change is to
+the guest list:
+
+```json
+{
+  "eventId": "<event id from list_events or search_events>",
+  "startTime": "2030-01-08T10:00:00+09:00",
+  "endTime": "2030-01-08T11:00:00+09:00",
+  "notificationLevel": "NONE"
+}
+```
+
+The call the agent then makes must carry exactly these arguments; a later
+`"notificationLevel"` change, an extra guest, or a one-minute shift is a
+different act and is denied.
+
 ## Review, approve, and issue
 
 Use the installed helper inside the active project.
@@ -158,7 +242,7 @@ python3 "$PROJECT_ROOT/.claude/hooks/outbound_permit.py" review \
   --tool-input "$INPUT_FILE"
 ```
 
-Use `--tool slack` for Slack. The selector is a closed choice of `gmail` or `slack`; omitting it preserves the Gmail default.
+Use `--tool slack` for Slack. The selector is a closed choice — `gmail` or `slack` on Codex; on Claude Code also `notion-update`, `notion-create`, `calendar-create` and `calendar-update` — and omitting it preserves the Gmail default.
 
 `review` writes nothing. It prints the complete canonical input and its `sha256`.
 Present the reviewed recipients, headers, body, and attachments to the user and obtain explicit approval for that exact payload.
@@ -240,7 +324,7 @@ Record the result where your loop records decisions, including which CLI, which 
 
 ## Validation baseline
 
-The reference implementation's complete automated test count is recorded by `scripts/test.sh`; the suite includes Gmail and Slack exact binding, rejection of altered arguments, expiry, reuse, wrong session/project/tool, and concurrent double-claim.
+The reference implementation's complete automated test count is recorded by `scripts/test.sh`; the suite includes Gmail, Slack, Notion and Calendar exact binding, rejection of altered arguments, expiry, reuse, wrong session/project/tool, and concurrent double-claim.
 A separate native Gmail acceptance run verified exactly one send, full SENT/header/body readback, and permit state (`claimed` present; `pending` empty); it did not attempt a second send.
 Slack tests are synthetic and perform no external API write; a live Slack acceptance run must follow the send-once/readback procedure above and preserve `ts` plus permalink as evidence.
 Those results reduce regression risk; they do not change the threat model or replace per-message user approval.

@@ -1016,6 +1016,33 @@ assert_exit "M9: issue uses the same closed tool selector" 2 \
     --expected-sha256 ignored --project-root "$M_PERMIT_ROOT" --session-id bad-tool \
     --approval-ref TEST --approval-quote approved --confirm-user-approved
 assert_absent "M9: review alone writes no permit" "$M_PERMIT_ROOT/.codex/outbound-permits"
+
+# ── Calendar has NO Codex selector (2026-09-26) ─────────────────────────────
+# The Claude side gained calendar-create / calendar-update. The Codex side did
+# not, deliberately: the Codex connector's measured schema has no notification
+# level to bind, and the Codex guard does not deny create/update today, so a
+# selector here could only add a new deny — the operator's decision, not this
+# change's. Asking for one must fail as a usage error, not resolve to the
+# Claude wire name.
+printf '%s\n' '{"summary":"x","startTime":"2030-01-01T10:00:00+09:00","endTime":"2030-01-01T11:00:00+09:00","attendees":[],"notificationLevel":"NONE"}' \
+  > "$M_PERMIT_ROOT/cal-input.json"
+for m_cal in calendar-create calendar-update; do
+  assert_exit "M9: the $m_cal selector does not exist on the Codex side" 2 \
+    python3 "$M_PERMIT" review --tool-input "$M_PERMIT_ROOT/cal-input.json" --tool "$m_cal"
+done
+# DOCUMENTS CURRENT BEHAVIOUR, and current behaviour is a known gap: the Codex
+# guard's verb rule has no `create`/`update`/`respond`, so these calendar
+# writes pass it today as DIRECT calls, invitations included (inside `exec`
+# the write-token scanner denies them). The two-underscore spelling below is
+# inferred from the Gmail twin, not observed in a real envelope [未確認].
+# Pinned so that closing the gap is a deliberate change that flips these
+# lines, not a silent one. The delete carries a verb and is denied.
+for m_cal_op in create_event update_event respond_event; do
+  assert_eq "M9: [known gap] Codex calendar $m_cal_op passes the guard today" "allow" \
+    "$(m_decision "{\"tool_name\":\"mcp__codex_apps__google_calendar__$m_cal_op\",\"tool_input\":{}}")"
+done
+assert_eq "M9: Codex calendar delete_event is denied by the verb rule" "deny" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__google_calendar__delete_event","tool_input":{}}')"
 assert_exit "M9: issue refuses to treat a permit as approval" 1 \
   python3 "$M_PERMIT" issue --tool-input "$M_SEND_INPUT" \
     --expected-sha256 "$(m_hash "$M_SEND_INPUT")" --project-root "$M_PERMIT_ROOT" \

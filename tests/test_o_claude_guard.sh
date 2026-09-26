@@ -901,3 +901,119 @@ o_notion_reject "…nor the database form with a tab" \
 # and an ordinary body with angle brackets in prose is still writable
 o_notion_accept "ordinary prose with a URL still passes" notion-update \
   '{"page_id":"3dea","command":"insert_content","content":"# 訂正\n- 別ボード ashby: sierra-jp https://example.invalid/x"}' prose
+
+# ─── O17. the Google Calendar permit path (Claude only) ────────────────────
+# Added 2026-09-26 on the operator's instruction 「カレンダーへの許可ルートを作
+# ってくれ」. Two acts: create one event, update one event. An event with
+# attendees is mail to each of them, so the permit refuses arguments that do
+# not WRITE OUT who is invited and at what notification level, and `review`
+# pulls those lines forward where the approver reads them.
+O_CAL_CRE="$O_ROOT/cal-create.json"
+cat > "$O_CAL_CRE" <<'JSON'
+{"summary":"打ち合わせ","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[{"email":"guest@example.invalid"}],"notificationLevel":"ALL"}
+JSON
+O_CAL_UPD="$O_ROOT/cal-update.json"
+cat > "$O_CAL_UPD" <<'JSON'
+{"eventId":"evt123","startTime":"2030-01-08T10:00:00+09:00","endTime":"2030-01-08T11:00:00+09:00","notificationLevel":"NONE"}
+JSON
+O_CAL_CRE_TOOL='mcp__claude_ai_Google_Calendar__create_event'
+O_CAL_UPD_TOOL='mcp__claude_ai_Google_Calendar__update_event'
+
+O_C_REVIEW="$(o_review "$O_CAL_CRE" calendar-create)"
+assert_grep_str "O17: review binds the Calendar create wire name" "$O_CAL_CRE_TOOL" "$O_C_REVIEW"
+assert_grep_str "O17: …and pulls the invitees forward for the approver" \
+  '"attendees_invited"' "$O_C_REVIEW"
+assert_eq "O17: …listing exactly who is invited and at what notification level" \
+  'guest@example.invalid|ALL' \
+  "$(printf '%s' "$O_C_REVIEW" | python3 -c 'import json,sys;a=json.load(sys.stdin)["calendar_attention"];print("|".join(a["attendees_invited"])+"|"+a["notificationLevel"])')"
+assert_grep_str "O17: an update review warns that existing attendees are not in the arguments" \
+  'EXISTING attendees' "$(o_review "$O_CAL_UPD" calendar-update)"
+
+assert_eq "O17: a Calendar create without a permit is denied" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c0 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: a Calendar update without a permit is denied" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_UPD" sess-c0 "$O_ROOT" "$O_CAL_UPD_TOOL")")"
+
+o_issue "$O_CAL_CRE" sess-c1 300 calendar-create
+O_C_ENV="$(o_envelope "$O_CAL_CRE" sess-c1 "$O_ROOT" "$O_CAL_CRE_TOOL")"
+assert_eq "O17: an exact approved create passes once" "pass" "$(o_claim "$O_C_ENV")"
+assert_eq "O17: …and the second identical call is denied" "deny" "$(o_claim "$O_C_ENV")"
+
+o_issue "$O_CAL_UPD" sess-c2 300 calendar-update
+O_CU_ENV="$(o_envelope "$O_CAL_UPD" sess-c2 "$O_ROOT" "$O_CAL_UPD_TOOL")"
+assert_eq "O17: an exact approved update passes once" "pass" "$(o_claim "$O_CU_ENV")"
+assert_eq "O17: …and the second identical update is denied" "deny" "$(o_claim "$O_CU_ENV")"
+
+# one character different — the time, an attendee, the notification level —
+# is a different act. Each miss must leave the exact permit unconsumed.
+o_cal_variant() {  # name python-mutation → path of a mutated copy of O_CAL_CRE
+  local out="$O_ROOT/cal-var-$1.json"
+  O_IN="$O_CAL_CRE" O_OUT="$out" O_MUT="$2" python3 -c '
+import json, os
+with open(os.environ["O_IN"], encoding="utf-8") as f: d = json.load(f)
+exec(os.environ["O_MUT"])
+with open(os.environ["O_OUT"], "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)'
+  printf '%s' "$out"
+}
+O_CV_TIME="$(o_cal_variant time 'd["startTime"]="2030-01-07T10:30:00+09:00"')"
+O_CV_GUEST="$(o_cal_variant guest 'd["attendees"][0]["email"]="guesT@example.invalid"')"
+O_CV_MORE="$(o_cal_variant more 'd["attendees"].append({"email":"other@example.invalid"})')"
+O_CV_NOTIF="$(o_cal_variant notif 'd["notificationLevel"]="EXTERNAL_ONLY"')"
+o_issue "$O_CAL_CRE" sess-c3 300 calendar-create
+assert_eq "O17: a permit does not open the same event at another time" "deny" \
+  "$(o_claim "$(o_envelope "$O_CV_TIME" sess-c3 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: …nor with one attendee's address changed by one letter" "deny" \
+  "$(o_claim "$(o_envelope "$O_CV_GUEST" sess-c3 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: …nor with an attendee added" "deny" \
+  "$(o_claim "$(o_envelope "$O_CV_MORE" sess-c3 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: …nor at another notification level" "deny" \
+  "$(o_claim "$(o_envelope "$O_CV_NOTIF" sess-c3 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: …nor as an update instead of a create" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c3 "$O_ROOT" "$O_CAL_UPD_TOOL")")"
+assert_eq "O17: …nor as a delete of an event" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c3 "$O_ROOT" mcp__claude_ai_Google_Calendar__delete_event)")"
+assert_eq "O17: …nor from another session" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c3-other "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+assert_eq "O17: …and after all those misses the exact permit still passes" "pass" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c3 "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+
+# expiry, by the suite's own no-sleep method (see O10), with its control.
+o_issue "$O_CAL_CRE" sess-c-exp 300 calendar-create
+assert_eq "O17: the calendar permit to age is on disk before it is aged" "1" \
+  "$(o_repoint sess-c-exp -1000 -700)"
+assert_eq "O17: an expired calendar permit is refused" "deny" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c-exp "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+o_issue "$O_CAL_CRE" sess-c-fresh 300 calendar-create
+assert_eq "O17: …while an unexpired one of the same shape passes" "pass" \
+  "$(o_claim "$(o_envelope "$O_CAL_CRE" sess-c-fresh "$O_ROOT" "$O_CAL_CRE_TOOL")")"
+
+# the shapes a permit refuses to bind: who is mailed must be written out.
+o_cal_reject() {  # label tool json name
+  local f="$O_ROOT/cal-reject-$4.json"
+  printf '%s\n' "$3" > "$f"
+  assert_exit "O17: $1" 1 python3 "$O_PERMIT" review --cli claude --tool "$2" --tool-input "$f"
+}
+o_cal_reject "a create that omits attendees is refused (write [] for none)" calendar-create \
+  '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","notificationLevel":"NONE"}' noatt
+o_cal_reject "a create that omits notificationLevel is refused (the default is ALL)" calendar-create \
+  '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[]}' nonotif
+o_cal_reject "…and NOTIFICATION_LEVEL_UNSPECIFIED is the same as not saying" calendar-create \
+  '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[],"notificationLevel":"NOTIFICATION_LEVEL_UNSPECIFIED"}' unspec
+o_cal_reject "the deprecated attendeeEmails channel is refused" calendar-create \
+  '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[],"attendeeEmails":["hidden@example.invalid"],"notificationLevel":"NONE"}' depr
+o_cal_reject "an attendee with no email is refused" calendar-create \
+  '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[{"displayName":"x"}],"notificationLevel":"NONE"}' noemail
+o_cal_reject "an update that omits notificationLevel is refused" calendar-update \
+  '{"eventId":"evt123","startTime":"2030-01-08T10:00:00+09:00"}' unotif
+o_cal_reject "an update that names no event is refused" calendar-update \
+  '{"startTime":"2030-01-08T10:00:00+09:00","notificationLevel":"NONE"}' uevt
+o_cal_reject "the deprecated addedAttendeeEmails channel is refused" calendar-update \
+  '{"eventId":"evt123","addedAttendeeEmails":["hidden@example.invalid"],"notificationLevel":"NONE"}' udepr
+
+# delete and RSVP have no permit path: no selector, and the guard still denies.
+assert_exit "O17: there is no calendar-delete selector" 2 \
+  python3 "$O_PERMIT" review --cli claude --tool calendar-delete --tool-input "$O_CAL_UPD"
+assert_eq "O17: delete_event is still denied" "deny" \
+  "$(o_decide 'mcp__claude_ai_Google_Calendar__delete_event')"
+assert_eq "O17: respond_to_event is still denied" "deny" \
+  "$(o_decide 'mcp__claude_ai_Google_Calendar__respond_to_event')"
