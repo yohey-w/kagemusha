@@ -23,6 +23,24 @@ for a selector the chosen CLI does not have is a usage error (exit 2), never a
 silent resolution to another CLI's wire name. Codex has no Notion row because
 its guard names no Notion tool: there is nothing there to open.
 
+**The default cuts both ways, and only the Claude-only selectors fail loudly.**
+Asking for `notion-update` without `--cli claude` is the usage error above: it
+names the cause and exits 2. The three selectors Codex also has — `gmail`,
+`slack`, `calendar-create` — cannot do that, because the name resolves; the
+Claude-shaped payload is simply checked against the *Codex* schema. Measured
+2026-09-27 against this helper: a Claude calendar payload (`summary`,
+`startTime`) reviewed without `--cli claude` fails with `Calendar title must be
+a non-empty string`, naming a field the Claude connector does not have; a
+Claude Gmail payload (`to` as an array) passes `review` with **no error at
+all**, and `issue` then writes a permit under
+`<project>/.codex/outbound-permits/pending/` bound to
+`mcp__codex_apps__gmail__send_email` — a wire name the Claude call never
+carries, so the send is denied and the refusal says nothing about a missing
+flag.
+The calendar case is the one that was hit, on the first real use of the
+calendar path (2026-09-27). On Claude Code, pass `--cli claude` to `review` and
+to `issue`, every time.
+
 The Notion pair was added 2026-09-18 on the operator's ruling. The reasoning is
 not that Notion became inward — the guard still treats a shared workspace as
 outward speech — but that this system keeps its 正本 (ledgers, job logs) in the
@@ -32,6 +50,15 @@ must name its `page_id` and its `command`, a create must carry an explicit
 `parent` and exactly one entry in `pages`, and neither may set `allow_async`
 (a backgrounded write answers before the page is written, so the approval would
 cover an outcome nobody has seen).
+
+An update is held to **one** edit as well: `content_updates` may carry exactly
+one entry, and `replace_all_matches` is refused — one permit that rewrites every
+match is many edits under a single approval. So when an approved change touches
+several places on the same page, there are two honest shapes and no third:
+widen the single replacement to the **contiguous range that covers them**, so
+the approver sees the whole of what lands, or take **one permit per edit**. The
+first shape was used on 2026-09-26, bundling three separate passages of one page
+into one range.
 
 The Calendar pair was added 2026-09-26 on the operator's instruction
 (「カレンダーへの許可ルートを作ってくれ」). An event with attendees is not a

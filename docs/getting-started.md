@@ -136,6 +136,7 @@ This kit is built around the assumption that AI output can be wrong — that's t
 
 - **What:** the [Codex plugin for Claude Code](https://github.com/openai/codex-plugin-cc) — an official plugin that calls OpenAI's Codex CLI from inside Claude Code — plus the Codex CLI itself and an OpenAI-side login. Its usage quota is billed separately from Claude usage, so reaching for it doesn't eat into your main work's budget.
 - **When to reach for it:** (1) a second diagnosis when you're stuck, (2) designing a fix for your *own* blind spot — don't ask the side that has the blind spot to design around it, (3) an independent check before a big publish or delivery. Having it review this kit's own verifiers, or a distilled change to the judgment model, is the typical case.
+- **Two jobs live here, and only one of them needs another vendor.** Reading a draft *as a first reader* — finding what does not parse for someone who lacks the context you have — needs a session that carries none of that context; a different model from the same vendor, or a sub-agent, is enough (operator's ruling, 2026-09-23). Checking a fact or a design against a **lineage's** shared blind spot is the job described above, and there the vendor has to differ. Keep the two apart — passing as a first reader says nothing either way about the blind spot.
 - **How to install** (verified against the plugin's own README):
 
   ```bash
@@ -302,6 +303,7 @@ cp scripts/weekly_distill.sh.example scripts/weekly_distill.sh && $EDITOR script
 
 - **何を**: [Claude Code 用 Codex プラグイン](https://github.com/openai/codex-plugin-cc)——OpenAI の Codex CLI を Claude Code の中から呼び出す公式プラグイン——と Codex CLI 本体、OpenAI 側のログイン。利用枠は Claude の利用枠と別会計なので、検算に回しても本業の枠を食わない。
 - **どう使うか**: ①詰まったときのもう1つの診断 ②**自分の弱点への対策の設計**（弱点を持つ側に、その弱点を埋める設計を発注しない）③大きな公開・納品の前の独立検品。このキット自身の検証器や、蒸留した価値判断モデルの改訂案を、別血統に検品させるのが典型。
+- **ここには仕事が2種類あり、別ベンダーが要るのは片方だけ**: 原稿を**初見の読み手**として読ませる仕事——自分が持っている文脈なしでは読めない箇所を見つける——に要るのは、**その文脈を持たない別セッション**であって、同じベンダーの別モデルでもサブエージェントでも足りる（承認者の裁定・2026-09-23）。**血統に共通する死角**に照らして事実や設計を検算するのが上の話で、そちらはベンダーが違わないと意味がない。2つを混ぜない——初見の読み手として合格したことは、死角については何も言っていない。
 - **導入手順**（プラグイン本体の README で裏取り済み）:
 
   ```bash
