@@ -493,6 +493,16 @@ def _validate_claude_calendar_create(tool_input) -> None:
         )
     _require_attendee_objects(tool_input["attendees"], "attendees")
     _require_notification_level(tool_input)
+    if _is_status_event(tool_input.get("eventType")):
+        # An out-of-office or focus-time block can auto-decline OTHER people's
+        # invitations, with a message to their organizers.  This connector has
+        # no auto-decline argument, so that cannot be bound — and what cannot
+        # be bound is not opened (independent review, 2026-09-27).
+        raise PermitError(
+            f"Calendar eventType {tool_input.get('eventType')} is not valid for a "
+            "permitted create: a status event may auto-decline other people's "
+            "invitations, and this connector cannot bind that"
+        )
 
 
 def _validate_claude_calendar_update(tool_input) -> None:
@@ -513,6 +523,19 @@ def _validate_claude_calendar_update(tool_input) -> None:
     if tool_input.get("removedAttendeeEmails") is not None:
         _require_email_strings(tool_input["removedAttendeeEmails"], "removedAttendeeEmails")
     _require_notification_level(tool_input)
+
+
+# Status events that can auto-decline other people's invitations.  Compared
+# after folding case and dropping `_`, `-` and spaces, so `OUT_OF_OFFICE`,
+# `outOfOffice`, `out-of-office` and `FocusTime` all meet the same rule.
+_STATUS_EVENT_TYPES = frozenset({"outofoffice", "focustime"})
+
+
+def _is_status_event(value) -> bool:
+    if not isinstance(value, str):
+        return value is not None  # a non-string type is not trusted either
+    folded = "".join(ch for ch in value.casefold() if ch not in "_- \t")
+    return folded in _STATUS_EVENT_TYPES
 
 
 def _refuse_present(tool_input, key: str, why: str) -> None:
@@ -536,6 +559,15 @@ def _refuse_auto_decline(tool_input) -> None:
         raise PermitError(
             "Calendar auto_decline_mode is not valid for a Codex permit: "
             "it declines other people's invitations"
+        )
+    if _is_status_event(tool_input.get("event_type")) and mode != "declineNone":
+        # Google's default auto-decline for a status event is not something
+        # this helper can see, so an out-of-office / focus-time block must SAY
+        # it declines nothing (independent review, 2026-09-27).
+        raise PermitError(
+            f"Calendar event_type {tool_input.get('event_type')} needs "
+            "auto_decline_mode \"declineNone\" written out for a Codex permit: "
+            "a status event may auto-decline other people's invitations"
         )
 
 

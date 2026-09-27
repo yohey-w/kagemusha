@@ -1017,3 +1017,22 @@ assert_eq "O17: delete_event is still denied" "deny" \
   "$(o_decide 'mcp__claude_ai_Google_Calendar__delete_event')"
 assert_eq "O17: respond_to_event is still denied" "deny" \
   "$(o_decide 'mcp__claude_ai_Google_Calendar__respond_to_event')"
+
+# ─── O18. status events are not opened (independent review, 2026-09-27) ────
+# An out-of-office or focus-time block can auto-decline OTHER people's
+# invitations with a message to their organizers, and the Claude connector has
+# no argument that binds it. Refused in every case/spelling — and the refusal
+# must be for THAT reason, not an unrelated one.
+for o_st in OUT_OF_OFFICE FOCUS_TIME outOfOffice focus_time Out-Of-Office 'focus time'; do
+  o_st_f="$O_ROOT/cal-status-${o_st// /_}.json"
+  O_ST="$o_st" python3 -c '
+import json, os
+print(json.dumps({"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[],"notificationLevel":"NONE","eventType":os.environ["O_ST"]}))' > "$o_st_f"
+  o_st_err="$(python3 "$O_PERMIT" review --cli claude --tool calendar-create --tool-input "$o_st_f" 2>&1 >/dev/null)"; o_st_rc=$?
+  assert_eq "O18: eventType '$o_st' is refused" "1" "$o_st_rc"
+  assert_grep_str "O18: …because a status event may auto-decline others ('$o_st')" \
+    'auto-decline' "$o_st_err"
+done
+printf '%s\n' '{"summary":"x","startTime":"2030-01-07T10:00:00+09:00","endTime":"2030-01-07T11:00:00+09:00","attendees":[],"notificationLevel":"NONE","eventType":"DEFAULT"}' > "$O_ROOT/cal-status-default.json"
+assert_exit "O18: an ordinary eventType DEFAULT still passes review" 0 \
+  python3 "$O_PERMIT" review --cli claude --tool calendar-create --tool-input "$O_ROOT/cal-status-default.json"

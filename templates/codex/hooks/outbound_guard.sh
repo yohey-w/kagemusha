@@ -184,6 +184,10 @@ CALENDAR_CREATE_PERMITTED_TOOL='mcp__codex_apps__google_calendar__create_event'
 # spellings of the namespace (`mcp__…`, `mcp_…`, one or two underscores before
 # the operation) meet the same rule.
 CALENDAR_OUTBOUND='^mcp_codex_apps_google_calendar_(create_event|update_event|respond_event)$'
+# NOT every calendar write is here, by choice: `set_event_label_silently` still
+# passes. Its schema fixes sendUpdates=none, the primary calendar and a private
+# label — it mails nobody, so it is not outward by this file's test. Recorded
+# as a named exception (independent review NOTE, 2026-09-27) and pinned in M9.
 SLACK_READ_OPERATIONS='slack_get_reactions|slack_list_channel_members|slack_list_starred_items|slack_list_user_channels|slack_list_user_conversations|slack_list_user_groups|slack_list_workspaces|slack_read_canvas|slack_read_channel|slack_read_file|slack_read_thread|slack_read_user_profile|slack_search_channels|slack_search_emojis|slack_search_public|slack_search_public_and_private|slack_search_users'
 
 # Tools that run CODE, and can therefore reach a connector from inside their

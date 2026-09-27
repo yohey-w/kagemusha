@@ -49,6 +49,10 @@ a default the approver cannot see:
 - `calendar-update` requires `eventId` and an explicit `notificationLevel`.
   Attendee changes go through `addedAttendees` / `removedAttendeeEmails`; the
   deprecated `addedAttendeeEmails` is refused.
+- On create, an `eventType` of `OUT_OF_OFFICE` or `FOCUS_TIME` (any case or
+  spelling) is refused: a status event may auto-decline other people's
+  invitations with a message to their organizers, and this connector has no
+  argument that binds it.
 - `review` prints a `calendar_attention` block ahead of the payload: the
   invited/added/removed addresses, the notification level, the calendar, and
   the times. It is display only; the hash is over the full canonical payload.
@@ -92,7 +96,13 @@ be bound, the permit does not open:
   `attendees: []`. **Any attendee is refused** — such an event goes through the
   queue and is created by hand. `attendee_optionality`, `decline_message` and an
   `auto_decline_mode` other than `declineNone` are refused too: an auto-declining
-  status event answers other people's invitations.
+  status event answers other people's invitations. For the same reason an
+  `event_type` of `outOfOffice` or `focusTime` (any case or spelling) must
+  write out `auto_decline_mode: "declineNone"`, or no permit is issued —
+  Google's default auto-decline for a status event cannot be seen from here.
+- One Codex calendar write is **not** denied, as a named exception:
+  `set_event_label_silently`. Its schema fixes `sendUpdates=none`, the primary
+  calendar and a private label, so it mails nobody.
 - **Codex has no `calendar-update`** (parent's ruling, 2026-09-26). An update
   mails the event's existing attendees, who are not in the arguments, and this
   connector cannot silence them — so neither who is mailed nor whether anyone

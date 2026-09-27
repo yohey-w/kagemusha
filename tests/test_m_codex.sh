@@ -1476,6 +1476,25 @@ m_cal_reject "…and an auto-decline that answers other people's invitations is 
   '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"event_type":"outOfOffice","auto_decline_mode":"declineAllConflictingInvitations"}' decl
 m_cal_reject "…and a decline message is refused" calendar-create \
   '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"decline_message":"sorry"}' declmsg
+# status events (independent review, 2026-09-27): an out-of-office or
+# focus-time block may auto-decline other people's invitations, and Google's
+# default is not visible here — so it must SAY declineNone, in any spelling of
+# the type. The refusal is checked for its reason, not just its exit code.
+for m_st in outOfOffice focusTime OUT_OF_OFFICE focus_time; do
+  m_st_f="$M_PERMIT_ROOT/cal-status-$m_st.json"
+  M_ST="$m_st" python3 -c '
+import json, os
+print(json.dumps({"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"event_type":os.environ["M_ST"]}))' > "$m_st_f"
+  m_st_err="$(python3 "$M_PERMIT" review --tool calendar-create --tool-input "$m_st_f" 2>&1 >/dev/null)"; m_st_rc=$?
+  assert_eq "M9: event_type $m_st without auto_decline_mode is refused" "1" "$m_st_rc"
+  assert_grep_str "M9: …because it needs declineNone written out ($m_st)" 'declineNone' "$m_st_err"
+done
+printf '%s\n' '{"title":"x","start_time":"2030-01-07T10:00:00+09:00","end_time":"2030-01-07T11:00:00+09:00","attendees":[],"event_type":"outOfOffice","auto_decline_mode":"declineNone"}' > "$M_PERMIT_ROOT/cal-status-ok.json"
+assert_exit "M9: an out-of-office block that declines nothing passes review" 0 \
+  python3 "$M_PERMIT" review --tool calendar-create --tool-input "$M_PERMIT_ROOT/cal-status-ok.json"
+# the named exception: this label write mails nobody (sendUpdates=none fixed).
+assert_eq "M9: set_event_label_silently passes, as a documented exception" "allow" \
+  "$(m_decision '{"tool_name":"mcp__codex_apps__google_calendar__set_event_label_silently","tool_input":{}}')"
 assert_exit "M9: there is no calendar-delete selector on Codex" 2 \
   python3 "$M_PERMIT" review --tool calendar-delete --tool-input "$M_CALU_INPUT"
 
