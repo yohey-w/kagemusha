@@ -29,10 +29,8 @@
 2. **Verify on the real artifact before declaring done.** 「完了」は主張であって証明ではない。現物で動作を確かめてから宣言する。未検証なら「未確認」と言う。 [D:D-2026-07-18-05] ✔+
 3. **Cite a source, or don't write the number.** 数値・制度・URL は出典を確認してから書く。裏取りできないものは書かない。 [D:D-2026-07-24-03] ✔
 
-### コスト・見積
-4. **Price from actual hours, not vibes.** 見積は想定工数×単価の内訳で出す。勘で丸めた総額は根拠を聞かれると崩れる。 [D:D-2026-07-20-02] △（しきい値は承認者に要確認: 小額案件で内訳が過剰になる線引きが未確定）
-
 ### 伝達
+<!-- P4 は削除した。安定 ID は振り直さず、4 は再利用しない（新設は最大番号 +1）。 -->
 5. **Plain language over jargon in anything a client will read.** 対外文書は初見で意味が取れる完文で書く。内部略称・コードネームを対外面に出さない。 [C:2026-07] ✔
 6. **Lead with the recommendation, then the reason, then the alternative.** 判断を含む報告は「推奨 + 根拠（原則 ID 引用）+ 捨てた代替案」の順。原則を引用できない判断が続くならモデルの穴。 [C:2026-07] ✔
 

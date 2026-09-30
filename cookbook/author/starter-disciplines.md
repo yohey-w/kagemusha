@@ -40,13 +40,16 @@
 
 ## すでにキットに入っている規律（ここには再掲しない）
 
-つまみ食いの前に、**基礎はもう `setup.sh` が置いている**。ここを二重に貼らないこと。
+つまみ食いの前に、**基礎の2本はもう `setup.sh` が置いている**。ここを二重に貼らないこと。
 
-- **戻せるものは自動／戻せないものは承認**（＝マンデートの軸） → `templates/agent_instructions.md` 中核規律1・`templates/judgment_model.md` P1
-- **Done is a claim, not a proof（現物で確かめてから完了と言う）** → 同 中核規律4・P2
-- **確認していない断定を断定の形で書くな**（否定・帰属・因果・数量・評価／危ない出所4つ） → `templates/verifiers.md` (A)
-- **否定は射程を先に書く**（①どこを ②どこまで見たか） → 同 (A)
-- **サブエージェントの報告は検収してから配送する**（射程・引用検収・並列は隔離） → `templates/agent_instructions.md` 中核規律7
+- **戻せるものは自動／戻せないものは承認**（＝マンデートの軸） → `templates/agent_instructions.md` の「審査境界」
+- **Done is a claim, not a proof（現物で確かめてから完了と言う）** → 同「審査境界」と「完了の定義」
+
+次の3本は**キットには入っていない**（`templates/verifiers.md` と `templates/judgment_model.md` は空で出荷される）。書き方の実例は標本棚の [`reference-instance/`](reference-instance/) にあるので、踏んだ穴に合うなら、そこから自分の指示ファイルか `verifiers.md` へ持ち帰る。
+
+- **確認していない断定を断定の形で書くな**（否定・帰属・因果・数量・評価／危ない出所4つ） → 標本の [`CLAUDE.md`](reference-instance/CLAUDE.md) 中核規律4・[`verifiers.md`](reference-instance/verifiers.md) (A)
+- **否定は射程を先に書く**（①どこを ②どこまで見たか） → 標本の [`verifiers.md`](reference-instance/verifiers.md) (A)
+- **サブエージェントの報告は検収してから配送する**（射程・引用検収・並列は隔離） → 標本の [`CLAUDE.md`](reference-instance/CLAUDE.md) 中核規律7
 
 ---
 
@@ -57,7 +60,7 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル（承認キューを使うならその型にも）
 
-エージェントが人間に**質問・承認依頼を出すときは、読む側の形に整形してから差し出す**。固定の5点——①**冒頭に置く**（末尾に埋めない）②**前提を2〜3行積む**（いつ・誰に・何をしたか。承認者が経緯を覚えている前提で書かない）③**現物を貼る**（「§3の言い切りを弱めました」でなく before → after そのもの）④**推奨を1つ付ける**（開いた問いを投げない）⑤**無回答時の既定動作を宣言する**。**1件1判断・1バッチ3件まで。**
+エージェントが人間に**質問・承認依頼を出すときは、読む側の形に整形してから差し出す**。固定の5点——①冒頭に置く（末尾に埋めない）②前提を2〜3行積む（いつ・誰に・何をしたか。承認者が経緯を覚えている前提で書かない）③現物を貼る（「§3の言い切りを弱めました」でなく before → after そのもの）④推奨を1つ付ける（開いた問いを投げない）⑤無回答時の既定動作を宣言する。1件1判断・1バッチ3件まで。
 
 > 焼けた出自: 承認者に「判断を求めるときの提示が読みにくい」と言われた。ループの速度は生成では律速せず**承認で律速する**。**生成する側は疲れないが、承認する側は疲れる**——エージェントの手間を1増やすと承認者の手間が10減る、という非対称がここにある。
 > ②だけは出自が違う: 承認依頼が過去の往復を説明なしに参照し、承認者が「なんのこと?」で止まった。**承認者が経緯を知らないのは事故ではなく、このループの仕様**だ（人間が通信を読まなくても回ることが目的なのだから）。**人間の記憶をキャッシュとして使った時点で負け。**
@@ -70,7 +73,7 @@
 **［機構前提］** requires: 追記型のタスク台帳＋1画面の盤面（`ssot/tasks.md` / `system_map.md`）
 **貼り先**: エージェント指示ファイル
 
-まとまった報告のたびに4区分を添える——①**承認者の判断が要るもの**（何を決めれば何が動くかまで書く）②**走行中**（何を待っているか）③**終わったもの**④**手つかず**。**落ちるのは常に④**なので、④を数えられる台帳が無いとこの規律は成立しない。
+まとまった報告のたびに4区分を添える——①承認者の判断が要るもの（何を決めれば何が動くかまで書く）②走行中（何を待っているか）③終わったもの④手つかず。**落ちるのは常に④**なので、④を数えられる台帳が無いとこの規律は成立しない。
 
 > 焼けた出自: 長い仕事が並列で走るほど、承認者からは「何が終わって何が詰まっているか」が見えなくなる。単発の結果だけを報告し続けて、承認者を失明させた。
 
@@ -79,7 +82,7 @@
 **［機構前提］** requires: 追記型の台帳（差分を計算する土台）
 **貼り先**: エージェント指示ファイル
 
-**定時に配る「全体像」は、届く前に腐っている**——承認者が最初の1手を打った瞬間に嘘になるからだ。盤面は**作業の区切りで会話に出す**。定時便が運ぶのは**差分と期限だけ**（留守中に落ちてきたもの／今日と明日の期限／壊れた機構／留守中に終わったもの）。**全部空なら黙る。**
+**定時に配る「全体像」は、届く前に腐っている**——承認者が最初の1手を打った瞬間に嘘になるからだ。盤面は作業の区切りで会話に出す。定時便が運ぶのは差分と期限だけ（留守中に落ちてきたもの／今日と明日の期限／壊れた機構／留守中に終わったもの）。全部空なら黙る。
 
 > 焼けた出自: 毎朝の全体像ブリーフは、受け取った直後の作業で陳腐化して読まれなくなった。同じループで生き残っていたものを数えたら、**全部が追記型**（判断台帳・承認キュー・区切りごとの報告）で、腐って死んだものは**全部スナップショット**だった。
 
@@ -90,7 +93,7 @@
 **［型だけ持ち帰れ］**
 **貼り先**: エージェント指示ファイル
 
-長い文書を渡して「読んでおいて」は**配送ではない**。ファイルは書庫（正本・記録・素材）で、承認者の頭に運ぶ形式は会話のほうだ。運ぶときは**1ターン1論点**、「想定 → 実際 → ひとこと → 判断はこれ」の順。承認者が既に断片的に知っている対象なら、**先に相手の理解を吐き出させて、ズレている箱だけ**潰す（説明は上書きでなく修理）。
+長い文書を渡して「読んでおいて」は**配送ではない**。ファイルは書庫（正本・記録・素材）で、承認者の頭に運ぶ形式は会話のほうだ。運ぶときは1ターン1論点、「想定 → 実際 → ひとこと → 判断はこれ」の順。承認者が既に断片的に知っている対象なら、先に相手の理解を吐き出させて、ズレている箱だけ潰す（説明は上書きでなく修理）。
 
 > 焼けた出自: 同じ内容を、長文のドキュメントで渡したときは頭に入らず、一問一答で運んだときは入った。承認者の言葉で「ファイルを渡されても全然頭に入らない」。
 
@@ -101,7 +104,7 @@
 **［単体で効く］**
 **貼り先**: `verifiers.md` (B) ——**該当行は同梱されていないので新規行として足す**
 
-成果物は、**相手がすでに開いているチャネル**にだけ置く（通知の push／会話の中／タップ1回で開く URL）。「エディタでファイルを開いてもらう」導線は死ぬ。**置き場所を増やすたびに、読まれない確率が上がる。**
+成果物は、**相手がすでに開いているチャネル**にだけ置く（通知の push／会話の中／タップ1回で開く URL）。「エディタでファイルを開いてもらう」導線は死ぬ。置き場所を増やすたびに、読まれない確率が上がる。
 
 > 焼けた出自: きれいに整えた盤面ファイルが、そもそも開かれなかった。同じ中身を通知と会話に流した途端に動いた。差は中身ではなく面だった。
 
@@ -112,7 +115,7 @@
 **［単体で効く］**
 **貼り先**: `verifiers.md` (B) ——**該当行は同梱されていないので新規行として足す**
 
-調査・リサーチの報告は、**冒頭に「掃いた棚のリスト」を置く**（媒体×ソース×どこまで）。**掃かなかった棚も「未掃」と名指す。**「網羅した」と書くのは禁止——書けるのは「この棚をここまで掃いた」だけだ。競合・市場のような**動く対象を一度きり調べたときは、「◯月◯日時点のスナップショット」と明記**する（継続監視が要るなら定点便を提案する）。
+調査・リサーチの報告は、**冒頭に「掃いた棚のリスト」を置く**（媒体×ソース×どこまで）。掃かなかった棚も「未掃」と名指す。「網羅した」と書くのは禁止——書けるのは「この棚をここまで掃いた」だけだ。競合・市場のような動く対象を一度きり調べたときは、「◯月◯日時点のスナップショット」と明記する（継続監視が要るなら定点便を提案する）。
 
 > 焼けた出自: 競合調査が1つの棚（SNS 検索）だけで終わり、別の棚（イベント／動画コミュニティ）の最前線を丸ごと落とした。**依頼した側から網羅性は監査できない**——中身を全部知っていなければ結論は検品できないからだ。**棚のリストなら10秒で穴を刺せる。**
 
@@ -128,18 +131,18 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル
 
-**分かれ道がある仕事**（仕様・設計・方針）は、承認者との対話で1個ずつ潰す＝これが「要件の凍結」のやり方。**レシピが決まった仕事**（実装・文書化・調査）は、凍結後に一発で委譲する。**成果物は、また対話で検収する。**
+**分かれ道がある仕事**（仕様・設計・方針）は、承認者との対話で1個ずつ潰す＝これが「要件の凍結」のやり方。レシピが決まった仕事（実装・文書化・調査）は、凍結後に一発で委譲する。成果物は、また対話で検収する。
 
 > 焼けた出自: 対話で詰めた仕様は、承認者の反問で強くなった（事前のブリーフには書けない論点が出た）。同じ日に**対話を飛ばして一発に出した成果物は重心を外し、作り直しになった**。順序の差だけで結果が割れた。
 
 ※ 何を「分かれ道」と数えるかの線引きはあなたの環境次第——ただし線が動いても、**分かれ道を一発委譲に流すと壊れる**という向きは変わらない。
 
-### B2. The orchestrator designs and inspects; execution is delegated.
+### B2. The orchestrator designs and inspects; the bulk of execution is delegated.
 
 **［機構前提］** requires: サブエージェント（あるいは別セッション）へ委譲できる手段
 **貼り先**: エージェント指示ファイル
 
-指揮する側の**文脈が希少資源**だ。指揮側が自分でやってよいのは、設計・委譲先の選定・承認者との対話・**検収**、そして1回の検索で終わる確認まで。編集・調査・生成の実作業は、サイズに関わらず委譲する。
+指揮する側の**文脈が希少資源**だ。指揮側の仕事は、設計・委譲先の選定・承認者との対話・検収。大きな実作業と、並列にできる独立した調査は委譲する。数回の読み書きで終わる確認や小さな修正は、委譲の往復のほうが高くつくので指揮側でやってよい。委譲した成果を、指揮側でやり直さない。
 
 > 焼けた出自: 指揮側が「これくらいなら」と自分で手を動かし、**検収に使うはずだった文脈を実作業で使い切った**。安いはずの作業が、いちばん高い枠を食っていた。
 
@@ -153,6 +156,17 @@
 > 焼けた出自: 打ち合わせ資料一式がスクラッチパッドに書かれ、領域ごと消えた。セッションログから復元できたのは僥倖であって、設計ではなかった。
 
 **機械化**: 書き込みパスの lint——成果物タイプの出力先が一時ディレクトリなら拒否する。
+
+### B4. Deliver what was asked, at the scope it was meant.
+
+**［単体で効く］**
+**貼り先**: エージェント指示ファイル
+
+頼まれたことを、頼んだ人が意図した範囲で仕上げる。小さな判断は自分で決め、読み方次第で仕事の大きさが変わるときだけ聞く。頼みが間違っている・もっと良い方法があると思ったら一文で言い、**頼まれた形のまま進める**（黙って狭めない・広げない・作り替えない）。できない部分があれば残りを仕上げ、何が足りないかと理由を書く。
+
+> 焼けた出自: 「止めるべき指摘は0件」と判定されたレビューの後で、中くらいの指摘まで全部こちらで直しにいき、承認者に「受け入れが厳しすぎる」と言われた。別の日には、頼まれていない回数の上限を手順に足して、同じく差し戻された。どちらも、頼まれた範囲の外で「念のため」を積んだ形。
+
+**機械化**: 落とせない。報告の冒頭に「頼まれた範囲／やった範囲／範囲外で気づいたこと（手は付けていない）」の3行を置くと、はみ出しが報告の中で見える。
 
 ---
 
@@ -174,7 +188,7 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル
 
-別の目に見てもらうときの手順を固定する——①**自分の診断を渡すな**（渡すのは問題・現物・制約だけ）②**自分の案は、相手の回答を見る前に固定して出す**（後出しで寄せない）③**採らなかった案も、捨てた理由ごと残す**。
+別の目に見てもらうときの手順を固定する——①**自分の診断を渡すな**（渡すのは問題・現物・制約だけ）②自分の案は、相手の回答を見る前に固定して出す（後出しで寄せない）③採らなかった案も、捨てた理由ごと残す。
 
 > 焼けた出自: 自分の診断を一緒に渡した比較は、相手が同じ結論に寄って何も検出しなかった。勝った案だけを残した記録は、後から読むと「制作秘話」になっていて、次の判断に使えなかった。
 
@@ -185,7 +199,7 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル
 
-「〜しておきます」「あとで直します」と書いたら、**直後の操作がそれ**であること。書いた時点で予定になり、予定は落ちる。すぐやらないなら、書くのは宣言ではなく**タスク台帳への1件**。
+「〜しておきます」「あとで直します」と書いたら、**直後の操作がそれ**であること。書いた時点で予定になり、予定は落ちる。すぐやらないなら、書くのは宣言ではなくタスク台帳への1件。
 
 > 焼けた出自: 報告文の中でだけ実行された「やっておきます」が複数回あった。承認者から見ると完了に見え、実際には何も起きていない——**偽緑の、自分で自分に対する版**。
 
@@ -211,7 +225,7 @@
 **［単体で効く］**
 **貼り先**: `verifiers.md` (B)・要件や見積の書式
 
-合意文書（要件・見積の前提・契約条件）の1行1行には出所が3種ある——**①相手の発言 ②相手の資料（どのファイルのどの欄かまで） ③自分の仮置き**。③に〔当方案〕の札を付けずに書くと、3日後には①に見える。**相手に確認へ回すか決める前に、その行がどれかを確かめる**。②は「相手の資料のどれか」まで見る——複数の出典を1つの表にまとめてあると、当該案件に無い条件を平気で持ち込める。
+合意文書（要件・見積の前提・契約条件）の1行1行には出所が3種ある——**①相手の発言 ②相手の資料（どのファイルのどの欄かまで） ③自分の仮置き**。③に〔当方案〕の札を付けずに書くと、3日後には①に見える。相手に確認へ回すか決める前に、その行がどれかを確かめる。②は「相手の資料のどれか」まで見る——複数の出典を1つの表にまとめてあると、当該案件に無い条件を平気で持ち込める。
 
 > 焼けた出自: 相手の**別件の**資料から写した計算式を「相手の仕様」と言い切って「確認不要」と主張し、承認者の指摘で確認したら当該案件の資料にその式は無かった。1つの論点で、最初の断定もその訂正も両方外した——どちらも出所を開く前に書いたからだ。
 
@@ -272,6 +286,6 @@ Every entry carries a **portability label**, because skimming disciplines off so
 
 Each entry also names its **paste target** (L1 judgment model / agent instructions file / `verifiers.md`) and the **burn it came from**. Paste into L1 with the `△` mark (provisional, pending the approver's confirmation): rewrite the source tag to your own `[C:]`/`[D:]` the day your journal confirms it, delete it the day your journal contradicts it. Your one rejection outranks any borrowed principle.
 
-The five foundational disciplines — reversibility as the mandate axis, done-is-a-claim, no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **already shipped** by `setup.sh` and are pointed to rather than repeated here. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader — and carrying its own premise, since an approver who has not read the correspondence is this loop's specification rather than its accident; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects; deliverables never land in scratch), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
+Two foundational disciplines — reversibility as the mandate axis, and done-is-a-claim — are **already shipped** by `setup.sh` (in `templates/agent_instructions.md`) and are pointed to rather than repeated here. Three more — no unverified assertions, scope-before-negation, inspect a delegate's report before forwarding it — are **not** in the kit (its `verifiers.md` and `judgment_model.md` ship empty); their worked wording lives in the sample [`reference-instance/`](reference-instance/) (`CLAUDE.md`, `verifiers.md`), to take home if you have fallen into that hole. The ones in this file are what those don't cover: **the hand-off and reporting** (an ask is a deliverable, shaped for the reader — and carrying its own premise, since an approver who has not read the correspondence is this loop's specification rather than its accident; report the board, not the event; diffs over snapshots; the conversation is the delivery and the file is the archive; deliver the decision, not a dashboard; report a search by the shelves you swept), **splitting the work** (forks to dialogue, recipes to one shot; the orchestrator designs and inspects, delegating the large work but not the few-step checks; deliverables never land in scratch; deliver what was asked, at the scope it was meant), and **checking** (measure what's measurable before summoning a second model; second-opinion hygiene; if you wrote "I'll do X," the next action is X).
 
 Whether the ones you took are doing anything in *your* environment is answerable only from your own logs: [`../scripts/discipline_scan.py`](../../scripts/discipline_scan.py) audits them (section A written up as a working catalog in [`discipline_catalog.example.yaml`](../../templates/discipline_catalog.example.yaml); the design note is [`../docs/discipline-audit.md`](../../docs/discipline-audit.md)).

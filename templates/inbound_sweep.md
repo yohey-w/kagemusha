@@ -2,23 +2,12 @@
 
 > **これはプロンプト＝手順書であり、スクリプトではない。** アシスタント（Claude のデスクトップ/Web/CLI、
 > その他 MCP クライアント）に Gmail・Slack・Notion 等のコネクタを繋いだ状態で、このファイルを読ませて
-> 実行させる。OAuth はプラットフォーム側が持つので、トークンの配管はゼロ。
-> 起動は3通りどれでも等価: ①手で「スイープして」と頼む ②カレンダー通知に合わせて貼る
-> ③コネクタを設定した CLI にスケジューラ（Linux/macOS なら cron、Windows ならタスクスケジューラ。
-> macOS 純正の launchd でも可）から食わせる。
-> **③はヘッドレス実行なので、コネクタのツールに `--allowedTools` の明示許可が要る場合がある**
-> ——無人化の前に1回手で検証すること（[`../docs/inbound-loop.md`](../docs/inbound-loop.md) の
-> 「全自動（モード3）で MCP を使うなら」）。
-> **Codex CLI でも③は成立する**（実測 2026-09-06・codex-cli 0.149.0。curated plugin の Gmail が
-> `codex exec -s read-only --ephemeral ... < /dev/null` から無人で呼べた）。ただし
-> **ツール単位の許可リストは Codex には無い**——`-s read-only` が縛るのはファイルシステムであって
-> コネクタではないので、「書き込み系のツールを呼ばない」を守っているのは**この手順書の文言だけ**だ。
-> 機構で切りたいなら `~/.codex/config.toml` で使わない plugin を無効にしておく。詳細と地雷
-> （`< /dev/null` 必須・`--ephemeral` は蒸留便から見えなくなる）は
-> [`../docs/inbound-loop.md`](../docs/inbound-loop.md) の「Codex CLI で同じことをするなら」。
-> 無人スケジューラ専用のフォールバックは
-> [`../scripts/inbound_watch.sh.example`](../scripts/inbound_watch.sh.example)（→ [`../docs/inbound-loop.md`](../docs/inbound-loop.md)）。
-> `<...>` を自分の環境に合わせて埋めてから使う。
+> 実行させる。`<...>` を自分の環境に合わせて埋めてから使う。
+> 設置の話（起動の3通り・無人実行の `--allowedTools`・Codex CLI での起動と地雷・無人スケジューラ用の
+> フォールバック）は [`../docs/inbound-loop.md`](../docs/inbound-loop.md) にある。
+> **書き込み系を止めている線**: 送信・返信・下書き・公開・削除は、同梱の外向きフックを入れていれば
+> 機械で拒否される（README の「外向きの歯止め」）。**ラベル付け・既読化はフックの対象外**なので、
+> そこを止めているのは下の恒久契約だけだ。
 > 来歴: 手順の設計原則は実運転済みだが、この成文化テンプレート自体は著者の実運転より新しい
 > **先行文書化（beta）**——[`../docs/inbound-loop.md`](../docs/inbound-loop.md) の「来歴」参照。
 

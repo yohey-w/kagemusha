@@ -150,8 +150,8 @@ asks only when the external purpose, allowed outbound evidence, or Web model/mod
 does not require a consultation count in advance. A new chat and private non-overwriting artifact
 paths follow the consultation skill's defaults unless you say otherwise.
 
-The recommended profile is visibly selected Web `Astra Pro` and local `gpt-6-astra` at `high`; it is
-not an automatic setting or guarantee, and another user selection wins. The workflow must verify
+The skill names no recommended model or effort — names and good pairings change between releases —
+so it uses the Web model/mode and the local model/effort you select. The workflow must verify
 actual Web model/mode and local model/effort metadata. If it cannot verify or switch, conflicts with
 local model-allocation rules, or lacks authorization for the initial or a later send, it stops for the
 user. Small changes and already-approved designs can skip consultation without asking Web-send
@@ -354,8 +354,8 @@ rsync -a --copy-links templates/skills/codex-pro-plan-build/ \
 回数の事前指定は必須にしません。別指定がなければ新規chatと非公開・非上書きの保存先は相談スキルの既定を
 継承します。
 
-推奨プロファイルは、画面で選んだWeb `Astra Pro` とローカル `gpt-6-astra` の `high` です。ただし自動設定でも
-性能保証でもなく、利用者の別選択を優先します。実際のWebモデル/モードとローカルmodel/effortを表示・
+推奨のモデル・effortは書いていません（名前も良い組み合わせも版で変わるため）。利用者が選んだWebモデル/モードと
+ローカルmodel/effortを使います。実際のWebモデル/モードとローカルmodel/effortを表示・
 メタデータで確認できない、切替不能、ローカル配分規則と競合、初回または再相談の送信認可が無い場合は利用者へ
 戻して停止します。小変更や承認済み設計ならWeb送信の質問なしで相談を省き、報告は `not consulted` とします。
 再相談後は新しいraw回答と旧契約を残し、契約を版更新して影響する受入試験も更新してから実装へ戻ります。
@@ -363,7 +363,7 @@ rsync -a --copy-links templates/skills/codex-pro-plan-build/ \
 送信情報を広げる前には確認します。同じ問いと証拠を反復せず、新しい問いや証拠がなく進展しない時は理由を報告して
 相談を停止します。
 後からlocal model/effortの証明不足が判明してもコードと証跡は残し、条件を未検証と報告します。過去実行を
-遡って `high` とせず、要件緩和またはverified executorで必要なreview/testを行うか利用者へ確認し、全再実装を
+遡って指定どおりのeffort・モデルで動いたとせず、要件緩和またはverified executorで必要なreview/testを行うか利用者へ確認し、全再実装を
 自動では要求しません。
 タスクを自動作成せず、Pro回答を証明やCIの代用にせず、無料枠や最強モデルであることも保証しません。
 

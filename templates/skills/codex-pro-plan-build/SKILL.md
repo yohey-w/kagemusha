@@ -50,13 +50,13 @@ Before the first consultation, resolve these fields from the user's explicit ins
 1. the development purpose and the repository material allowed to leave the local environment, including exclusions such as secrets, customer data, credentials, and unrelated code; and
 2. the Web model and mode.
 
-Do not require the user to choose a consultation count in advance. If the user authorizes this development workflow and its external purpose and information scope, that authorization covers useful follow-up questions, confirmations, and design improvements within the same purpose and scope without approval before every message. Honor any count, cost, or time limit the user does state. Ask again before expanding the purpose, expanding the categories or amount of information sent, or exceeding an explicit limit.
+Do not require the user to choose a consultation count in advance. If the user authorizes this development workflow and its external purpose and information scope, that authorization covers useful follow-up questions, confirmations, and design improvements within the same purpose and scope without approval before every message. Honor any count, cost, or time limit the user does state. Ask again before expanding the purpose, expanding the categories or amount of information sent, or exceeding an explicit limit. The consultation skill's exactly-once rule applies to each message, not to this workflow as a whole; this paragraph is the one place that sets how many consultations the workflow may make.
 
 Use `$codex-chatgpt-consult`'s new-chat default unless the user requests an existing chat. Select appropriate non-public, non-overwriting paths for the raw answer and design contract and tell the user what they are; ask for paths only when local rules or the user's instructions require specific locations.
 
 A standalone request handled directly by `$codex-chatgpt-consult` remains authorization for one consultation message. The continuing authorization above applies only because the user requested this development workflow and approved its external purpose and information scope.
 
-Prepare a compact evidence packet containing the decision, constraints, relevant excerpts, alternatives already considered, and the answer format needed. Pass each consultation to `$codex-chatgpt-consult` separately. Its one-send rule means exactly once for that message and protects against uncertain resend; it is not a cap on the whole development workflow. Each consultation inherits all of that skill's stop conditions.
+Prepare a compact evidence packet containing the decision, constraints, relevant excerpts, alternatives already considered, and the answer format needed. Pass each consultation to `$codex-chatgpt-consult` separately; each inherits all of that skill's stop conditions.
 
 ## 4. Preserve and audit the answer
 
@@ -81,7 +81,7 @@ Also identify the evidence baseline (`HEAD` and relevant dirty state) and, when 
 
 ## 6. Verify the implementation executor
 
-The recommended profile for this skill is a visibly confirmed Web `Astra Pro` consultation followed by local `gpt-6-astra` at `high`. It is a recommendation, not an automatic setting, free-quota claim, or capability guarantee. Respect another model or effort selected by the user.
+This skill does not name a recommended model or effort: model names and good pairings change between releases. Use the Web model/mode and the local executor model/effort the user selects. Nothing here is an automatic setting, free-quota claim, or capability guarantee.
 
 When consultation occurs, verify the Web model and mode in the visible UI through `$codex-chatgpt-consult`. Skip that Web check on the local-only route. In both routes, verify the local executor's actual model and effort from available task/runtime metadata when the contract requires a particular executor. Never claim to have switched models or effort when the runtime does not prove it.
 
@@ -89,7 +89,7 @@ If the current executor is not the requested one, use a host capability that exp
 
 If the requested pairing conflicts with repository or organization model-allocation rules, state the conflict and ask the user which allowed option to use. Do not silently override either rule.
 
-If missing model/effort evidence is discovered only after implementation has begun or completed, preserve the code, tests, and evidence. Mark the requested execution condition as unverified and never retroactively claim that the work ran at `high` or on a named model. Ask whether the user wants to relax that condition or use a verified executor for the necessary review, test, or other bounded follow-up. Do not discard or reimplement everything unless the resulting contract and evidence actually require it.
+If missing model/effort evidence is discovered only after implementation has begun or completed, preserve the code, tests, and evidence. Mark the requested execution condition as unverified and never retroactively claim that the work ran at the requested effort or on the requested model. Ask whether the user wants to relax that condition or use a verified executor for the necessary review, test, or other bounded follow-up. Do not discard or reimplement everything unless the resulting contract and evidence actually require it.
 
 ## 7. Design, implement, and test locally
 
@@ -114,9 +114,9 @@ Reconsult when it can materially improve or confirm the design, resolve a new hi
 - an acceptance condition is impossible or materially different; or
 - the approved design cannot be implemented under the repository's constraints.
 
-Keep ordinary debugging, naming, and small implementation choices local. Do not repeat the same question with the same evidence. If there is no new question or evidence and consultation is no longer producing progress, stop consulting and report why; do not invent a fixed retry limit.
+Keep ordinary debugging, naming, and small implementation choices local. Do not repeat the same question with the same evidence. If there is no new question or evidence and consultation is no longer producing progress, stop consulting and report why.
 
-Before reconsulting, record the new question or changed evidence, identify the contract section affected, and notify the user concisely. When the send remains within the authorized workflow purpose and information scope and no explicit count, cost, or time limit has been reached, proceed without additional approval. Ask again before expanding that purpose or sent information, or after an explicit limit is reached. Honor the user's new-chat or existing-chat choice, then invoke `$codex-chatgpt-consult` for one exactly-once message.
+Before reconsulting, record the new question or changed evidence, identify the contract section affected, and notify the user concisely. Whether this send needs new approval is decided by the authorization in step 3. Honor the user's new-chat or existing-chat choice, then invoke `$codex-chatgpt-consult` for one exactly-once message.
 
 After that consultation:
 
@@ -140,4 +140,4 @@ Stop instead of claiming the affected requirement is satisfied when required mod
 
 ## 日本語での短い使い方
 
-「`$codex-pro-plan-build` を使い、外部送信してよい目的と情報範囲を確認し、重要設計を指定のWeb Proへ相談して設計契約を作り、指定したCodexモデル/effortを実表示で確認してから実装・全試験まで進めて」と依頼します。認可済みの目的・範囲内なら、有益な確認や設計改善は逐一承認なしで続けられます。利用者が指定した回数・費用・時間制限は守り、範囲拡大は再確認します。通常デバッグや小判断はローカルで扱い、同じ問いと証拠を反復しません。
+「`$codex-pro-plan-build` を使い、外部送信してよい目的と情報範囲を確認し、重要設計を指定のWeb Proへ相談して設計契約を作り、指定したCodexモデル/effortを実表示で確認してから実装・全試験まで進めて」と依頼します。認可済みの目的・範囲内なら、有益な確認や設計改善は逐一承認なしで続けられます（明示された制限と範囲拡大の再確認は手順3のとおり）。通常デバッグや小判断はローカルで扱い、同じ問いと証拠を反復しません。

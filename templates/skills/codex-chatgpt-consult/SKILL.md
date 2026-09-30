@@ -95,6 +95,6 @@ Stop and notify the user when any of these occurs:
 
 前提は Codex Desktop、標準の内蔵 Browser、ChatGPT Web へのログインです。呼び出し例: `$codex-chatgpt-consult を使い、ChatGPT Web の画面で「<表示どおりのモデル名>」「<表示どおりのモード>」を確認してから、この相談を1回だけ送り、最終回答全文を保存・照合して要点を返して。`
 
-単発依頼は1メッセージだけです。`$codex-pro-plan-build` など認可済みworkflowから呼ばれる場合は、1回の呼び出しで1メッセージをexactly-once送る規則を保ったまま、許可済みの目的・情報範囲内で複数回利用できます。これは重複送信防止でありworkflow全体の回数上限ではありません。明示された回数・費用・時間制限と、範囲拡大時の再確認は守ります。
+単発依頼は1メッセージだけです。`$codex-pro-plan-build` など認可済みworkflowから呼ばれる場合の扱いは「Authorization boundary」のとおりです（1回の呼び出しで1メッセージをexactly-once送る規則は変わりません）。
 
 モデル名・モードを画面で確認できない、ログイン/MFAが必要、送信済みか不明、重複の恐れがある、最終回答全文や保存一致を確認できない場合は停止します。`Latest` などの一般名を `Pro` とみなして自動送信しません。

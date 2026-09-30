@@ -8,9 +8,9 @@ core が配るのは**空の形式**だ（[`../../../docs/layers.md`](../../../d
 
 ## いまの状態（読む前に）
 
-このディレクトリは**複製であって、移動ではない**。ここのファイルは `templates/` 配下の**現物と1バイト単位で同一**（コピー時に SHA-256 で全件突合済み）で、旧パスのファイルは1バイトも変えていない。
+このディレクトリは**複製であって、移動ではない**。複製した時点（2026-08）では `templates/` 配下の現物と1バイト単位で同一だった（コピー時に SHA-256 で全件突合）。その後 `templates/` 側は「記入内容の入っていない空の形式」へ差し替わり、改訂も続いているので、**いまは同一ではない**。記入済み版の置き場所はここだけだ。
 
-`templates/` 側を「記入内容の入っていない空の形式」へ差し替えるのは**後続の段**で、その差し替えが起きた時点で、ここが**記入済み版の唯一の置き場所**になる。差し替え前のいまは、**同じ内容が2箇所にある**。移動が確定したら [`../../../docs/path-migrations.md`](../../../docs/path-migrations.md) に1行入る。
+ここにある書き方は複製時点（2026-08）のもので、キットの現行の規約と食い違う箇所がある（例: 標本の `CLAUDE.md` 中核規律4「検証器を報告前に1周」は、いまの `templates/agent_instructions.md` では「完了の線は `verifiers.md` にある」という完了条件の形になっている）。**現行の規約は `templates/` 側を正とする。**
 
 ## 配置の対応
 
@@ -42,9 +42,9 @@ core が配るのは**空の形式**だ（[`../../../docs/layers.md`](../../../d
 
 ## English
 
-Core ships **empty forms** (see [`../../../docs/layers.md`](../../../docs/layers.md)). This directory holds **the same forms with the author's live-instance content in them**, arranged at the paths a running loop keeps them at. Read it as a **worked example, not a spec** — the mechanism is core's, the content is one person's, and nothing here is warranted to fit your loop.
+Core ships **empty forms** (see [`../../../docs/layers.md`](../../../docs/layers.md)). This directory holds **the same forms written out with formats and illustrative content (placeholders included)**, arranged at the paths a running loop keeps them at. **It is not the author's live data** — the entries, names, and numbers are illustrative; the real records are published, with a disclosure policy, under [`../evidence/`](../evidence/). Read it as a **worked example, not a spec** — the mechanism is core's, the written-out content is the author's illustration, and nothing here is warranted to fit your loop.
 
-**Right now these are copies, not moves.** Every file is **byte-identical** to its counterpart under `templates/` (verified by SHA-256 at copy time), and the originals are untouched. Replacing the `templates/` side with genuinely empty forms is a **later step**; when it happens, this becomes the only home of the filled-in versions and a row appears in [`../../../docs/path-migrations.md`](../../../docs/path-migrations.md). Until then the same content exists in two places.
+**These are copies, not moves.** At copy time (2026-08) every file was **byte-identical** to its counterpart under `templates/` (verified by SHA-256). Since then the `templates/` side has been replaced with genuinely empty forms and revised further, so **the two are no longer identical**, and this directory is the only home of the filled-in versions. The wording here is the 2026-08 wording and differs from the kit's current conventions in places (for example, the sample `CLAUDE.md` rule 4 "run the verifiers once before reporting" is now phrased in `templates/agent_instructions.md` as a completion condition: "the line for done lives in `verifiers.md`"). **For the current conventions, `templates/` is canonical.**
 
 The layout follows **where `setup.sh` scaffolds each file into a real instance**, not the template filenames — this is an *instance*, so it is arranged like one. `correction_patterns.example.txt` and `discipline_catalog.example.yaml` appear under their live names (`judgment/correction_patterns.txt`, `judgment/discipline_catalog.yaml`) because that is what the config and the audit doc read. `inbound_sweep.md` is placed at the working-directory root **provisionally** — `setup.sh` does not scaffold it and no kit document states an instance path for it; treat that one placement as unconfirmed.
 
