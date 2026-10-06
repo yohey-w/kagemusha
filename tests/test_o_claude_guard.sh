@@ -612,13 +612,30 @@ assert_eq "O10: a reply permit does not open the same text in another thread" "d
   "$(o_claim "$(o_envelope "$O_SLACK_REPLY_MOVED" reply-other "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
 assert_eq "O10: …nor a channel post of the same text" "deny" \
   "$(o_claim "$(o_envelope "$O_SLACK" reply-other "$O_ROOT" mcp__slack__slack_post_message)")"
+for o_reply_field in channel_id text; do
+  O_SLACK_REPLY_FIELD="$O_ROOT/slack-reply-$o_reply_field.json"
+  O_IN="$O_SLACK_REPLY" O_OUT="$O_SLACK_REPLY_FIELD" O_F="$o_reply_field" python3 -c '
+import json,os
+d=json.load(open(os.environ["O_IN"])); d[os.environ["O_F"]]+="X"
+json.dump(d,open(os.environ["O_OUT"],"w"))'
+  assert_eq "O10: a reply permit does not open a changed $o_reply_field" "deny" \
+    "$(o_claim "$(o_envelope "$O_SLACK_REPLY_FIELD" reply-other "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+done
 assert_eq "O10: …and the exact reply still claims it after those misses" "pass" \
   "$(o_claim "$(o_envelope "$O_SLACK_REPLY" reply-other "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+# the tool name alone keeps the two Slack permits apart: same arguments, both ways
+o_issue "$O_SLACK_REPLY" post-shaped-as-reply 300 slack
+assert_eq "O10: a post permit over reply-shaped arguments does not open the reply tool" "deny" \
+  "$(o_claim "$(o_envelope "$O_SLACK_REPLY" post-shaped-as-reply "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+o_issue "$O_SLACK_REPLY" reply-as-post 300 slack-reply
+assert_eq "O10: a reply permit does not open a channel post with the same arguments" "deny" \
+  "$(o_claim "$(o_envelope "$O_SLACK_REPLY" reply-as-post "$O_ROOT" mcp__slack__slack_post_message)")"
 for o_bad_reply in \
   '{"channel_id":"C0ABC12345","text":"no thread"}' \
   '{"channel_id":"C0ABC12345","thread_ts":"1790558292245409","text":"undotted ts"}' \
   '{"channel_id":"C0ABC12345","thread_ts":"1790558292.24540","text":"five digits"}' \
-  '{"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":""}'; do
+  '{"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":""}' \
+  '{"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":"x","reply_broadcast":true}'; do
   printf '%s\n' "$o_bad_reply" > "$O_ROOT/slack-reply-bad.json"
   assert_exit "O10: a malformed Slack reply gets no review: $o_bad_reply" 1 \
     python3 "$O_PERMIT" review --cli claude --tool slack-reply --tool-input "$O_ROOT/slack-reply-bad.json"

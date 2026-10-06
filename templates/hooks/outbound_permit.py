@@ -324,6 +324,9 @@ def _validate_claude_slack_reply(tool_input) -> None:
     # string while a different one is sent.
     if not tool_input:
         raise PermitError("Slack reply tool_input must not be empty")
+    extra = sorted(set(tool_input) - {"channel_id", "thread_ts", "text"})
+    if extra:
+        raise PermitError(f"Slack reply takes no other fields: {', '.join(extra)}")
     for key in ("channel_id", "thread_ts", "text"):
         _require_text(tool_input, key, "Slack reply")
     if not _SLACK_THREAD_TS.fullmatch(tool_input["thread_ts"]):
