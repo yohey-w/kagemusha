@@ -190,6 +190,14 @@ def canonical_tool_name(name, allowed_tools=ALL_TOOL_NAMES):
 
 DEFAULT_TTL = 300
 MAX_TTL = 900
+# How far a permit's created_at may sit ahead of the claim's clock.  On WSL2
+# the wall clock sometimes steps back about a second between two processes
+# (measured 2026-10-06: issued at …847, claimed at …846), and without this
+# allowance an honest permit read as "created in the future" — which also
+# refused every OTHER pending permit, since one invalid record fails the claim.
+# A few seconds of slack does not extend a permit: expires_at is still checked
+# against the same clock, and a record dated a minute ahead is still refused.
+CLOCK_SKEW_SECONDS = 5
 PERMIT_KEYS = {
     "version", "permit_id", "tool_name", "tool_input_sha256",
     "tool_input_canonical", "project_root", "session_id", "created_at",
@@ -801,7 +809,7 @@ def validate_permit(record: object, now: int, allowed_tools=ALL_TOOL_NAMES) -> N
     if type(record["created_at"]) is not int or type(record["expires_at"]) is not int:
         raise PermitError("invalid permit timestamp")
     lifetime = record["expires_at"] - record["created_at"]
-    if record["created_at"] > now or lifetime < 1 or lifetime > MAX_TTL:
+    if record["created_at"] > now + CLOCK_SKEW_SECONDS or lifetime < 1 or lifetime > MAX_TTL:
         raise PermitError("invalid permit lifetime")
     canonical = validated_canonical_input(
         record["tool_name"], strict_loads(record["tool_input_canonical"])
