@@ -13,10 +13,10 @@ One helper serves both CLIs. `--cli` selects which pair of exact wire operations
 It defaults to `codex`, so an install that predates the shared helper keeps working with the arguments it already passes.
 Nothing else differs: canonicalization, the SHA-256 binding over the complete argument set, the project/session/expiry binding, and the single atomic claim are shared, because those are the parts that must not drift apart.
 
-| `--cli` | `--tool gmail` | `--tool slack` | `--tool notion-update` | `--tool notion-create` | `--tool calendar-create` | `--tool calendar-update` | permit store |
-|---|---|---|---|---|---|---|---|
-| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` | — | — | `mcp__codex_apps__google_calendar__create_event` (no attendees only) | — | `<project>/.codex/outbound-permits/` |
-| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `mcp__claude_ai_Google_Calendar__create_event` | `mcp__claude_ai_Google_Calendar__update_event` | `<project>/.claude/outbound-permits/` |
+| `--cli` | `--tool gmail` | `--tool slack` | `--tool slack-reply` | `--tool notion-update` | `--tool notion-create` | `--tool calendar-create` | `--tool calendar-update` | permit store |
+|---|---|---|---|---|---|---|---|---|
+| `codex` (default) | `mcp__codex_apps__gmail__send_email` | `mcp__codex_apps__slack__slack_send_message` (`thread_ts` allowed) | — | — | — | `mcp__codex_apps__google_calendar__create_event` (no attendees only) | — | `<project>/.codex/outbound-permits/` |
+| `claude` | `mcp__claude_ai_Gmail__send_message` | `mcp__slack__slack_post_message` | `mcp__slack__slack_reply_to_thread` | `mcp__claude_ai_Notion__notion-update-page` | `mcp__claude_ai_Notion__notion-create-pages` | `mcp__claude_ai_Google_Calendar__create_event` | `mcp__claude_ai_Google_Calendar__update_event` | `<project>/.claude/outbound-permits/` |
 
 `--tool` is one flag for every CLI, so its allowed values are the union; asking
 for a selector the chosen CLI does not have is a usage error (exit 2), never a
@@ -143,7 +143,10 @@ Only that `__`/`_` difference inside the operation segment is absorbed; the `mcp
 A permit still opens one act: it is spent by whichever spelling claims it, exactly once.
 No permit exception exists for Gmail drafts/replies/forwards or Slack drafts, edits, reactions, uploads, channel changes, invitations, deletion, or scheduling, nor for Calendar deletion or RSVPs.
 On the Notion side the same rule holds for everything but the two page writes: `notion-create-comment`, `notion-send-message-to-session`, `notion-duplicate-page` and `notion-move-pages` keep no permit path and go through the queue. That narrowness is the point — the incident recorded in the guard is one verb being denied while the neighbouring one went straight through.
-On the Claude side this also means `mcp__slack__slack_reply_to_thread` has no permit path: a threaded Slack reply cannot be approved through a ticket and has to go through the queue.
+On the Claude side a threaded Slack reply is a separate tool, `mcp__slack__slack_reply_to_thread`, and since 2026-10-06 (operator's instruction 「スレッド返信にも許可票を出せるようガードを直す」) it has its own selector, `--tool slack-reply`. Before that it had no permit path, and a reply to a customer's thread had to be pasted by hand.
+The arguments are exactly `channel_id`, `thread_ts` and `text`. `thread_ts` must already be in Slack's dotted form (`1234567890.123456`); the connector says it will repair a ts written without the period, and a permit must not approve one string while another is sent. A channel-post permit never opens the reply tool, and a reply permit never opens a channel post or another thread.
+The permit binds which thread, not what the thread is about: `thread_ts` is a number. Read the thread (`slack_get_thread_replies`) and tell the approver whose message is being answered before asking for approval.
+Codex needs no twin: its `slack_send_message` already carries `thread_ts` inside the bound arguments.
 Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
 The installed Slack connector's read-only get/list/read/search operations remain available through an exact enumerated allowlist; all other operations in the Slack wire namespace fail closed.
 
@@ -292,7 +295,7 @@ python3 "$PROJECT_ROOT/.claude/hooks/outbound_permit.py" review \
   --tool-input "$INPUT_FILE"
 ```
 
-Use `--tool slack` for Slack. The selector is a closed choice — `gmail`, `slack` or `calendar-create` on Codex; on Claude Code also `notion-update`, `notion-create` and `calendar-update` — and omitting it preserves the Gmail default.
+Use `--tool slack` for a Slack channel post and, on Claude Code, `--tool slack-reply` for a threaded reply. The selector is a closed choice — `gmail`, `slack` or `calendar-create` on Codex; on Claude Code also `slack-reply`, `notion-update`, `notion-create` and `calendar-update` — and omitting it preserves the Gmail default.
 
 `review` writes nothing. It prints the complete canonical input and its `sha256`.
 Present the reviewed recipients, headers, body, and attachments to the user and obtain explicit approval for that exact payload.

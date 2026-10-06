@@ -236,7 +236,7 @@ for o_slack_read in slack_get_channel_history slack_get_thread_replies \
 done
 assert_eq "O7: slack_post_message is denied without a permit" "deny" \
   "$(o_decide 'mcp__slack__slack_post_message')"
-assert_eq "O7: slack_reply_to_thread is denied and has NO permit path" "deny" \
+assert_eq "O7: slack_reply_to_thread is denied without a permit" "deny" \
   "$(o_decide 'mcp__slack__slack_reply_to_thread')"
 # a reaction in a customer's channel is still something the customer sees
 assert_eq "O7: slack_add_reaction is denied by the closed namespace" "deny" \
@@ -587,6 +587,45 @@ assert_eq "O10: the claimed Slack permit cannot be reused" "deny" "$(o_claim "$O
 o_issue "$O_SLACK" slack-thread 300 slack
 assert_eq "O10: a post permit does not open the threaded reply beside it" "deny" \
   "$(o_claim "$(o_envelope "$O_SLACK" slack-thread "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+
+# Slack thread reply (2026-10-06): its own selector, its own wire name, and
+# thread_ts inside the hash. Neither Slack permit opens the other tool.
+O_SLACK_REPLY="$O_ROOT/slack-reply-input.json"
+printf '%s\n' '{"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":"Approved thread reply"}' > "$O_SLACK_REPLY"
+O_SLACK_REPLY_REVIEW="$(o_review "$O_SLACK_REPLY" slack-reply)"
+assert_grep_str "O10: Slack reply review names the reply wire tool" \
+  'mcp__slack__slack_reply_to_thread' "$O_SLACK_REPLY_REVIEW"
+assert_grep_str "O10: …and shows the thread it lands in" \
+  '1790558292.245409' "$O_SLACK_REPLY_REVIEW"
+assert_exit "O10: slack-reply is a Claude-only selector (usage error under --cli codex)" 2 \
+  python3 "$O_PERMIT" review --cli codex --tool slack-reply --tool-input "$O_SLACK_REPLY"
+assert_eq "O10: Slack reply without a permit stays denied" "deny" \
+  "$(o_claim "$(o_envelope "$O_SLACK_REPLY" reply-none "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+o_issue "$O_SLACK_REPLY" reply-exact 300 slack-reply
+O_SLACK_REPLY_EXACT="$(o_envelope "$O_SLACK_REPLY" reply-exact "$O_ROOT" mcp__slack__slack_reply_to_thread)"
+assert_eq "O10: an exact approved Slack reply passes once" "pass" "$(o_claim "$O_SLACK_REPLY_EXACT")"
+assert_eq "O10: the claimed Slack reply permit cannot be reused" "deny" "$(o_claim "$O_SLACK_REPLY_EXACT")"
+o_issue "$O_SLACK_REPLY" reply-other 300 slack-reply
+O_SLACK_REPLY_MOVED="$O_ROOT/slack-reply-moved.json"
+printf '%s\n' '{"channel_id":"C0ABC12345","thread_ts":"1790558292.000001","text":"Approved thread reply"}' > "$O_SLACK_REPLY_MOVED"
+assert_eq "O10: a reply permit does not open the same text in another thread" "deny" \
+  "$(o_claim "$(o_envelope "$O_SLACK_REPLY_MOVED" reply-other "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+assert_eq "O10: …nor a channel post of the same text" "deny" \
+  "$(o_claim "$(o_envelope "$O_SLACK" reply-other "$O_ROOT" mcp__slack__slack_post_message)")"
+assert_eq "O10: …and the exact reply still claims it after those misses" "pass" \
+  "$(o_claim "$(o_envelope "$O_SLACK_REPLY" reply-other "$O_ROOT" mcp__slack__slack_reply_to_thread)")"
+for o_bad_reply in \
+  '{"channel_id":"C0ABC12345","text":"no thread"}' \
+  '{"channel_id":"C0ABC12345","thread_ts":"1790558292245409","text":"undotted ts"}' \
+  '{"channel_id":"C0ABC12345","thread_ts":"1790558292.24540","text":"five digits"}' \
+  '{"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":""}'; do
+  printf '%s\n' "$o_bad_reply" > "$O_ROOT/slack-reply-bad.json"
+  assert_exit "O10: a malformed Slack reply gets no review: $o_bad_reply" 1 \
+    python3 "$O_PERMIT" review --cli claude --tool slack-reply --tool-input "$O_ROOT/slack-reply-bad.json"
+done
+O_ROOT_LONG="$O_ROOT" python3 -c 'import json,os;json.dump({"channel_id":"C0ABC12345","thread_ts":"1790558292.245409","text":"x"*5001},open(os.environ["O_ROOT_LONG"]+"/slack-reply-bad.json","w"))'
+assert_exit "O10: a Slack reply over 5000 characters gets no review" 1 \
+  python3 "$O_PERMIT" review --cli claude --tool slack-reply --tool-input "$O_ROOT/slack-reply-bad.json"
 
 # the two CLIs share the binding and nothing else: a Codex-named tool cannot
 # claim through the Claude selector, and vice versa.

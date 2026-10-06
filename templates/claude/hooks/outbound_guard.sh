@@ -115,12 +115,16 @@
 set -uo pipefail
 
 # ─── 3. the only two calls a permit can open ───────────────────────────────
-# Deliberately the same two acts as the Codex twin: one email, one channel
-# message. NOT `Gmail reply`, NOT `slack_reply_to_thread` — a threaded reply
-# has no permit path today and must go through the queue. Gmail's send_message
-# can thread by itself (`replyThreadId`), so the email side loses nothing.
+# The same two acts as the Codex twin: one email, one channel message. NOT
+# `Gmail reply` — Gmail's send_message can thread by itself (`replyThreadId`),
+# so the email side loses nothing.
 GMAIL_PERMITTED_TOOL='mcp__claude_ai_Gmail__send_message'
 SLACK_PERMITTED_TOOL='mcp__slack__slack_post_message'
+# A threaded Slack reply (2026-10-06, operator's instruction). On Claude it is
+# a separate tool, so it is a separate target with its own permit selector
+# (`slack-reply`); a channel-post permit never opens it, nor the reverse.
+# Codex binds thread_ts inside slack_send_message and needs no twin.
+SLACK_REPLY_PERMITTED_TOOL='mcp__slack__slack_reply_to_thread'
 # Notion, Claude side only (2026-09-18, operator's ruling): this system keeps
 # its 正本 in the operator's own Notion, so an approved edit of ONE named page
 # is work they asked for. Two acts only — edit one page, create one page. The
@@ -378,6 +382,7 @@ fi
 # by atomic rename before this hook emits the pass document. Any failure is a
 # deny; stderr is hidden so message contents never enter the hook response.
 if [[ "$safe_name" == "$GMAIL_PERMITTED_TOOL" || "$safe_name" == "$SLACK_PERMITTED_TOOL" \
+   || "$safe_name" == "$SLACK_REPLY_PERMITTED_TOOL" \
    || "$safe_name" == "$NOTION_UPDATE_PERMITTED_TOOL" \
    || "$safe_name" == "$NOTION_CREATE_PERMITTED_TOOL" \
    || "$safe_name" == "$CALENDAR_CREATE_PERMITTED_TOOL" \

@@ -34,6 +34,11 @@ GMAIL_TOOL_NAME = "mcp__codex_apps__gmail__send_email"
 SLACK_TOOL_NAME = "mcp__codex_apps__slack__slack_send_message"
 CLAUDE_GMAIL_TOOL_NAME = "mcp__claude_ai_Gmail__send_message"
 CLAUDE_SLACK_TOOL_NAME = "mcp__slack__slack_post_message"
+# A threaded Slack reply, Claude side (2026-10-06, operator's instruction
+# 「スレッド返信にも許可票を出せるようガードを直す」).  On Claude the reply is a
+# separate tool, so it gets its own selector rather than widening the channel
+# post.  Codex needs no twin: its slack_send_message already binds thread_ts.
+CLAUDE_SLACK_REPLY_TOOL_NAME = "mcp__slack__slack_reply_to_thread"
 # Notion, Claude side only: the operator's own workspace is where this system
 # keeps its 正本 (ledgers, logs), so an approved write to ONE page is a real
 # act the operator asks for, not a broadcast.  Two acts, mirroring the email
@@ -72,9 +77,9 @@ CLAUDE_CALENDAR_UPDATE_TOOL_NAME = "mcp__claude_ai_Google_Calendar__update_event
 CODEX_CALENDAR_CREATE_TOOL_NAME = "mcp__codex_apps__google_calendar__create_event"
 
 # The exact wire names a permit may open, per CLI.  Deliberately narrow: one
-# email and one channel message on each side, plus — Claude only — one page
-# edit and one page creation.  Replies, drafts, forwards and edits have no
-# permit path and go through the approval queue.  Codex has no entry for
+# email and one channel message on each side, plus — Claude only — one thread
+# reply, one page edit and one page creation.  Gmail replies, drafts, forwards
+# and edits have no permit path and go through the approval queue.  Codex has no entry for
 # Notion: its guard names no Notion tool, so there is nothing to open there.
 # Codex's Calendar entry is narrower than Claude's: its connector cannot say
 # "do not notify", so it opens only the creation of an attendee-free event.
@@ -87,6 +92,7 @@ CLI_TOOL_NAMES = {
     "claude": {
         "gmail": CLAUDE_GMAIL_TOOL_NAME,
         "slack": CLAUDE_SLACK_TOOL_NAME,
+        "slack-reply": CLAUDE_SLACK_REPLY_TOOL_NAME,
         "notion-update": CLAUDE_NOTION_UPDATE_TOOL_NAME,
         "notion-create": CLAUDE_NOTION_CREATE_TOOL_NAME,
         "calendar-create": CLAUDE_CALENDAR_CREATE_TOOL_NAME,
@@ -299,13 +305,33 @@ def _validate_codex_slack(tool_input) -> None:
 
 def _validate_claude_slack(tool_input) -> None:
     # mcp__slack__slack_post_message takes exactly channel_id and text; a
-    # threaded reply is a different tool and has no permit path.
+    # threaded reply is a different tool with its own selector (slack-reply).
     if not tool_input:
         raise PermitError("Slack tool_input must not be empty")
     for key in ("channel_id", "text"):
         _require_text(tool_input, key, "Slack")
     if len(tool_input["text"]) > 5000:
         raise PermitError("Slack text must be at most 5000 characters")
+
+
+_SLACK_THREAD_TS = re.compile(r"[0-9]+\.[0-9]{6}")
+
+
+def _validate_claude_slack_reply(tool_input) -> None:
+    # mcp__slack__slack_reply_to_thread takes channel_id, thread_ts and text.
+    # thread_ts must already be in Slack's dotted form: the connector says it
+    # will repair a ts without the period, and a permit must not approve one
+    # string while a different one is sent.
+    if not tool_input:
+        raise PermitError("Slack reply tool_input must not be empty")
+    for key in ("channel_id", "thread_ts", "text"):
+        _require_text(tool_input, key, "Slack reply")
+    if not _SLACK_THREAD_TS.fullmatch(tool_input["thread_ts"]):
+        raise PermitError(
+            "Slack reply thread_ts must look like 1234567890.123456"
+        )
+    if len(tool_input["text"]) > 5000:
+        raise PermitError("Slack reply text must be at most 5000 characters")
 
 
 def _validate_claude_gmail(tool_input) -> None:
@@ -642,6 +668,7 @@ def calendar_attention(tool_name: str, tool_input) -> dict | None:
 INPUT_VALIDATORS = {
     SLACK_TOOL_NAME: _validate_codex_slack,
     CLAUDE_SLACK_TOOL_NAME: _validate_claude_slack,
+    CLAUDE_SLACK_REPLY_TOOL_NAME: _validate_claude_slack_reply,
     CLAUDE_GMAIL_TOOL_NAME: _validate_claude_gmail,
     CLAUDE_NOTION_UPDATE_TOOL_NAME: _validate_claude_notion_update,
     CLAUDE_NOTION_CREATE_TOOL_NAME: _validate_claude_notion_create,
