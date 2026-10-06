@@ -195,8 +195,10 @@ MAX_TTL = 900
 # (measured 2026-10-06: issued at …847, claimed at …846), and without this
 # allowance an honest permit read as "created in the future" — which also
 # refused every OTHER pending permit, since one invalid record fails the claim.
-# A few seconds of slack does not extend a permit: expires_at is still checked
-# against the same clock, and a record dated a minute ahead is still refused.
+# The slack does not lengthen the stored lifetime (still <= MAX_TTL) and an
+# expires_at at or before the claim's clock is still refused; a record dated a
+# minute ahead is refused too.  What it does allow, under a clock that steps
+# back, is up to CLOCK_SKEW_SECONDS more of the claim clock before expiry.
 CLOCK_SKEW_SECONDS = 5
 PERMIT_KEYS = {
     "version", "permit_id", "tool_name", "tool_input_sha256",
