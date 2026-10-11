@@ -131,11 +131,11 @@
 **［単体で効く］**
 **貼り先**: エージェント指示ファイル
 
-**分かれ道がある仕事**（仕様・設計・方針）は、承認者との対話で1個ずつ潰す＝これが「要件の凍結」のやり方。レシピが決まった仕事（実装・文書化・調査）は、凍結後に一発で委譲する。成果物は、また対話で検収する。
+**相手に見える約束が変わる分かれ道**（仕様・画面や帳票の設計・値付け）は、承認者との対話で1個ずつ潰す＝これが「要件の凍結」のやり方。内部の作り（DB・コード構成など）は、確定した要件と許可範囲の中でエージェントが決める。たとえば画面で何を選べるかは対話へ、合意した選択肢をどう保存するかは実作業へ。レシピが決まった仕事（実装・文書化・調査）は、凍結後に一発で委譲する。成果物は、また対話で検収する。
 
 > 焼けた出自: 対話で詰めた仕様は、承認者の反問で強くなった（事前のブリーフには書けない論点が出た）。同じ日に**対話を飛ばして一発に出した成果物は重心を外し、作り直しになった**。順序の差だけで結果が割れた。
 
-※ 何を「分かれ道」と数えるかの線引きはあなたの環境次第——ただし線が動いても、**分かれ道を一発委譲に流すと壊れる**という向きは変わらない。
+※ この線引きは著者の実走で、仕様・設計の対話と内部実装の自律を区別したもの。持ち帰るときは自分の委任境界を明記する。承認が要る操作を内部実装と呼び替えて通してはならない。
 
 ### B2. The orchestrator designs and inspects; the bulk of execution is delegated.
 
@@ -144,7 +144,12 @@
 
 指揮する側の**文脈が希少資源**だ。指揮側の仕事は、設計・委譲先の選定・承認者との対話・検収。大きな実作業と、並列にできる独立した調査は委譲する。数回の読み書きで終わる確認や小さな修正は、委譲の往復のほうが高くつくので指揮側でやってよい。委譲した成果を、指揮側でやり直さない。
 
+**一仕事を、必要な検査と範囲内の修正までまとめて渡す。** 対象・確定要件・現物・禁止事項・完了条件を一緒に渡し、通常の失敗は担当側で直す。指揮側へ戻すのは、要件の解釈、許可範囲の拡大、検査の仕組みの欠陥、試しても同じ原因で進めない場合。不可逆な操作の承認は、この分担でも省かない。
+
+**受け取るのは完了票と必要な差分。** 完了票には①対象版と差分②実行コマンドと終了状態③証跡の場所④未解決事項⑤承認範囲を守ったかを記す。不一致があれば原本へ戻る。別の担当へ引き継いでも、条件が変わらない成果を最初から作り直さない。
+
 > 焼けた出自: 指揮側が「これくらいなら」と自分で手を動かし、**検収に使うはずだった文脈を実作業で使い切った**。安いはずの作業が、いちばん高い枠を食っていた。
+> 追記の出所: 著者の実走で採用した一括委譲・例外の差し戻し・完了票の試験運用。配分の効果を測った定説ではなく、持ち帰って自分の運用で確かめるための見本。
 
 ### B3. Deliverables go to persistent storage, never to scratch.
 
@@ -191,9 +196,14 @@
 
 別の目に見てもらうときの手順を固定する——①**自分の診断を渡すな**（渡すのは問題・現物・制約だけ）②自分の案は、相手の回答を見る前に固定して出す（後出しで寄せない）③採らなかった案も、捨てた理由ごと残す。
 
-> 焼けた出自: 自分の診断を一緒に渡した比較は、相手が同じ結論に寄って何も検出しなかった。勝った案だけを残した記録は、後から読むと「制作秘話」になっていて、次の判断に使えなかった。
+**検証条件には出所を付ける。** 契約・人の指示・確認した故障・レビューで出た提案を区別し、提案だけで未選択の条件を必須にしない。追加が必要なら影響と選択肢を確認する。既存の安全条件や、本番・外部操作の承認は削らない。
 
-**機械化**: 依頼テンプレートを「問題・現物・制約」の3枠に固定し、診断欄を持たせない。
+**受入済みの証跡は、同じ条件なら再利用する。** 目的・対象版と差分・検査器の版・依存と設定・採用条件を記録し、新差分・新証拠・新故障・制約変更・人からの指定があるときに、その再開理由を添えてレビューを開く。静的検査の合格を、未実行の画面操作や本番の安全性へ広げない。公開物・高リスク変更・検査器の変更に必要な別担当のレビューも、単なる自動検査の合格で代替しない。
+
+> 焼けた出自: 自分の診断を一緒に渡した比較は、相手が同じ結論に寄って何も検出しなかった。勝った案だけを残した記録は、後から読むと「制作秘話」になっていて、次の判断に使えなかった。
+> 追記の出所: 著者の実走で採用した、納品工程を検証の繰り返しで置き換えないための規律。条件の出所と再開理由を残す手順の見本であり、レビューを一律に省く許可ではない。
+
+**機械化**: 依頼テンプレートを「問題・現物・制約」の3枠に固定し、診断欄を持たせない。検証条件の出所と、前回の受入条件・今回の再開理由を記録欄にする。条件の変更を採るかは機械判定に任せない。
 
 ### C3. If you wrote "I'll do X," the next action is X.
 
@@ -276,6 +286,8 @@
 ---
 
 ## English summary
+
+The updated B1 distinguishes choices that change what the recipient is promised (requirements, visible design, price) from internal implementation choices within agreed requirements and permissions. B2 delegates a complete piece of work through its checks and in-scope fixes, returning interpretation, scope, or test-harness problems to the parent; a completion slip names the version/diff, commands and outcomes, evidence, unresolved items, and permission compliance. C2 records where each check came from, keeps review suggestions distinct from adopted requirements, and reuses accepted evidence only under the same recorded conditions. Reopen on a new diff, evidence, failure, constraint, or a person's request, with the reason stated. These are examples from the author's operation, not new defaults installed by the kit; required independent reviews and approval for irreversible actions still apply.
 
 A **menu, not a template** — `setup.sh` deliberately does not scaffold this file. It collects disciplines the author burned in a live instance of this loop, stripped of client, profession, and environment until only the proposition was left.
 
