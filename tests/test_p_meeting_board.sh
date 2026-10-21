@@ -35,7 +35,7 @@ for p_f in SKILL.md README.md start.cmd start.sh .gitattributes data/.gitignore 
            helper/lib/store.js helper/lib/transcript.js helper/lib/util.js \
            sample/sample_transcript.txt sample/sample_notes.md \
            tests/fixtures/claude_stub.js tests/fixtures/support.js \
-           tests/e2e/meet_fixture.html tests/e2e/run_e2e.js; do
+           tests/run.js tests/e2e/meet_fixture.html tests/e2e/run_e2e.js; do
   assert_file "P1: $p_f ships" "$P_SKILL/$p_f"
 done
 p_ntests="$(find "$P_SKILL/tests" -maxdepth 1 -name '*.test.js' | wc -l | tr -d ' ')"
@@ -203,7 +203,7 @@ P_OUT="$TEST_TMP/p_node_test.log"
 (
   cd "$P_RUN/$P_REL" || exit 1
   env HOME="$TEST_TMP" TMPDIR="$TEST_TMP" CLAUDE_BIN="$TEST_TMP/no-such-claude" NO_COLOR=1 \
-    timeout 420 node --test tests/*.test.js
+    timeout 420 node tests/run.js
 ) > "$P_OUT" 2>&1
 p_rc=$?
 assert_eq "P7: node --test (stub claude) exits 0" "0" "$p_rc"

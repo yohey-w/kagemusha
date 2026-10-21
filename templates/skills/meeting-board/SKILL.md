@@ -22,7 +22,7 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 
 **完了の形**:
 
-1. `node --test templates/skills/meeting-board/tests/*.test.js` が全部通る（Node 18 以上・外部ライブラリなし・本物の `claude` は呼ばない）
+1. `node templates/skills/meeting-board/tests/run.js` が全部通る（Node 18 以上のどれでも同じ。外部ライブラリなし・本物の `claude` は呼ばない）
 2. 動作確認は `node helper/server.js --replay sample/sample_transcript.txt --notes sample/sample_notes.md --once` が、`topics`・`checklist`・`cards` のある JSON だけを標準出力に出して終了コード 0（これは手元の `claude` を 1 回呼ぶ。架空の会議なので送ってよい）
 3. 拡張機能は人が `chrome://extensions` で読み込む。**エージェントは「拡張機能が動いた」と書かない**——Meet のページを実機で見たのは人だけ
 

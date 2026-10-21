@@ -53,4 +53,4 @@ start.cmd --replay sample\sample_transcript.txt --notes sample\sample_notes.md
 3. 「デベロッパーモード」が灰色で押せないときは、会社の設定で止められています。
 4. それでも直らなければ、ボードの「**診断をコピー**」の中身を作者に送ってください。会議の発言・名前・会議コードは入っていません（画面の構造と動作の記録だけです）。
 
-試験は、Node だけで動きます: `node --test templates/skills/meeting-board/tests/*.test.js`
+試験は Node だけで動きます（このフォルダで）: `node tests/run.js`
