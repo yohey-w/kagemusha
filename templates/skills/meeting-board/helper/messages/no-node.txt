@@ -1,0 +1,7 @@
+ Node.js が見つかりません。
+
+ 次の手順で用意してください。インストールは要らず、管理者権限も要りません。
+   1. https://nodejs.org/ja/download を開き、「Windows Binary (.zip)」を落として展開します。
+   2. 展開してできたフォルダの名前を「node」に変えて、この start.cmd の隣に置きます。
+      （node フォルダの中に node.exe がある形です）
+   3. もう一度 start.cmd をダブルクリックします。

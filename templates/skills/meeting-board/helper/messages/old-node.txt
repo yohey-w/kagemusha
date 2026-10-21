@@ -1,0 +1,5 @@
+ Node.js が動かないか、古すぎます。18 以上が必要です。
+
+ https://nodejs.org/ja/download の「Windows Binary (.zip)」を落として展開し、
+ フォルダの名前を「node」に変えて、この start.cmd の隣に置けば、そちらが使われます。
+ （インストールも管理者権限も要りません）

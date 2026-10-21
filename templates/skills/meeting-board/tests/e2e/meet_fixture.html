@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Meet 字幕のなりすまし（試験用）</title>
+<style>
+  body { margin: 0; font-family: sans-serif; background: #202124; color: #fff; }
+  .google-symbols { font-family: "Google Symbols", "Material Symbols Outlined"; }
+  #toolbar { display: flex; gap: 8px; padding: 8px; }
+  #stage { position: fixed; left: 0; right: 0; bottom: 60px; padding: 0 16px; }
+  .vNKgIf { display: block; background: rgba(0,0,0,.6); padding: 8px; max-height: 180px; overflow: hidden; }
+  .blk { display: block; margin-bottom: 6px; }
+  .hd { display: flex; align-items: center; gap: 6px; }
+  .hd img { width: 16px; height: 16px; }
+  .tx { display: block; font-size: 18px; }
+  .nMcdL { display: block; }
+  .IMKgW { display: block; text-align: center; }
+</style>
+</head>
+<body>
+<div id="toolbar"></div>
+<div id="stage"></div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var variant = params.get('variant') || 'class';
+  var captionsOn = variant !== 'captionsoff' && variant !== 'noregion' && variant !== 'decoy';
+  var withToggle = variant !== 'noregion' && variant !== 'decoy';
+  var sim = (window.sim = { clicks: 0, onClicks: 0, offClicks: 0, variant: variant });
+
+  function h(tag, attrs, kids) {
+    var e = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    (kids || []).forEach(function (c) { e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function icon(name) { return h('i', { class: 'google-symbols' }, [name]); }
+
+  // ツールバー: 通話から退出（call_end）と字幕の切り替えボタン
+  var toolbar = document.getElementById('toolbar');
+  toolbar.appendChild(h('button', { 'aria-label': '通話から退出' }, [icon('call_end')]));
+  var capBtn = null;
+  function renderToggle() {
+    if (!withToggle) return;
+    if (capBtn) capBtn.remove();
+    capBtn = h('button', { id: 'capBtn', 'aria-label': captionsOn ? '字幕をオフにする' : '字幕をオンにする' }, [icon(captionsOn ? 'closed_caption' : 'closed_caption_off')]);
+    capBtn.addEventListener('click', function () {
+      sim.clicks += 1;
+      if (captionsOn) { sim.offClicks += 1; setCaptions(false); } else { sim.onClicks += 1; setCaptions(true); }
+    });
+    toolbar.appendChild(capBtn);
+  }
+
+  // 字幕の領域（現行の Meet を写したもの: 子が 2 つ。1 つ目が入れ物、2 つ目が「最新の字幕に移動」）
+  var stage = document.getElementById('stage');
+  var region = null;
+  var entries = null;
+  var blocks = {};
+
+  function buildRegion() {
+    entries = h('div', {}, [h('div', { class: 'GvZY2', style: 'display:none' })]);
+    // nolabel: aria-label も jscontroller も無い領域（tabindex の手がかりだけで見つかるか）
+    var attrs = variant === 'nolabel'
+      ? { role: 'region', tabindex: '0', class: 'vNKgIf UDinHf' }
+      : { role: 'region', 'aria-label': '字幕', tabindex: '0', class: 'vNKgIf UDinHf', jscontroller: 'KPn5nb' };
+    region = h('div', attrs, [
+      entries,
+      h('div', { class: 'IMKgW' }, [h('button', { 'aria-label': '最新の字幕に移動' }, [icon('arrow_downward'), h('span', {}, ['最新の字幕に移動'])])]),
+    ]);
+    stage.appendChild(region);
+  }
+
+  function makeBlock(speaker, text) {
+    var tx;
+    var b;
+    if (variant === 'class') {
+      b = h('div', { class: 'nMcdL bj4p3b' }, [
+        h('div', { class: 'KcIKyf jxFHg' }, [h('img', { alt: '', src: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==' }), h('div', { class: 'adE6rb' }, [speaker])]),
+        h('div', { class: 'ygicle VbkSUe' }, [text]),
+      ]);
+    } else if (variant === 'multiline') {
+      // 構造だけ（既知のクラスなし）。発言が複数の div に分かれる
+      var parts = splitParts(text);
+      tx = h('div', { class: 'tx' }, parts.map(function (p) { return h('div', {}, [p]); }));
+      b = h('div', { class: 'blk' }, [h('div', { class: 'hd' }, [h('img', { alt: '' }), h('span', { class: 'nm' }, [speaker])]), tx]);
+    } else {
+      // generic / captionsoff: 構造だけ（既知のクラスなし）。発言は span の連なり
+      tx = h('div', { class: 'tx' }, splitParts(text, true).map(function (p) { return h('span', {}, [p]); }));
+      b = h('div', { class: 'blk' }, [h('div', { class: 'hd' }, [h('img', { alt: '' }), h('span', { class: 'nm' }, [speaker])]), tx]);
+    }
+    return b;
+  }
+  function splitParts(text, keepJoined) {
+    if (keepJoined) {
+      // 3 つの span に分ける（空白は入れない: 日本語は区切りなしで続く）
+      var n = Math.ceil(text.length / 3);
+      return [text.slice(0, n), text.slice(n, 2 * n), text.slice(2 * n)].filter(Boolean);
+    }
+    var i = text.indexOf('。');
+    return i >= 0 && i < text.length - 1 ? [text.slice(0, i + 1), text.slice(i + 1)] : [text];
+  }
+
+  function setCaptions(on) {
+    captionsOn = on;
+    if (!on && region) { region.remove(); region = null; entries = null; blocks = {}; }
+    if (on && !region) buildRegion();
+    renderToggle();
+  }
+
+  sim.say = function (key, speaker, text) {
+    if (!region) return false;
+    var old = blocks[key];
+    var neu = makeBlock(speaker, text);
+    if (old && old.parentNode) old.parentNode.replaceChild(neu, old); else entries.appendChild(neu);
+    blocks[key] = neu;
+    return true;
+  };
+  // 同じ要素の中身だけを書き換える（Meet の「その場で更新」を写す）
+  sim.update = function (key, speaker, text) {
+    var b = blocks[key];
+    if (!b) return sim.say(key, speaker, text);
+    var fresh = makeBlock(speaker, text);
+    // 中身だけ差し替え、b 自体は残す
+    while (b.firstChild) b.removeChild(b.firstChild);
+    while (fresh.firstChild) b.appendChild(fresh.firstChild);
+    return true;
+  };
+  sim.remove = function (key) { if (blocks[key]) { blocks[key].remove(); delete blocks[key]; } };
+  sim.setCaptions = setCaptions;
+
+  // decoy: 字幕の領域は無く、横の参加者パネル（role=region・tabindex=0・文字 2 行）だけがある
+  if (variant === 'decoy') {
+    var panel = h('div', { role: 'region', 'aria-label': '参加者', tabindex: '0', style: 'position:fixed;top:60px;right:0;width:240px;height:420px;background:#303134' }, [
+      h('div', {}, [h('div', {}, ['参加者パネルの人']), h('div', {}, ['ホスト'])]),
+    ]);
+    document.body.appendChild(panel);
+  }
+
+  renderToggle();
+  if (captionsOn) buildRegion();
+})();
+</script>
+</body>
+</html>

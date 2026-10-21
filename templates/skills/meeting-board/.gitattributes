@@ -1,0 +1,3 @@
+# Windows のバッチファイルと、それが表示するメッセージは CRLF のまま保存する（zip で配ったときにそのまま動くように）
+start.cmd -text
+helper/messages/*.txt -text

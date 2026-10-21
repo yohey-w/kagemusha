@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>会議ボード</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --text: #1c2230;
+  --muted: #566074;
+  --line: #d6dce6;
+  --accent: #1a56c4;
+  --accent-soft: #e5eeff;
+  --ok: #17703c;
+  --ok-soft: #e0f4e8;
+  --warn: #8a4b00;
+  --warn-soft: #fff1cf;
+  --bad: #a8201a;
+  --bad-soft: #fde6e3;
+  --shadow: 0 1px 2px rgba(20, 30, 50, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11151c;
+    --panel: #1a202b;
+    --text: #e7eaf1;
+    --muted: #a0aabb;
+    --line: #2d3545;
+    --accent: #8ab4ff;
+    --accent-soft: #1d2a45;
+    --ok: #74d9a0;
+    --ok-soft: #153324;
+    --warn: #f2b955;
+    --warn-soft: #3a2c10;
+    --bad: #ff948a;
+    --bad-soft: #3d201d;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; --strip-h: 100px; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.65 "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+}
+button { font: inherit; color: inherit; }
+
+/* ── 上の帯（いつも見える） ─────────────────────────────── */
+#strip {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 8px 12px 8px;
+}
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.pill {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 10px;
+  border-radius: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+.pill.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.pill.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.pill.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.pill small { font-weight: 500; margin-left: 0.35em; }
+#updateInfo { color: var(--muted); font-size: 0.93em; }
+#errorBox {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+#noteBox {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}
+#buttons { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.btn {
+  padding: 3px 9px;
+  font-size: 0.92em;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.btn:hover { background: var(--accent-soft); }
+.btn:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #0b1020; } }
+.btn.quiet { margin-left: auto; color: var(--muted); }
+#todoJump { cursor: pointer; }
+
+/* ── 本体 ──────────────────────────────────────────────── */
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+@media (min-width: 900px) {
+  main { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  #side {
+    position: sticky;
+    top: calc(var(--strip-h) + 10px);
+    max-height: calc(100vh - var(--strip-h) - 110px); /* 末尾の余白ぶん空けて、ページの底で押し上げられないようにする */
+    overflow-y: auto;
+  }
+}
+section.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 14px 12px;
+  box-shadow: var(--shadow);
+}
+h2 { font-size: 1.05em; margin: 2px 0 8px; }
+h3 { font-size: 1em; margin: 0; }
+.empty { color: var(--muted); padding: 10px 2px; }
+.empty b { color: var(--text); }
+
+.topic {
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px 10px;
+  margin: 0 0 10px;
+  scroll-margin-top: calc(var(--strip-h) + 12px);
+}
+.topic.current {
+  border-color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+.topic .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.now {
+  font-size: 0.78em;
+  font-weight: 700;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+}
+@media (prefers-color-scheme: dark) { .now { color: #0b1020; } }
+ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.points li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.points .txt { min-width: 0; overflow-wrap: anywhere; }
+.chip {
+  --h: 210;
+  flex: none;
+  display: inline-block;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 0.82em;
+  font-weight: 700;
+  line-height: 1.7;
+  background: hsl(var(--h) 75% 90%);
+  color: hsl(var(--h) 65% 22%);
+  border: 1px solid hsl(var(--h) 50% 76%);
+  white-space: nowrap;
+}
+@media (prefers-color-scheme: dark) {
+  .chip { background: hsl(var(--h) 35% 24%); color: hsl(var(--h) 85% 88%); border-color: hsl(var(--h) 35% 38%); }
+}
+.sub { margin-top: 8px; }
+.sub .label { font-size: 0.85em; font-weight: 700; color: var(--muted); }
+.decisions li::before { content: "✔ "; color: var(--ok); font-weight: 700; }
+.decisions li { overflow-wrap: anywhere; }
+.todos li { padding: 2px 0; overflow-wrap: anywhere; }
+.todos .k {
+  display: inline-block;
+  font-size: 0.75em;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin: 0 4px 0 8px;
+}
+.todos .k:first-child { margin-left: 0; }
+.todos .nodue { color: var(--muted); font-size: 0.9em; }
+.numbers { display: flex; flex-wrap: wrap; gap: 6px; }
+.numbers li {
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.open li { padding: 2px 0 2px 1.4em; text-indent: -1.4em; overflow-wrap: anywhere; }
+.open li::before { content: "？ "; color: var(--warn); font-weight: 700; }
+
+.check li {
+  padding: 5px 8px;
+  margin: 0 0 6px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.check li.todo { border-left: 5px solid var(--warn); background: var(--warn-soft); font-weight: 700; }
+.check li.done { color: var(--muted); }
+.tag { display: inline-block; font-size: 0.78em; font-weight: 700; border-radius: 6px; padding: 0 7px; margin-right: 6px; }
+.tag.done { background: var(--ok-soft); color: var(--ok); }
+.tag.todo { background: var(--warn); color: #fff; }
+@media (prefers-color-scheme: dark) { .tag.todo { color: #1a1204; } }
+.evidence { display: block; font-weight: 400; font-size: 0.88em; color: var(--muted); margin-top: 2px; }
+
+.card {
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  background: var(--accent-soft);
+  overflow-wrap: anywhere;
+}
+.card .title { font-weight: 700; }
+.card .meta { color: var(--muted); font-size: 0.88em; margin-top: 3px; }
+
+details.captions { margin: 0 12px 24px; max-width: 1256px; }
+@media (min-width: 900px) { details.captions { margin-left: auto; margin-right: auto; } }
+details.captions summary { cursor: pointer; padding: 6px 2px; color: var(--muted); font-weight: 700; }
+#capList { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+#capList li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+#capList .time { color: var(--muted); font-size: 0.82em; font-variant-numeric: tabular-nums; flex: none; }
+#capList .txt { min-width: 0; overflow-wrap: anywhere; }
+
+footer { color: var(--muted); font-size: 0.82em; padding: 0 14px 24px; text-align: center; }
+
+dialog {
+  width: min(560px, calc(100vw - 24px));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 14px 16px;
+}
+dialog::backdrop { background: rgba(10, 14, 22, 0.5); }
+dialog h2 { margin-top: 0; }
+dialog p { margin: 4px 0 8px; color: var(--muted); font-size: 0.92em; }
+dialog textarea, dialog input[type="text"] {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+dialog textarea { min-height: 220px; resize: vertical; }
+.dlgRow { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 24px);
+  background: var(--text);
+  color: var(--bg);
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  z-index: 20;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="strip">
+  <div class="row">
+    <span id="capPill" class="pill">字幕 …</span>
+    <span id="updateInfo">最終更新 —</span>
+    <span id="todoJump" class="pill" hidden></span>
+  </div>
+  <div id="errorBox" hidden></div>
+  <div id="noteBox" hidden></div>
+  <div id="buttons">
+    <button class="btn" id="btnMemo" type="button">事前メモ</button>
+    <button class="btn" id="btnName" type="button">自分の表示名</button>
+    <button class="btn" id="btnDiag" type="button">診断をコピー</button>
+    <button class="btn quiet" id="btnReset" type="button">新しい会議</button>
+  </div>
+</div>
+
+<main>
+  <section class="panel" id="story" aria-labelledby="storyTitle">
+    <h2 id="storyTitle">ここまでの話</h2>
+    <div id="topics"></div>
+    <div id="openBox" hidden>
+      <h2>まだ答えが出ていない問い</h2>
+      <ul class="open" id="openList"></ul>
+    </div>
+  </section>
+
+  <div id="side" hidden>
+    <section class="panel" id="checkBox" hidden aria-labelledby="checkTitle">
+      <h2 id="checkTitle">聞くことの表</h2>
+      <ul class="check" id="checkList"></ul>
+    </section>
+    <section class="panel" id="cardBox" hidden aria-labelledby="cardTitle" style="margin-top:14px">
+      <h2 id="cardTitle">カード</h2>
+      <div id="cardList"></div>
+    </section>
+  </div>
+</main>
+
+<details class="captions" id="capDetails">
+  <summary id="capSummary">字幕（最新）</summary>
+  <ul id="capList"></ul>
+</details>
+
+<footer id="foot">会議ボード ・ この画面の内容はこの PC の中だけにあります</footer>
+
+<dialog id="memoDlg">
+  <h2>事前メモ</h2>
+  <p>会議の前の「聞きたいこと」「前回の決定」「資料の数字」などを貼ってください。聞くことの表とカードが出ます。この PC の Claude Code にだけ渡します。</p>
+  <textarea id="memoText" placeholder="例:&#10;## 前回の決定&#10;- …&#10;## 今日聞くこと&#10;1. …"></textarea>
+  <div class="dlgRow">
+    <button class="btn primary" id="memoSave" type="button">保存</button>
+    <button class="btn" id="memoClose" type="button">閉じる</button>
+    <span id="memoMsg" role="status"></span>
+  </div>
+</dialog>
+
+<dialog id="nameDlg">
+  <h2>自分の表示名</h2>
+  <p>Meet の字幕では自分が「あなた」と出ます。整理には、ここで決めた名前で渡します（空なら「自分」）。</p>
+  <input type="text" id="nameText" maxlength="40" autocomplete="off">
+  <div class="dlgRow">
+    <button class="btn primary" id="nameSave" type="button">保存</button>
+    <button class="btn" id="nameClose" type="button">閉じる</button>
+  </div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+  var HEADERS = { 'X-Meeting-Board': '1' };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ── 小さな部品（表示はすべて textContent で入れる。HTML の文字列は組み立てない） ──
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function clock(ms) { var d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function clockSec(ms) { var d = new Date(ms); return clock(ms) + ':' + pad(d.getSeconds()); }
+  function ago(sec) { return sec === null || sec === undefined ? '' : (sec < 90 ? sec + '秒前' : Math.round(sec / 60) + '分前'); }
+
+  // 話者ごとの色: 出てきた順に黄金角でずらす（近い色にならない）
+  var speakerIndex = {};
+  var speakerCount = 0;
+  function chip(name) {
+    var key = name || '不明';
+    if (!(key in speakerIndex)) { speakerIndex[key] = speakerCount++; }
+    var c = el('span', 'chip', key);
+    c.style.setProperty('--h', String(Math.round((210 + speakerIndex[key] * 137.5) % 360)));
+    return c;
+  }
+
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove('show'); }, 3200);
+  }
+
+  function api(method, path, body) {
+    var opts = { method: method, headers: Object.assign({}, HEADERS), cache: 'no-store' };
+    if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+    return fetch(path, opts);
+  }
+
+  // ── 描画 ─────────────────────────────────────────────────
+  var last = { board: null, recent: null, current: null, count: -1, check: null };
+
+  function renderStrip(s, reachable) {
+    var pill = $('capPill');
+    var info = $('updateInfo');
+    var err = $('errorBox');
+    var note = $('noteBox');
+    pill.className = 'pill';
+    clear(pill);
+    if (!reachable) {
+      pill.classList.add('bad');
+      pill.appendChild(document.createTextNode('× ヘルパーに届きません'));
+      pill.appendChild(el('small', null, '（起動したウィンドウを閉じていませんか。start.cmd をもう一度）'));
+      info.textContent = '';
+      return;
+    }
+    var c = s.captions;
+    var label;
+    var small = '';
+    var klass = '';
+    if (s.replay && s.replay.active) {
+      label = '● 受信中'; klass = 'ok'; small = '（会話ファイルを再生中 ' + s.replay.index + '/' + s.replay.total + '）';
+    } else if (c.state === 'receiving') {
+      label = '● 受信中'; klass = 'ok'; small = '（' + ago(c.ageSec) + '）';
+    } else if (c.state === 'stalled') {
+      label = '○ 止まっている'; klass = 'warn'; small = '（' + ago(c.ageSec) + '）';
+    } else if (c.state === 'missing') {
+      label = '× 字幕が見つからない'; klass = 'bad'; small = '（Meet で字幕をオン：C キー・言語は日本語）';
+    } else if (c.state === 'no-extension') {
+      label = '× 拡張機能から何も届いていません'; klass = 'bad'; small = '（Meet のタブを開き直してください）';
+    } else {
+      label = '○ 待っています'; klass = ''; small = '（Meet で字幕をオン：C キー）';
+    }
+    if (klass) pill.classList.add(klass);
+    pill.appendChild(document.createTextNode('字幕 ' + label));
+    pill.appendChild(el('small', null, small));
+
+    var u = s.update;
+    var parts = [];
+    parts.push('最終更新 ' + (u.lastAt ? clockSec(u.lastAt) : '—'));
+    parts.push('更新 ' + u.count + ' 回');
+    if (u.inFlight) parts.push('整理中…');
+    else if (u.pendingChars > 0) parts.push('未反映の字幕 ' + u.pendingChars + ' 字');
+    info.textContent = parts.join('・');
+
+    if (s.lastError) {
+      err.hidden = false;
+      err.textContent = clockSec(s.lastError.at) + ' ' + s.lastError.message;
+    } else {
+      err.hidden = true;
+    }
+    var bad = (s.selfCheck || []).filter(function (x) { return !x.ok && x.name !== 'claude'; });
+    if (bad.length) {
+      note.hidden = false;
+      note.textContent = '起動時の点検で気になる点: ' + bad.map(function (x) { return x.name + '（' + x.detail + '）'; }).join(' / ');
+    } else {
+      note.hidden = true;
+    }
+  }
+
+  function renderTopics(board) {
+    var box = $('topics');
+    clear(box);
+    if (!board || !board.topics.length) {
+      var e = el('div', 'empty');
+      e.appendChild(el('b', null, board ? 'まだ話題がありません。' : 'まだ整理がありません。'));
+      e.appendChild(document.createTextNode(' 字幕が届くと、およそ 1 分ごとに「ここまでの話」がここに出ます。'));
+      box.appendChild(e);
+      return -1;
+    }
+    var currentIdx = -1;
+    var lastIdx = board.topics.length - 1;
+    board.topics.forEach(function (t, i) { if (t.current) currentIdx = i; });
+    if (currentIdx < 0) currentIdx = lastIdx;
+    board.topics.forEach(function (t, i) {
+      var card = el('article', 'topic' + (i === currentIdx ? ' current' : ''));
+      card.id = 'topic-' + i;
+      var head = el('div', 'head');
+      head.appendChild(el('h3', null, t.title));
+      if (i === currentIdx) head.appendChild(el('span', 'now', 'いま'));
+      card.appendChild(head);
+      if (t.points.length) {
+        var ul = el('ul', 'points');
+        t.points.forEach(function (p) {
+          var li = el('li');
+          li.appendChild(chip(p.speaker));
+          li.appendChild(el('span', 'txt', p.text));
+          ul.appendChild(li);
+        });
+        card.appendChild(ul);
+      }
+      if (t.decisions.length) {
+        var d = el('div', 'sub');
+        d.appendChild(el('div', 'label', '決まったこと'));
+        var dl = el('ul', 'decisions');
+        t.decisions.forEach(function (x) { dl.appendChild(el('li', null, x)); });
+        d.appendChild(dl);
+        card.appendChild(d);
+      }
+      if (t.todos.length) {
+        var td = el('div', 'sub');
+        td.appendChild(el('div', 'label', '持ち帰り'));
+        var tl = el('ul', 'todos');
+        t.todos.forEach(function (x) {
+          var li = el('li');
+          li.appendChild(el('span', 'k', '誰が'));
+          li.appendChild(document.createTextNode(x.who || '（未定）'));
+          li.appendChild(el('span', 'k', '何を'));
+          li.appendChild(document.createTextNode(x.what));
+          li.appendChild(el('span', 'k', 'いつ'));
+          if (x.when) li.appendChild(document.createTextNode(x.when));
+          else li.appendChild(el('span', 'nodue', '決まっていない'));
+          tl.appendChild(li);
+        });
+        td.appendChild(tl);
+        card.appendChild(td);
+      }
+      if (t.numbers.length) {
+        var n = el('div', 'sub');
+        n.appendChild(el('div', 'label', '数字'));
+        var nl = el('ul', 'numbers');
+        t.numbers.forEach(function (x) { nl.appendChild(el('li', null, x)); });
+        n.appendChild(nl);
+        card.appendChild(n);
+      }
+      box.appendChild(card);
+    });
+    return currentIdx;
+  }
+
+  function renderOpen(board) {
+    var qs = board ? board.open_questions : [];
+    $('openBox').hidden = !qs.length;
+    var ul = $('openList');
+    clear(ul);
+    qs.forEach(function (q) { ul.appendChild(el('li', null, q)); });
+  }
+
+  function renderSide(board) {
+    var checks = board ? board.checklist : [];
+    var cards = board ? board.cards : [];
+    $('side').hidden = !(checks.length || cards.length);
+    $('checkBox').hidden = !checks.length;
+    $('cardBox').hidden = !cards.length;
+    var cl = $('checkList');
+    clear(cl);
+    checks.forEach(function (c) {
+      var li = el('li', c.done ? 'done' : 'todo');
+      li.appendChild(el('span', 'tag ' + (c.done ? 'done' : 'todo'), c.done ? '済' : 'まだ'));
+      li.appendChild(document.createTextNode(c.item));
+      if (c.evidence) li.appendChild(el('span', 'evidence', '根拠: ' + c.evidence));
+      cl.appendChild(li);
+    });
+    var cd = $('cardList');
+    clear(cd);
+    cards.forEach(function (c) {
+      var d = el('div', 'card');
+      d.appendChild(el('div', 'title', c.title));
+      if (c.body) d.appendChild(el('div', 'body', c.body));
+      if (c.why) d.appendChild(el('div', 'meta', 'いま出す理由: ' + c.why));
+      if (c.source) d.appendChild(el('div', 'meta', '出所: ' + c.source));
+      cd.appendChild(d);
+    });
+    // 帯に「まだ N 件」を出す（押すと表へ）
+    var jump = $('todoJump');
+    var remaining = checks.filter(function (c) { return !c.done; }).length;
+    if (checks.length) {
+      jump.hidden = false;
+      jump.className = 'pill ' + (remaining ? 'warn' : 'ok');
+      jump.textContent = remaining ? '聞くこと あと ' + remaining + ' 件' : '聞くこと 全部済';
+    } else {
+      jump.hidden = true;
+    }
+  }
+
+  function renderCaptions(recent) {
+    var shown = recent.slice(-20);
+    $('capSummary').textContent = '字幕（最新）' + (shown.length ? ' — ' + shown.length + ' 行' : '');
+    var ul = $('capList');
+    clear(ul);
+    if (!shown.length) { ul.appendChild(el('li', null, 'まだ字幕が届いていません。')); return; }
+    shown.forEach(function (r) {
+      var li = el('li');
+      li.appendChild(el('span', 'time', clock(r.at)));
+      li.appendChild(chip(r.speaker));
+      li.appendChild(el('span', 'txt', r.text));
+      ul.appendChild(li);
+    });
+  }
+
+  function render(state) {
+    var s = state.status;
+    renderStrip(s, true);
+    var boardKey = JSON.stringify(state.board);
+    if (boardKey !== last.board) {
+      last.board = boardKey;
+      var idx = renderTopics(state.board);
+      renderOpen(state.board);
+      renderSide(state.board);
+      var count = state.board ? state.board.topics.length : 0;
+      var curKey = idx + ':' + count + ':' + (state.board && idx >= 0 ? state.board.topics[idx].title : '');
+      if (idx >= 0 && curKey !== last.current) {
+        last.current = curKey;
+        var node = $('topic-' + idx);
+        if (node && node.scrollIntoView) node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+    var recentKey = JSON.stringify(state.recent);
+    if (recentKey !== last.recent) { last.recent = recentKey; renderCaptions(state.recent); }
+    $('foot').textContent = '会議ボード ' + s.version + ' ・ この画面の内容はこの PC の中だけにあります';
+    $('btnName').title = state.selfName ? '今の表示名: ' + state.selfName : '今は「自分」で渡しています';
+    $('btnMemo').textContent = state.notesPresent ? '事前メモ ✓' : '事前メモ';
+    $('btnMemo').title = state.notesPresent ? '事前メモは登録済みです（押すと見直せます）' : '会議の前の「聞きたいこと」などを貼ります';
+  }
+
+  var busy = false;
+  function poll() {
+    if (busy) return;
+    busy = true;
+    api('GET', '/state').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (state) {
+      busy = false;
+      render(state);
+    }).catch(function () {
+      busy = false;
+      renderStrip(null, false);
+    });
+  }
+
+  // ── ボタン ───────────────────────────────────────────────
+  $('todoJump').addEventListener('click', function () {
+    var b = $('checkBox');
+    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  });
+
+  $('btnMemo').addEventListener('click', function () {
+    $('memoMsg').textContent = '';
+    api('GET', '/notes').then(function (r) { return r.json(); }).then(function (j) {
+      $('memoText').value = j.text || '';
+      $('memoDlg').showModal();
+      $('memoText').focus();
+    }).catch(function () { toast('事前メモを読めませんでした（ヘルパーに届きません）'); });
+  });
+  $('memoClose').addEventListener('click', function () { $('memoDlg').close(); });
+  $('memoSave').addEventListener('click', function () {
+    api('POST', '/notes', { text: $('memoText').value }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      $('memoMsg').textContent = '保存しました。次の整理から使います。';
+      setTimeout(function () { if ($('memoDlg').open) $('memoDlg').close(); poll(); }, 900);
+    }).catch(function () { $('memoMsg').textContent = '保存できませんでした（ヘルパーに届きません）'; });
+  });
+
+  $('btnName').addEventListener('click', function () {
+    api('GET', '/state').then(function (r) { return r.json(); }).then(function (st) {
+      $('nameText').value = st.selfName || '';
+      $('nameDlg').showModal();
+      $('nameText').focus();
+    }).catch(function () { toast('ヘルパーに届きません'); });
+  });
+  $('nameClose').addEventListener('click', function () { $('nameDlg').close(); });
+  $('nameSave').addEventListener('click', function () {
+    api('POST', '/settings', { selfName: $('nameText').value }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      $('nameDlg').close();
+      toast('表示名を保存しました。次の整理から使います。');
+      poll();
+    }).catch(function () { toast('保存できませんでした（ヘルパーに届きません）'); });
+  });
+
+  function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      if (ok) resolve(); else reject(new Error('copy failed'));
+    });
+  }
+  $('btnDiag').addEventListener('click', function () {
+    api('GET', '/diag').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(copyText).then(function () {
+      toast('診断をコピーしました。作者に貼って送れます（会議の発言は入っていません）');
+    }).catch(function () { toast('診断をコピーできませんでした'); });
+  });
+
+  $('btnReset').addEventListener('click', function () {
+    if (!window.confirm('いまの内容を保存して、新しい会議を始めます。ボードは空になります。よろしいですか？')) return;
+    api('POST', '/reset').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      last = { board: null, recent: null, current: null, count: -1, check: null };
+      toast('新しい会議を始めました');
+      poll();
+    }).catch(function () { toast('リセットできませんでした（ヘルパーに届きません）'); });
+  });
+
+  // 帯の高さ（折り返しで変わる）を、貼りつき位置とスクロール位置の計算に使う
+  function syncStrip() {
+    document.documentElement.style.setProperty('--strip-h', $('strip').offsetHeight + 'px');
+  }
+  if (window.ResizeObserver) new ResizeObserver(syncStrip).observe($('strip'));
+  window.addEventListener('resize', syncStrip);
+  syncStrip();
+
+  poll();
+  setInterval(poll, 2500);
+})();
+</script>
+</body>
+</html>

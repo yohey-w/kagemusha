@@ -1,0 +1,233 @@
+#!/usr/bin/env node
+'use strict';
+// 会議ボードのヘルパー。Meet の字幕（拡張機能から届く）を、この PC の Claude Code に整理してもらい、
+// ボード（http://127.0.0.1:47431/）に出す。127.0.0.1 だけで待ち受け、外には何も送らない。
+//
+//   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
+//                         [--notes ファイル] [--replay ファイル [--speed 10]] [--once] [--data-dir フォルダ]
+
+// 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
+const nodeMajor = Number(String(process.versions.node).split('.')[0]);
+if (nodeMajor < 18) {
+  console.error('Node.js が古すぎます（' + process.version + '）。Node.js 18 以上を入れてください。');
+  process.exit(1);
+}
+
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+const { parseArgs, USAGE } = require('./lib/args');
+const { MeetingBoardApp } = require('./lib/app');
+const { listen, probeExisting } = require('./lib/httpserver');
+const { parseReplayText, toEntries, startReplay } = require('./lib/replay');
+
+const VERSION = '0.1.0';
+const HELPER_DIR = __dirname;
+
+// 会議の最中に落ちないように、想定外のエラーは表示だけして続ける
+process.on('uncaughtException', function (e) {
+  console.error('想定外のエラー（続行します）: ' + (e && e.stack ? e.stack : e));
+});
+process.on('unhandledRejection', function (e) {
+  console.error('想定外のエラー（続行します）: ' + (e && e.stack ? e.stack : e));
+});
+
+function openBrowser(url) {
+  try {
+    let child;
+    if (process.platform === 'win32') {
+      // cmd /c start "" <url>
+      child = spawn('cmd.exe', ['/d', '/s', '/c', 'start "" "' + url + '"'], {
+        windowsVerbatimArguments: true,
+        windowsHide: true,
+        detached: true,
+        stdio: 'ignore',
+      });
+    } else if (process.platform === 'darwin') {
+      child = spawn('open', [url], { detached: true, stdio: 'ignore' });
+    } else {
+      child = spawn('xdg-open', [url], { detached: true, stdio: 'ignore' });
+    }
+    child.on('error', function () {
+      /* 開けなくても動作には影響しない */
+    });
+    child.unref();
+  } catch (_) {
+    /* 開けなくても動作には影響しない */
+  }
+}
+
+function formatCheck(c) {
+  return '  ' + (c.ok ? 'OK ' : 'NG ') + c.name + ': ' + c.detail;
+}
+
+async function main() {
+  const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.opts.help) {
+    console.log(USAGE);
+    return 0;
+  }
+  if (parsed.errors.length) {
+    for (const e of parsed.errors) console.error('引数のエラー: ' + e);
+    console.error('\n' + USAGE);
+    return 2;
+  }
+  const opts = parsed.opts;
+  // --once は結果の JSON だけを標準出力に出す。案内やログは標準エラーへ
+  const say = opts.once ? function (m) { console.error(m); } : function (m) { console.log(m); };
+
+  const dataDir = opts.dataDir ? path.resolve(opts.dataDir) : path.join(HELPER_DIR, '..', 'data');
+  let notes = '';
+  if (opts.notes) {
+    try {
+      notes = fs.readFileSync(path.resolve(opts.notes), 'utf8');
+    } catch (e) {
+      console.error('事前メモを読めませんでした（' + opts.notes + '）: ' + e.message);
+      return 2;
+    }
+  }
+  let replayLines = null;
+  if (opts.replay) {
+    try {
+      replayLines = parseReplayText(fs.readFileSync(path.resolve(opts.replay), 'utf8'));
+    } catch (e) {
+      console.error('--replay のファイルを読めませんでした（' + opts.replay + '）: ' + e.message);
+      return 2;
+    }
+    if (replayLines.length === 0) {
+      console.error('--replay のファイルに「話者：本文」の行がありません: ' + opts.replay);
+      return 2;
+    }
+  }
+
+  const app = new MeetingBoardApp({
+    version: VERSION,
+    port: opts.port,
+    model: opts.model,
+    intervalSec: opts.interval,
+    dataDir: dataDir,
+    promptPath: path.join(HELPER_DIR, 'prompt.md'),
+    boardHtmlPath: path.join(HELPER_DIR, 'board.html'),
+    notes: notes,
+    log: function (m) {
+      if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
+    },
+  });
+
+  // ── --once: 全部読み込んで 1 回だけ整理し、JSON を出して終わる ──
+  if (opts.once) {
+    await app.runSelfCheck({ listenInfo: null, withVersion: false });
+    for (const c of app.selfCheck) say(formatCheck(c));
+    const base = Date.now();
+    for (const e of toEntries(replayLines, base)) app.transcript.upsert(e, Date.now());
+    say('字幕 ' + app.transcript.entries.length + ' 行を読み込みました。claude に整理を頼みます（しばらくかかります）...');
+    const r = await app.runUpdate('once');
+    app.shutdown();
+    if (!r.ok) {
+      console.error('整理に失敗しました: ' + r.message);
+      return 1;
+    }
+    process.stdout.write(JSON.stringify(r.board, null, 2) + '\n');
+    return 0;
+  }
+
+  // ── 通常: HTTP サーバーを立てる ──
+  let server;
+  try {
+    server = await listen(app, opts.port);
+  } catch (e) {
+    if (e && e.code === 'EADDRINUSE') {
+      const already = await probeExisting(opts.port);
+      if (already) {
+        const url = 'http://127.0.0.1:' + opts.port + '/';
+        say('会議ボードはすでに起動しています: ' + url);
+        say('（このウィンドウは閉じてかまいません。止めるときは、先に起動したウィンドウで Ctrl+C）');
+        if (opts.open) openBrowser(url);
+        return 0;
+      }
+      console.error('ポート ' + opts.port + ' は別のプログラムが使っています。');
+      console.error('会議ボードの拡張機能は ' + opts.port + ' 番に送る作りなので、使っているプログラムを止めてからやり直してください。');
+      return 1;
+    }
+    console.error('待ち受けを始められませんでした: ' + e.message);
+    return 1;
+  }
+  app.port = server.address().port;
+  const url = 'http://127.0.0.1:' + app.port + '/';
+
+  await app.runSelfCheck({
+    listenInfo: { name: 'ポート', ok: true, detail: app.port + ' 番で待ち受け中（この PC の中だけ）' },
+    withVersion: false,
+  });
+  say('会議ボード ヘルパー ' + VERSION);
+  say('  ボード: ' + url);
+  say('  保存先: ' + dataDir);
+  say('起動時の点検:');
+  for (const c of app.selfCheck) say(formatCheck(c));
+  if (!app.resolved.ok) {
+    say('');
+    say('!! ' + app.resolved.message);
+    say('   claude が使えるようになるまで、字幕は集まりますが「ここまでの話」は作られません。');
+  }
+  say('');
+  say('このウィンドウを閉じると止まります。止めるときは Ctrl+C。');
+  if (opts.open) openBrowser(url);
+
+  // claude の版は少し時間がかかるので、起動後に確かめて点検欄を更新する
+  if (app.resolved.ok) {
+    app.runSelfCheck({
+      listenInfo: { name: 'ポート', ok: true, detail: app.port + ' 番で待ち受け中（この PC の中だけ）' },
+      withVersion: true,
+    }).then(function (checks) {
+      const v = checks.find(function (c) { return c.name === 'claude の版'; });
+      if (v) say('  ' + (v.ok ? 'OK ' : 'NG ') + 'claude の版: ' + v.detail);
+    });
+  }
+
+  app.startLoop();
+
+  let replayHandle = null;
+  if (replayLines) {
+    const entries = toEntries(replayLines, Date.now());
+    app.replay = { active: true, index: 0, total: entries.length };
+    say('--replay: ' + entries.length + ' 行を ' + opts.speed + ' 倍速で流します。');
+    replayHandle = startReplay(entries, opts.speed, function (entry, i) {
+      app.transcript.upsert(entry, Date.now());
+      app.replay = { active: true, index: i + 1, total: entries.length };
+    });
+    replayHandle.done.then(function (finished) {
+      app.replay = { active: false, index: entries.length, total: entries.length, finished: !!finished };
+      if (finished) {
+        say('--replay: 流し終わりました。最後の整理を行います。');
+        app.flushNow = true; // 間隔を待たずに最後の整理へ
+      }
+    });
+  }
+
+  // 終了処理
+  await new Promise(function (resolve) {
+    let closing = false;
+    const stop = function () {
+      if (closing) return;
+      closing = true;
+      if (replayHandle) replayHandle.stop();
+      app.shutdown();
+      server.close(function () { resolve(); });
+      setTimeout(resolve, 1500).unref();
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+  });
+  return 0;
+}
+
+main().then(
+  function (code) {
+    process.exit(code);
+  },
+  function (e) {
+    console.error('予期しないエラー: ' + (e && e.stack ? e.stack : e));
+    process.exit(1);
+  }
+);
