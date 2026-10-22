@@ -24,7 +24,7 @@ const { listen, probeExisting } = require('./lib/httpserver');
 const { parseReplayTimed, toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/replay');
 const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const HELPER_DIR = __dirname;
 
 // 会議の最中に落ちないように、想定外のエラーは表示だけして続ける

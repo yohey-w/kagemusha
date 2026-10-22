@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "会議ボード（Meet の字幕を読む）",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Google Meet の字幕を話者つきで読み、この PC の中のヘルパー（127.0.0.1）にだけ渡します。音声は扱いません。",
   "content_scripts": [
     {
