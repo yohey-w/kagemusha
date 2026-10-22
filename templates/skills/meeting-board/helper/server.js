@@ -5,6 +5,7 @@
 //
 //   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
 //                         [--notes ファイル] [--replay ファイル [--speed 10]] [--once] [--data-dir フォルダ] [--me 名前]
+//   node helper/server.js --minutes <会議フォルダ | board.json> [--out ファイル]   議事録の素（Markdown）を書き出す
 
 // 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
 const nodeMajor = Number(String(process.versions.node).split('.')[0]);
@@ -21,6 +22,7 @@ const { parseArgs, USAGE } = require('./lib/args');
 const { MeetingBoardApp } = require('./lib/app');
 const { listen, probeExisting } = require('./lib/httpserver');
 const { parseReplayText, toEntries, startReplay } = require('./lib/replay');
+const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
 const VERSION = '0.1.0';
 const HELPER_DIR = __dirname;
@@ -62,6 +64,54 @@ function formatCheck(c) {
   return '  ' + (c.ok ? 'OK ' : 'NG ') + c.name + ': ' + c.detail;
 }
 
+/**
+ * --minutes: 保存したボードから議事録の素（Markdown）を書き出す。この PC の中だけ（標準出力かファイル）。
+ * 場所が会議フォルダなら board.json と transcript.jsonl（日時と名前だけ使う）を読む。JSON ファイルならそれを読む
+ */
+function exportMinutes(opts) {
+  const target = path.resolve(opts.minutes);
+  let boardFile = target;
+  let txFile = null;
+  try {
+    if (fs.statSync(target).isDirectory()) {
+      boardFile = path.join(target, 'board.json');
+      txFile = path.join(target, 'transcript.jsonl');
+    }
+  } catch (e) {
+    console.error('--minutes の場所が見つかりません: ' + opts.minutes);
+    return 2;
+  }
+  let board;
+  try {
+    board = JSON.parse(fs.readFileSync(boardFile, 'utf8'));
+  } catch (e) {
+    console.error('ボード（board.json）を読めませんでした: ' + boardFile + '（' + e.message + '）');
+    return 2;
+  }
+  if (!board || !Array.isArray(board.topics)) {
+    console.error('ボードの形ではありません（topics がありません）: ' + boardFile);
+    return 2;
+  }
+  let info = {};
+  if (txFile && fs.existsSync(txFile)) {
+    let selfName = '';
+    try {
+      selfName = JSON.parse(fs.readFileSync(path.join(path.dirname(target), 'settings.json'), 'utf8')).selfName || '';
+    } catch (_) {
+      /* 無くてよい */
+    }
+    info = transcriptInfo(fs.readFileSync(txFile, 'utf8'), selfName || opts.me || '');
+  }
+  const md = boardToMarkdown(board, info);
+  if (opts.out) {
+    fs.writeFileSync(path.resolve(opts.out), md, 'utf8');
+    console.error('議事録の素を書き出しました: ' + path.resolve(opts.out) + '（下書きです。外に出す前に見直してください）');
+  } else {
+    process.stdout.write(md);
+  }
+  return 0;
+}
+
 async function main() {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.opts.help) {
@@ -74,6 +124,7 @@ async function main() {
     return 2;
   }
   const opts = parsed.opts;
+  if (opts.minutes) return exportMinutes(opts);
   // --once は結果の JSON だけを標準出力に出す。案内やログは標準エラーへ
   const say = opts.once ? function (m) { console.error(m); } : function (m) { console.log(m); };
 

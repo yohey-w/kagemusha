@@ -12,6 +12,8 @@ const DEFAULTS = {
   once: false,
   dataDir: null,
   me: null,
+  minutes: null,
+  out: null,
   help: false,
 };
 
@@ -27,6 +29,8 @@ const USAGE = [
   '  --once            --replay を全部読み込み、整理を 1 回だけ行い、結果の JSON を出力して終わる',
   '  --data-dir フォルダ  記録の保存先（既定は helper の隣の data/）',
   '  --me 名前         字幕に出る自分の名前（自分の発言を言い直して返さないため。Meet の「あなた」も自分として扱う）',
+  '  --minutes 場所    会議のあとに、議事録の素（Markdown）を書き出して終わる。場所は会議フォルダ（data/<開始日時>）',
+  '                    か、board.json・--once の出力の JSON ファイル。標準出力へ出す（--out ファイル でファイルへ）',
 ].join('\n');
 
 function toNumber(name, value, errors, { min, max, int }) {
@@ -49,7 +53,7 @@ function toNumber(name, value, errors, { min, max, int }) {
 function parseArgs(argv) {
   const opts = Object.assign({}, DEFAULTS);
   const errors = [];
-  const takesValue = new Set(['--port', '--interval', '--model', '--notes', '--replay', '--speed', '--data-dir', '--me']);
+  const takesValue = new Set(['--port', '--interval', '--model', '--notes', '--replay', '--speed', '--data-dir', '--me', '--minutes', '--out']);
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline;
@@ -84,6 +88,8 @@ function parseArgs(argv) {
       else if (arg === '--notes') opts.notes = value;
       else if (arg === '--replay') opts.replay = value;
       else if (arg === '--data-dir') opts.dataDir = value;
+      else if (arg === '--minutes') opts.minutes = value;
+      else if (arg === '--out') opts.out = value;
       else if (arg === '--me') {
         const n = String(value).replace(/\s+/g, ' ').trim().slice(0, 40);
         if (n) opts.me = n;
@@ -94,6 +100,8 @@ function parseArgs(argv) {
     }
   }
   if (opts.once && !opts.replay) errors.push('--once は --replay といっしょに指定してください');
+  if (opts.minutes && (opts.once || opts.replay)) errors.push('--minutes は --replay / --once とは別に使ってください');
+  if (opts.out && !opts.minutes) errors.push('--out は --minutes といっしょに指定してください');
   return { opts, errors };
 }
 
