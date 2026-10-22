@@ -13,7 +13,9 @@ const os = require('os');
 const { Store } = require('./store');
 const { Transcript } = require('./transcript');
 const { buildWindow, buildPrompt, shouldUpdate } = require('./prompt');
-const { extractJsonObject, normalizeBoard } = require('./extract');
+const { extractJsonObject } = require('./extract');
+const { normalizeBoardV2 } = require('./board');
+const { parseNotes } = require('./notes');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
 const { errMsg, clip, shortenHome } = require('./util');
@@ -169,6 +171,15 @@ class MeetingBoardApp {
     this.settings.selfName = n;
     this.safe(() => this.store.saveSettings(this.settings));
     return n;
+  }
+
+  /** 事前メモを読んだ結果（聞くこと・伝えること・こちらの理解）。メモが変わったときだけ読み直す */
+  notesSpec() {
+    if (!this._spec || this._specFor !== this.notes) {
+      this._spec = parseNotes(this.notes);
+      this._specFor = this.notes;
+    }
+    return this._spec;
   }
 
   selfName() {
@@ -372,7 +383,7 @@ class MeetingBoardApp {
         detail: 'JSON が見つからない返事（' + r.text.length + ' 文字）',
       };
     }
-    const norm = normalizeBoard(obj, { hasNotes });
+    const norm = normalizeBoardV2(obj, { hasNotes, spec: this.notesSpec(), prev: this.board });
     if (!norm.ok) {
       return {
         ok: false,
