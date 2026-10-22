@@ -24,12 +24,22 @@ test('mergeText: 末尾と先頭の重なりを 1 回だけ残してつなぐ（
   assert.equal(C.mergeText('aaa bbb ccc ddd', 'ccc ddd eee'), 'aaa bbb ccc ddd eee');
 });
 
-test('mergeText: 重なりが無ければ半角空白でつなぐ', () => {
-  assert.equal(C.mergeText('こんにちは', '山田です'), 'こんにちは 山田です');
+test('mergeText: 重なりが無い書き換えは、最新の文面に置き換える（付け足さない）', () => {
+  assert.equal(C.mergeText('こんにちは', '山田です'), '山田です');
 });
 
-test('mergeText: 偶然の 1〜2 文字の一致は重なりとみなさない', () => {
-  assert.equal(C.mergeText('よろしくお願いしますね', 'ねえ、次の件です'), 'よろしくお願いしますね ねえ、次の件です');
+test('mergeText: 偶然の 1〜2 文字の一致は重なりとみなさない（つながずに置き換える）', () => {
+  assert.equal(C.mergeText('よろしくお願いしますね', 'ねえ、次の件です'), 'ねえ、次の件です');
+});
+
+test('mergeText: Meet の途中経過（句点の位置が動く書き換え）は付け足さず、最新の文面だけを残す', () => {
+  assert.equal(C.mergeText('字。', '字幕。'), '字幕。');
+  assert.equal(C.mergeText('字幕を。', '字幕を字。'), '字幕を字。');
+  assert.equal(C.mergeText('字幕を字。', '字幕を字幕の？'), '字幕を字幕の？');
+});
+
+test('mergeText: 認識が尻を取り消した（古い文面が新しい文面で始まる）→ 新しい方', () => {
+  assert.equal(C.mergeText('見積もりは来週出しますか', '見積もりは来週'), '見積もりは来週');
 });
 
 test('mergeText: 言い直し（頭と尻が大きく共通）は新しい方を採る', () => {
@@ -94,6 +104,18 @@ test('tracker: 頭が切り詰められても、積み上げた文面は縮ま�
   const out = t.drain();
   assert.equal(out.length, 1);
   assert.equal(out[0].text, '先週の件ですが、見積もりは来週出します。その前に仕様を確認します');
+});
+
+test('tracker: 同じブロックが途中経過で 3 回以上書き換わっても、1 行・最新の文面だけになる（0.1 の「字。 字幕。 字幕を。…」）', () => {
+  const k = {};
+  const t = C.createTracker({ idPrefix: 't' });
+  const steps = ['字。', '字幕。', '字幕を。', '字幕を字。', '字幕を字幕の？'];
+  steps.forEach((text, i) => t.scan([{ key: k, speaker: '山田', text }], 1000 + i * 300));
+  const out = t.drain();
+  assert.equal(out.length, 1, '1 本の発言');
+  assert.equal(out[0].id, 't-1');
+  assert.equal(out[0].text, '字幕を字幕の？', '途中経過をつなげない');
+  assert.equal(t.trackedCount(), 1);
 });
 
 test('tracker: 画面から消えたブロックは確定（final）として 1 度だけ送る', () => {

@@ -43,6 +43,17 @@ test('Transcript.upsert: id で上書き。古い版は無視、確定は戻ら�
   assert.equal(tr.upsert({ id: 'b', text: '   ' }, T0), false);
 });
 
+test('Transcript.upsert: 同じ id の更新は全文の置き換え（付け足さない）。3 回書き換わっても 1 行で最新の文面', () => {
+  const tr = new Transcript();
+  ['字。', '字幕。', '字幕を字幕の？'].forEach((text, i) => {
+    tr.upsert({ id: 'blk', speaker: '山田', text, firstSeen: T0, lastUpdate: T0 + i * 500 }, T0 + i * 500);
+  });
+  assert.equal(tr.entries.length, 1);
+  assert.equal(tr.entries[0].text, '字幕を字幕の？');
+  assert.deepEqual(tr.lines('').map((l) => l.text), ['[09:05] 山田：字幕を字幕の？']);
+  assert.equal(tr.toJsonl().split('\n').length, 1);
+});
+
 test('Transcript: firstSeen 順に並ぶ', () => {
   const tr = new Transcript();
   tr.upsert(entry(2, '佐々木', '二番目', T0 + 2000), T0);
