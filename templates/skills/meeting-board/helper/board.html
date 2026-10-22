@@ -656,9 +656,9 @@ dialog textarea { min-height: 220px; resize: vertical; }
     a.checkDone.forEach(function (c) { cd.appendChild(checkLi(c)); });
     fill('pConflicts', 'conflictList', a.conflicts, function (k) {
       var li = el('li');
-      if (k.premise) li.appendChild(el('div', 'dim', 'こちらの理解：' + k.premise));
-      li.appendChild(el('div', null, (k.speaker ? k.speaker + '：' : '') + k.heard));
-      if (k.reply) li.appendChild(el('div', 'dim', '返す一言：' + k.reply));
+      if (k.premise) li.appendChild(el('div', 'dim', (k.kind === 'decision' ? '前回の決定：' : 'こちらの理解：') + k.premise));
+      li.appendChild(el('div', null, (k.speaker ? k.speaker + '：' : '') + k.heard + (k.settled ? '（その場で確かめ済み）' : '')));
+      if (k.reply && !k.settled) li.appendChild(el('div', 'dim', '返す一言：' + k.reply));
       return li;
     });
     fill('pOpen', 'openList', a.openQuestions, function (q) { return el('li', null, q); });

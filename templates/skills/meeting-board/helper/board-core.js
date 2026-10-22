@@ -232,7 +232,7 @@
         return c.state === 'done';
       }),
       conflicts: arr(board && board.premise_conflicts).map(function (k) {
-        return { premise: str(k.premise), heard: str(k.heard), speaker: str(k.speaker), reply: str(k.reply) };
+        return { premise: str(k.premise), kind: str(k.kind), heard: str(k.heard), speaker: str(k.speaker), reply: str(k.reply), settled: !!k.settled };
       }),
       openQuestions: arr(board && board.open_questions).map(str),
       topics: shownTopics,

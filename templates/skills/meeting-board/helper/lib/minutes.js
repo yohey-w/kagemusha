@@ -73,7 +73,7 @@ function boardToMarkdown(board, info) {
       .map((k) => {
         const label = k.kind === 'decision' ? '前回の決定' : 'こちらの理解';
         const head = str(k.premise) ? label + '「' + str(k.premise) + '」→ ' : '';
-        return '- ' + head + (str(k.speaker) ? str(k.speaker) + '「' : '「') + str(k.heard) + '」';
+        return '- ' + head + (str(k.speaker) ? str(k.speaker) + '「' : '「') + str(k.heard) + '」' + (k.settled ? '（その場で確かめ済み）' : '');
       })
   );
   section(

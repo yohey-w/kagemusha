@@ -28,7 +28,10 @@ test('議事録の素: 決まったこと／宿題／まだ答えをもらって
   const heads = md.split('\n').filter((l) => l.startsWith('## '));
   assert.deepEqual(heads, ['## 決まったこと', '## 宿題（誰・いつまで）', '## まだ答えをもらっていないこと', '## 前提と食い違ったこと', '## 聞くこと・伝えることの結果', '## 話題ごとの記録']);
   assert.match(md, /\| 佐々木 \| 現行ベンダーに2か月だけの延長ができるか確認する \| 来週金曜 \|/);
+  assert.match(md, /- 前回の決定「切り替えは来年の4月1日に行う。」→ 佐々木「4月は手一杯なので、5月の連休明けに切り替えたい」\n/);
   assert.match(md, /- こちらの理解「解約の連絡は1か月前で足りる。」→ 佐々木「解約の連絡は終了の2か月前まで（1月末）」/);
+  const settled = boardToMarkdown({ topics: [], premise_conflicts: [{ ref: 'a1', premise: 'x', kind: 'belief', heard: 'y', speaker: '佐々木', settled: true }] }, {});
+  assert.match(settled, /- こちらの理解「x」→ 佐々木「y」（その場で確かめ済み）/);
   assert.match(md, /- \[x\] 1\. 伝える：予算の上限は年額150万円であること。 — 伝え済み: /);
   assert.match(md, /- \[ \] 4\. 聞く：スマホで打刻する場合.* — まだ/);
   assert.match(md, /### 1\. 現状と入れ替えの目的 — 締め作業を1日以内に/);

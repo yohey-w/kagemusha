@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const S = require('./fixtures/support.js');
-const { normalizeBoardV2, stateOf } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+const { normalizeBoardV2, stateOf, toPromptBoard } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
 const { parseNotes } = require(path.join(S.HELPER_DIR, 'lib', 'notes.js'));
 
 const NOTES = '自分：山田\n## 前回の決定\n- 切り替えは4月1日\n## 今日伝えること\n- 予算の上限は150万円\n## 今日聞くこと\n1. 月額はいくらか\n2. 解約の連絡はいつまでか\n3. スマホ打刻のルールは';
@@ -123,7 +123,6 @@ test('カードは多くても 2 枚', () => {
 });
 
 // ── 次の一手・警告・順調 ────────────────────────────────────
-const { toPromptBoard } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
 
 test('次の一手: claude が出さなくても、事前メモの順で最初の「まだ」から規則で作る（空にしない）', () => {
   const b = v2({ topics: [], checklist: [] });
@@ -175,12 +174,21 @@ test('警告: ずれ・前提と違う・言い忘れだけ。相手の要点と
 test('前提と食い違ったこと: 警告が消えても会議の間は残る（振り返り・議事録用）。同じものは重ねない', () => {
   const w = { kind: 'premise', what: '解約の連絡は2か月前まで', speaker: '佐々木', reply: '確かめる', ref: 'a1' };
   const a = normalizeBoardV2({ topics: [], warnings: [w] }, { hasNotes: true, spec: SPEC, prev: null, now: 1000 }).board;
-  assert.deepEqual(a.premise_conflicts, [{ ref: 'a1', premise: '切り替えは4月1日', kind: 'decision', heard: '解約の連絡は2か月前まで', speaker: '佐々木', reply: '確かめる', at: 1000 }]);
+  assert.deepEqual(a.premise_conflicts, [{ ref: 'a1', premise: '切り替えは4月1日', kind: 'decision', heard: '解約の連絡は2か月前まで', speaker: '佐々木', reply: '確かめる', settled: false, at: 1000 }]);
   const b = normalizeBoardV2({ topics: [], warnings: [w] }, { hasNotes: true, spec: SPEC, prev: a, now: 2000 }).board;
   assert.equal(b.premise_conflicts.length, 1);
   const c = normalizeBoardV2({ topics: [], warnings: [] }, { hasNotes: true, spec: SPEC, prev: b, now: 3000 }).board;
   assert.equal(c.premise_conflicts.length, 1, '警告が消えても残る');
   assert.deepEqual(c.warnings, []);
+  // claude の conflicts（確かめ済みも含む）からも残す。同じ前提は 1 件にまとめ、確かめ済みの印を付ける
+  const d = normalizeBoardV2(
+    { topics: [], conflicts: [{ ref: 'a1', what: '5月12日に切り替えると決め直した', speaker: '佐々木', settled: true }, { ref: 'zz', what: '作り話の前提', speaker: '佐々木' }, { what: '' }] },
+    { hasNotes: true, spec: SPEC, prev: c, now: 4000 }
+  ).board;
+  assert.equal(d.premise_conflicts.length, 2);
+  assert.deepEqual([d.premise_conflicts[0].heard, d.premise_conflicts[0].settled], ['5月12日に切り替えると決め直した', true]);
+  assert.equal(d.premise_conflicts[1].ref, '', '事前メモに無い前提の id は外す');
+  assert.deepEqual(toPromptBoard(d).conflicts[0], { ref: 'a1', what: '5月12日に切り替えると決め直した', speaker: '佐々木', settled: true }, '次の回にも渡して消させない');
 });
 
 test('順調の 1 行は短く切る。前回のボードとして渡す形にヘルパーだけの欄（by・users・schema）は入れない', () => {
@@ -194,5 +202,6 @@ test('順調の 1 行は短く切る。前回のボードとして渡す形に�
   assert.equal(JSON.stringify(p).slice(0, 20), '{"topics":[{"title":');
   assert.deepEqual(Object.keys(p.next_action), ['text', 'reason', 'ref']);
   assert.ok(!('users' in p) && !('schema' in p) && !('premise_conflicts' in p));
+  assert.deepEqual(p.conflicts, []);
   assert.deepEqual(Object.keys(p.checklist[0]), ['id', 'state', 'owner', 'evidence'], '文言は渡さない（事前メモの表で渡す）');
 });

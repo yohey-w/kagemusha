@@ -236,14 +236,36 @@ function normWarnings(rawList, checklist, beliefs) {
     .slice(0, MAX_WARNINGS);
 }
 
-/** 前提と食い違ったこと（会議のあとの振り返り・議事録用）。一度出たものは会議の間ずっと残す */
-function mergeConflicts(prevList, warnings, beliefs, now) {
-  const out = arr(prevList).filter(isObj).slice();
+/**
+ * 前提と食い違ったこと（会議のあとの振り返り・議事録用）。一度出たものは会議の間ずっと残す。
+ * 材料は claude の conflicts（確かめ済みも含む）と、premise の警告。同じ前提（ref）は 1 件にまとめ、言い分は新しい方にする
+ */
+function mergeConflicts(prevList, rawConflicts, warnings, beliefs, now) {
+  const beliefIds = new Set((beliefs || []).map((b) => b.id));
+  const out = arr(prevList)
+    .filter(isObj)
+    .map((x) => Object.assign({}, x));
+  const incoming = [];
+  for (const k of arr(rawConflicts).filter(isObj)) {
+    let ref = str(k.ref);
+    if (ref && !beliefIds.has(ref)) ref = '';
+    const heard = clip(str(k.what || k.heard), 80);
+    if (heard) incoming.push({ ref, heard, speaker: str(k.speaker).slice(0, 40), reply: '', settled: k.settled === true });
+  }
   for (const w of warnings) {
-    if (w.kind !== 'premise') continue;
-    if (out.some((x) => x.ref === w.ref && x.heard === w.what)) continue;
-    const b = (beliefs || []).find((x) => x.id === w.ref);
-    out.push({ ref: w.ref, premise: b ? b.text : '', kind: b ? b.kind : '', heard: w.what, speaker: w.speaker, reply: w.reply, at: now || 0 });
+    if (w.kind === 'premise') incoming.push({ ref: w.ref, heard: w.what, speaker: w.speaker, reply: w.reply, settled: false });
+  }
+  for (const k of incoming) {
+    const same = out.find((x) => (k.ref ? x.ref === k.ref : !x.ref && normText(x.heard) === normText(k.heard)));
+    if (same) {
+      same.heard = k.heard;
+      if (k.speaker) same.speaker = k.speaker;
+      if (k.reply) same.reply = k.reply;
+      if (k.settled) same.settled = true;
+      continue;
+    }
+    const b = (beliefs || []).find((x) => x.id === k.ref);
+    out.push({ ref: k.ref, premise: b ? b.text : '', kind: b ? b.kind : '', heard: k.heard, speaker: k.speaker, reply: k.reply, settled: k.settled, at: now || 0 });
   }
   return out.slice(-MAX_CONFLICTS);
 }
@@ -273,7 +295,7 @@ function normalizeBoardV2(raw, ctx) {
     next_action: decideNextAction(raw.next_action, checklist, beliefs, allTodos),
     warnings,
     status: clip(str(raw.status), LINE_MAX),
-    premise_conflicts: mergeConflicts(prev ? prev.premise_conflicts : [], warnings, beliefs, c.now),
+    premise_conflicts: c.hasNotes ? mergeConflicts(prev ? prev.premise_conflicts : [], raw.conflicts, warnings, beliefs, c.now) : [],
     users: arr(c.users).map(str).filter(Boolean),
     schema: 2,
   };
@@ -303,6 +325,9 @@ function toPromptBoard(board) {
   if (board.next_action) out.next_action = { text: board.next_action.text, reason: board.next_action.reason, ref: board.next_action.ref };
   if (Array.isArray(board.warnings)) out.warnings = board.warnings;
   if (typeof board.status === 'string') out.status = board.status;
+  if (Array.isArray(board.premise_conflicts)) {
+    out.conflicts = board.premise_conflicts.map((k) => ({ ref: k.ref, what: k.heard, speaker: k.speaker, settled: !!k.settled }));
+  }
   out.cards = arr(board.cards);
   return out;
 }
