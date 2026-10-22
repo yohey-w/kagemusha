@@ -7,7 +7,7 @@ const path = require('node:path');
 const HELPER = path.join(__dirname, '..', 'helper');
 const { Transcript, splitLongText } = require(path.join(HELPER, 'lib', 'transcript.js'));
 const { buildWindow, buildPrompt, shouldUpdate, WHOLE_LIMIT, OVERLAP_CHARS } = require(path.join(HELPER, 'lib', 'prompt.js'));
-const { parseReplayText, toEntries } = require(path.join(HELPER, 'lib', 'replay.js'));
+const { parseReplayText, parseReplayTimed, toEntries, autoSpeed, replaySeconds, replayDelays } = require(path.join(HELPER, 'lib', 'replay.js'));
 const { parseArgs } = require(path.join(HELPER, 'lib', 'args.js'));
 
 const T0 = new Date(2026, 9, 21, 9, 5, 0).getTime(); // ローカル 09:05（時差に左右されない）
@@ -203,6 +203,36 @@ test('parseReplayText: 「話者：本文」「話者: 本文」と先頭の [HH
   assert.equal(entries[1].firstSeen - entries[0].firstSeen, 4000, '1 行あたり約 4 秒（1 倍速）');
 });
 
+test('autoSpeed: 整理が 6 回ほど入る速さ（277 行 → 2.8 倍、付属の 58 行 → 0.6 倍、とても長いと 50 倍まで）', () => {
+  const lines = (n) => Array.from({ length: n }, () => ({ speaker: '山田', text: 'x', atSec: null }));
+  assert.equal(autoSpeed({ realSec: replaySeconds(lines(277)), intervalSec: 60 }), 2.8);
+  assert.equal(autoSpeed({ realSec: replaySeconds(lines(58)), intervalSec: 60 }), 0.6);
+  assert.equal(autoSpeed({ realSec: replaySeconds(lines(5000)), intervalSec: 60 }), 50);
+  assert.equal(autoSpeed({ realSec: 10, intervalSec: 60 }), 0.5, '下限');
+  // 付属の会議（58 行）を既定の速さで流すと、整理のサイクル（20 秒＋45 秒）が 5 回以上入る
+  const sec = replaySeconds(lines(58)) / autoSpeed({ realSec: replaySeconds(lines(58)), intervalSec: 60 });
+  assert.ok(sec / 65 >= 5, '整理の回数の見込み: ' + sec / 65);
+});
+
+test('parseReplayTimed: [HH:MM:SS]・[H:MM:SS]・[HH:MM] を読み、時刻つきならその間隔で流す（長い沈黙は 10 秒で打ち切る）', () => {
+  const text = ['[10:00:00] 山田：はじめます', '[10:00:03] 佐々木：はい', '[10:05:00] 山田：長い沈黙のあと', '[10:04:59] 佐々木：少し戻った', '[9:05:00] 山田：一桁の時'].join('\n');
+  const l = parseReplayTimed(text);
+  assert.deepEqual(l.map((x) => x.atSec), [36000, 36003, 36300, 36299, 32700]);
+  const entries = toEntries(l.slice(0, 4), T0);
+  assert.equal(entries[1].firstSeen - entries[0].firstSeen, 3000 + 1, '行の時刻の差（同じ時刻の順を保つ 1ms）');
+  assert.deepEqual(replayDelays(entries, 1), [3000, 10000, 50, 0]);
+  assert.deepEqual(replayDelays(entries, 2), [1500, 10000, 50, 0]);
+  // 日付をまたいで時刻が戻ったら 24 時間足す
+  assert.deepEqual(parseReplayTimed('[23:59:58] 山田：遅くまで\n[00:00:02] 佐々木：日付が変わった').map((x) => x.atSec), [86398, 86402]);
+  // 同じ分の [HH:MM] が続くときは、その 1 分の中に等間隔で並べる
+  const m = parseReplayTimed('[09:01] 山田：一\n[09:01] 佐々木：二\n[09:01] 山田：三\n[09:02] 佐々木：四');
+  assert.deepEqual(m.map((x) => x.atSec - 32460), [0, 20, 40, 60]);
+  // 時刻が無い（または 8 割に満たない）ファイルは 1 行 4 秒
+  const plain = toEntries(parseReplayTimed('山田：一\n佐々木：二'), T0);
+  assert.deepEqual(replayDelays(plain, 2), [2000, 2000]);
+  assert.equal(replaySeconds(parseReplayTimed('山田：一\n佐々木：二')), 8);
+});
+
 test('parseArgs: 既定値・値つきオプション・誤り', () => {
   const d = parseArgs([]);
   assert.deepEqual(d.errors, []);
@@ -225,5 +255,8 @@ test('parseArgs: 既定値・値つきオプション・誤り', () => {
   assert.ok(parseArgs(['--once']).errors.length > 0, '--once は --replay が要る');
   assert.equal(parseArgs(['--me', ' 山田  太郎 ']).opts.me, '山田 太郎');
   assert.equal(parseArgs([]).opts.me, null);
+  assert.equal(parseArgs([]).opts.speed, 'auto', '再生の速さの既定は auto');
+  assert.equal(parseArgs(['--speed', 'auto']).opts.speed, 'auto');
+  assert.ok(parseArgs(['--speed', 'abc']).errors.length > 0);
   assert.ok(parseArgs(['--me', '  ']).errors.length > 0);
 });

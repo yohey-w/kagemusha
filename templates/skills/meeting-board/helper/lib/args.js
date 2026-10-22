@@ -8,7 +8,7 @@ const DEFAULTS = {
   open: false,
   notes: null,
   replay: null,
-  speed: 10,
+  speed: 'auto',
   once: false,
   dataDir: null,
   me: null,
@@ -25,7 +25,8 @@ const USAGE = [
   '  --open            ボードをブラウザで開く',
   '  --notes ファイル  事前メモを読み込む',
   '  --replay ファイル 字幕のかわりにファイルの会話を流す（「話者：本文」の行）',
-  '  --speed N         --replay の速さ（既定 10 倍。1 倍は 1 行あたり約 4 秒）',
+  '  --speed N|auto    --replay の速さ（既定 auto＝整理が 6 回ほど入る速さ。1 倍は 1 行あたり約 4 秒、',
+  '                    行に [時:分:秒] があればその間隔）',
   '  --once            --replay を全部読み込み、整理を 1 回だけ行い、結果の JSON を出力して終わる',
   '  --data-dir フォルダ  記録の保存先（既定は helper の隣の data/）',
   '  --me 名前         字幕に出る自分の名前（自分の発言を言い直して返さないため。Meet の「あなた」も自分として扱う）',
@@ -82,8 +83,11 @@ function parseArgs(argv) {
         const n = toNumber('--interval', value, errors, { min: 5, max: 3600, int: false });
         if (n !== null) opts.interval = n;
       } else if (arg === '--speed') {
-        const n = toNumber('--speed', value, errors, { min: 0.1, max: 1000, int: false });
-        if (n !== null) opts.speed = n;
+        if (value === 'auto') opts.speed = 'auto';
+        else {
+          const n = toNumber('--speed', value, errors, { min: 0.1, max: 1000, int: false });
+          if (n !== null) opts.speed = n;
+        }
       } else if (arg === '--model') opts.model = value;
       else if (arg === '--notes') opts.notes = value;
       else if (arg === '--replay') opts.replay = value;

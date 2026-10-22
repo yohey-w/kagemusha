@@ -21,7 +21,7 @@ const { spawn } = require('child_process');
 const { parseArgs, USAGE } = require('./lib/args');
 const { MeetingBoardApp } = require('./lib/app');
 const { listen, probeExisting } = require('./lib/httpserver');
-const { parseReplayText, toEntries, startReplay } = require('./lib/replay');
+const { parseReplayTimed, toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/replay');
 const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
 const VERSION = '0.1.0';
@@ -141,7 +141,7 @@ async function main() {
   let replayLines = null;
   if (opts.replay) {
     try {
-      replayLines = parseReplayText(fs.readFileSync(path.resolve(opts.replay), 'utf8'));
+      replayLines = parseReplayTimed(fs.readFileSync(path.resolve(opts.replay), 'utf8'));
     } catch (e) {
       console.error('--replay のファイルを読めませんでした（' + opts.replay + '）: ' + e.message);
       return 2;
@@ -249,8 +249,15 @@ async function main() {
   if (replayLines) {
     const entries = toEntries(replayLines, Date.now());
     app.replay = { active: true, index: 0, total: entries.length };
-    say('--replay: ' + entries.length + ' 行を ' + opts.speed + ' 倍速で流します。');
-    replayHandle = startReplay(entries, opts.speed, function (entry, i) {
+    const realSec = replaySeconds(replayLines);
+    const speed = opts.speed === 'auto' ? autoSpeed({ realSec, intervalSec: opts.interval }) : opts.speed;
+    const playMin = Math.max(1, Math.round(realSec / speed / 60));
+    const cycles = Math.max(1, Math.round(realSec / speed / (Math.min(opts.interval, 20) + 45)));
+    say(
+      '--replay: ' + entries.length + ' 行を ' + speed + ' 倍速で流します（約 ' + playMin + ' 分・整理はおよそ ' + cycles + ' 回の見込み' +
+        (opts.speed === 'auto' ? '。速さは --speed で変えられます' : '') + '）。'
+    );
+    replayHandle = startReplay(entries, speed, function (entry, i) {
       app.transcript.upsert(entry, Date.now());
       app.replay = { active: true, index: i + 1, total: entries.length };
     });
