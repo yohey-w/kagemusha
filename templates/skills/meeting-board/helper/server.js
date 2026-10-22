@@ -4,7 +4,7 @@
 // ボード（http://127.0.0.1:47431/）に出す。127.0.0.1 だけで待ち受け、外には何も送らない。
 //
 //   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
-//                         [--notes ファイル] [--replay ファイル [--speed 10]] [--once] [--data-dir フォルダ] [--me 名前]
+//                         [--notes ファイル] [--replay ファイル [--speed auto]] [--once] [--data-dir フォルダ] [--me 名前]
 //   node helper/server.js --minutes <会議フォルダ | board.json> [--out ファイル]   議事録の素（Markdown）を書き出す
 
 // 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
