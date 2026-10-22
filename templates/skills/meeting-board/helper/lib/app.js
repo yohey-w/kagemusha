@@ -88,6 +88,9 @@ class MeetingBoardApp {
     this.failCount = 0;
     this.lastUpdateAt = 0;
     this.lastDurationMs = null;
+    this.lastClaudeMs = null; // claude が返した duration_ms
+    this.lastCostUsd = null; // claude が返した total_cost_usd
+    this.totalCostUsd = 0; // この会議で使った分の合計
     this.savedRevision = 0;
     this.lastSaveAt = now;
     this.lastEndAt = now;
@@ -259,6 +262,10 @@ class MeetingBoardApp {
     // ここから先で何が起きても inFlight は必ず戻す（0.1 では窓の切り出しの例外で戻らず、
     // 以後ずっと整理が止まった）。例外は「内部エラー」として扱い、間をあけて次の回にやり直す
     let outcome;
+    let meta = null;
+    let inChars = 0;
+    let outChars = 0;
+    let range = '';
     try {
       const lines = this.transcript.lines(this.selfName());
       snapshotLines = lines.length;
@@ -272,6 +279,8 @@ class MeetingBoardApp {
         range: win.range,
         lines: win.lines,
       });
+      inChars = prompt.length;
+      range = win.range;
       const r = await callClaude({
         resolved: this.resolved,
         model: this.model,
@@ -281,6 +290,10 @@ class MeetingBoardApp {
         state: this.claudeState,
         env: this.env,
       });
+      if (r && r.ok) {
+        meta = r.meta || null;
+        outChars = typeof r.text === 'string' ? r.text.length : 0;
+      }
       outcome = this.digest(r, hasNotes);
     } catch (e) {
       outcome = { ok: false, kind: 'internal', message: '内部エラー: ' + clip(errMsg(e), 160), detail: clip(errMsg(e), 160) };
@@ -291,6 +304,30 @@ class MeetingBoardApp {
     const endedAt = this.now();
     this.lastEndAt = endedAt;
     this.lastDurationMs = endedAt - startedAt;
+    // 速さと費用の記録（数字だけ）。費用は返事があった回だけ足す
+    const costUsd = meta && typeof meta.cost === 'number' ? meta.cost : null;
+    const claudeMs = meta && typeof meta.ms === 'number' ? meta.ms : null;
+    if (token === this.sessionToken) {
+      if (costUsd !== null) {
+        this.lastCostUsd = costUsd;
+        this.totalCostUsd += costUsd;
+      }
+      if (claudeMs !== null) this.lastClaudeMs = claudeMs;
+      this.safe(() =>
+        this.store.appendUpdateLog({
+          at: endedAt,
+          reason: String(reason || ''),
+          ok: !!outcome.ok,
+          kind: outcome.ok ? '' : String(outcome.kind || ''),
+          range,
+          inChars,
+          outChars,
+          ms: this.lastDurationMs,
+          claudeMs,
+          costUsd,
+        })
+      );
+    }
 
     if (token !== this.sessionToken) {
       // 呼び出しの最中に「新しい会議」が押された → 結果は捨てる
@@ -383,6 +420,9 @@ class MeetingBoardApp {
           inFlight: this.inFlight,
           pendingChars: this.pendingChars(),
           lastDurationMs: this.lastDurationMs,
+          lastClaudeMs: this.lastClaudeMs,
+          lastCostUsd: this.lastCostUsd,
+          totalCostUsd: Math.round(this.totalCostUsd * 1e6) / 1e6,
           failures: this.failCount,
         },
         claude: {
@@ -443,6 +483,9 @@ class MeetingBoardApp {
         inFlight: this.inFlight,
         lastAgoSec: sec(this.lastUpdateAt),
         lastDurationMs: this.lastDurationMs,
+        lastClaudeMs: this.lastClaudeMs,
+        lastCostUsd: this.lastCostUsd,
+        totalCostUsd: Math.round(this.totalCostUsd * 1e6) / 1e6,
         pendingChars: this.pendingChars(),
         notesPresent: !!this.notes.trim(),
       },

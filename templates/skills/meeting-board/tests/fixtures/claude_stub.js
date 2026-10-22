@@ -87,7 +87,9 @@ process.stdin.on('end', () => {
   let result = board;
   if (wrap === 'fence') result = '```json\n' + board + '\n```';
   if (wrap === 'prose') result = '整理しました。\n\n' + board + '\n\n以上です。';
-  const out = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result }) + '\n';
+  // 本物の claude -p --output-format json と同じく、費用と所要時間（数字）も付ける
+  const out =
+    JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, total_cost_usd: Number(process.env.STUB_COST_USD || 0.0125), duration_ms: 4321 }) + '\n';
   const delay = Number(process.env.STUB_DELAY_MS || 0);
   setTimeout(() => {
     process.stdout.write(out, () => process.exit(0));

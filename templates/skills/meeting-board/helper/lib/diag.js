@@ -41,6 +41,12 @@ function buildDiagText(info) {
   L.push('■ 整理（claude への依頼・この会議の分）');
   L.push('  成功 ' + info.updates.count + ' 回 / 失敗 ' + info.updates.failures + ' 回 / 実行中: ' + yesNo(info.updates.inFlight));
   L.push('  最後の成功: ' + ago(info.updates.lastAgoSec) + ' / 直近の所要: ' + (info.updates.lastDurationMs === null ? '（なし）' : Math.round(info.updates.lastDurationMs / 1000) + ' 秒'));
+  const usd = (v) => (typeof v === 'number' ? '$' + v.toFixed(4) : '（なし）');
+  L.push(
+    '  claude の所要（claude の申告）: ' +
+      (typeof info.updates.lastClaudeMs === 'number' ? Math.round(info.updates.lastClaudeMs / 1000) + ' 秒' : '（なし）') +
+      ' / 費用: 直近 ' + usd(info.updates.lastCostUsd) + '・この会議の合計 ' + usd(info.updates.totalCostUsd)
+  );
   L.push('  未反映の字幕: ' + info.updates.pendingChars + ' 文字 / 事前メモ: ' + (info.updates.notesPresent ? 'あり' : 'なし'));
   L.push('');
   L.push('■ 直近のエラー（新しい順・最大5件）');

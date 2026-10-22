@@ -491,6 +491,35 @@ test('整理: 話者が替わらない長い発言（final:false のまま）も
   }
 });
 
+test('整理: claude の所要時間と費用（数字だけ）を状態・診断・updates.jsonl に残す（本文は入れない）', async () => {
+  const h = await S.startApp({ fakeClock: true, env: { STUB_COST_USD: '0.02' } });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a').concat([cap('s', '山田', SECRET)]) });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    await post(h, '/captions', { entries: lines(4, 'b') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    const u = (await get(h, '/state')).json.status.update;
+    assert.equal(u.lastClaudeMs, 4321);
+    assert.equal(u.lastCostUsd, 0.02);
+    assert.equal(u.totalCostUsd, 0.04);
+    const diag = (await get(h, '/diag')).text;
+    assert.match(diag, /費用: 直近 \$0\.0200・この会議の合計 \$0\.0400/);
+    const dir = fs.readdirSync(h.dataDir).find((d) => /^\d{4}-/.test(d));
+    const rows = fs.readFileSync(path.join(h.dataDir, dir, 'updates.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(rows.length, 2);
+    assert.deepEqual(Object.keys(rows[0]).sort(), ['at', 'claudeMs', 'costUsd', 'inChars', 'kind', 'ms', 'ok', 'outChars', 'range', 'reason']);
+    assert.equal(rows[0].ok, true);
+    assert.equal(rows[0].costUsd, 0.02);
+    assert.ok(rows[0].inChars > 0 && rows[0].outChars > 0);
+    const raw = fs.readFileSync(path.join(h.dataDir, dir, 'updates.jsonl'), 'utf8');
+    assert.ok(!raw.includes('ZQX9172') && !raw.includes('山田'), '本文・名前は入れない');
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 同時に 2 つは走らせない', async () => {
   const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '500' } });
   try {

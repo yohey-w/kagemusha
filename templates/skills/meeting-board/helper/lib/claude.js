@@ -224,7 +224,9 @@ function interpret(proc, timeoutMs) {
       };
     }
     if (typeof parsed.result === 'string') {
-      return { ok: true, text: parsed.result, meta: { cost: parsed.total_cost_usd, ms: parsed.duration_ms } };
+      // 速さと費用を測るため、数字だけ持ち帰る（本文は持ち帰らない）
+      const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+      return { ok: true, text: parsed.result, meta: { cost: num(parsed.total_cost_usd), ms: num(parsed.duration_ms) } };
     }
     return { ok: false, kind: 'bad-output', message: 'claude の返事に result がありませんでした。', detail: 'no result field' };
   }
