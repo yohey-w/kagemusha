@@ -76,7 +76,9 @@ test('--once は --replay が無ければ使えない。--help は使い方を�
 
 /** 通常起動のヘルパーを子プロセスで立てる。バナーからボードの URL（ポート）を読む */
 function startServer(args, env) {
-  const child = spawn(process.execPath, [SERVER].concat(args), { env: S.stubEnv(env), stdio: ['ignore', 'pipe', 'pipe'] });
+  // IPC つきで起動し、止めるときは {type:'stop'} を送る（Windows の Node は子への SIGTERM を強制終了にし、
+  // 終了コードが null になるため。どの OS でも同じ「きれいな終了」の道を通す）
+  const child = spawn(process.execPath, [SERVER].concat(args), { env: S.stubEnv(env), stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
   let out = '';
   let err = '';
   child.stdout.setEncoding('utf8');
@@ -98,7 +100,8 @@ function startServer(args, env) {
       return Number(m[1]);
     },
     stop: async () => {
-      child.kill('SIGTERM');
+      if (child.connected) child.send({ type: 'stop' });
+      else child.kill('SIGTERM');
       return Promise.race([exited, S.sleep(8000).then(() => 'timeout')]);
     },
   };
@@ -134,7 +137,20 @@ test('--replay（通常起動）: 会話を流し、最後に 1 回整理して�
     assert.match(page.text, /ここまでの話/);
   } finally {
     const code = await srv.stop();
-    assert.equal(code, 0, 'Ctrl+C（SIGTERM）できれいに終わる: ' + srv.err());
+    assert.equal(code, 0, '止める合図できれいに終わる（終了コード 0）: ' + srv.err());
+    S.rmDir(dir);
+  }
+});
+
+test('SIGTERM: POSIX ではきれいに終わる（0）。Windows の Node は子への SIGTERM が強制終了なので null', async () => {
+  const dir = S.tmpDir();
+  const srv = startServer(['--port', '0', '--data-dir', dir], {});
+  try {
+    await srv.port();
+    srv.child.kill('SIGTERM');
+    const code = await Promise.race([srv.exited, S.sleep(8000).then(() => 'timeout')]);
+    assert.equal(code, process.platform === 'win32' ? null : 0);
+  } finally {
     S.rmDir(dir);
   }
 });

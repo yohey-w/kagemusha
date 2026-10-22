@@ -37,16 +37,16 @@
 
 - 字幕は、拡張機能からこの PC の `127.0.0.1` にだけ渡ります。このツール自身は、それ以外へ何も送りません。
 - 整理のため、字幕と事前メモを**この PC の Claude Code** に渡します。Claude Code を使うときと同じく、内容は Claude のサービスで処理されます。会議の内容を入れてよいかは、会社の規則で先に確かめてください。
-- 保存先は `data/<開始日時>/`（`transcript.jsonl`＝字幕、`board.json`＝ボード、`notes.md`＝事前メモ）。`data/` の中身は git に入らない設定です。要らなくなったら、そのフォルダを消してください。展開した場所が OneDrive などの同期フォルダだと、保存された字幕も同期されます。避けたいときは `--data-dir` で同期されない場所を指定します（例: `start.cmd --data-dir C:\meeting-board-data`）。
+- 保存先は `data/<開始日時>/`（`transcript.jsonl`＝字幕、`board.json`＝ボード、`notes.md`＝事前メモ）。`data/` の中身は git に入らない設定です。要らなくなったら、そのフォルダを消してください。展開した場所が OneDrive などの同期フォルダだと、保存された字幕も同期されます。避けたいときは `--data-dir` で同期されない場所を指定します（例: `.\start.cmd --data-dir C:\meeting-board-data`）。
 - 古い版の `claude`（`--no-session-persistence` を知らない版）では、整理の依頼が Claude Code 自身の履歴にも残ります。
 
 ## 会議なしで試す
 
 ```
-start.cmd --replay sample\sample_transcript.txt --notes sample\sample_notes.md
+.\start.cmd --replay sample\sample_transcript.txt --notes sample\sample_notes.md
 ```
 
-（`meeting-board` フォルダをエクスプローラーで開き、アドレス欄に `cmd` と打って Enter を押すと、そこでコマンドプロンプトが開きます。）
+（`meeting-board` フォルダをエクスプローラーで開き、アドレス欄に `cmd` と打って Enter を押すと、そこでコマンドプロンプトが開きます。先頭の `.\` は、Git Bash や PowerShell のように「今のフォルダを探さない」画面でも同じ命令で動かすためのものです。）
 架空の会議（2 人・約 60 行）を字幕として流し、ボードを動かして見せます（mac / linux は `./start.sh --replay sample/sample_transcript.txt --notes sample/sample_notes.md`）。結果の JSON だけが欲しいときは、`--once` を足すと 1 回だけ整理して出力して終わります。
 
 ## うまく動かないとき

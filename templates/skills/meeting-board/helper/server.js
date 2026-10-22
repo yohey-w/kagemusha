@@ -218,6 +218,15 @@ async function main() {
     };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
+    if (process.platform === 'win32') process.on('SIGBREAK', stop); // Ctrl+Break
+    // 試験などで IPC つきで起動されたときは {type:'stop'} の合図でも同じ道で終わる。
+    // Windows の Node は子への SIGTERM を強制終了にする（ハンドラが走らない）ため、どの OS でも
+    // 同じ「きれいな終了」を通せるようにしてある。通常の起動（start.cmd）では IPC が無いので何も起きない
+    if (typeof process.send === 'function') {
+      process.on('message', function (m) {
+        if (m && m.type === 'stop') stop();
+      });
+    }
   });
   return 0;
 }
