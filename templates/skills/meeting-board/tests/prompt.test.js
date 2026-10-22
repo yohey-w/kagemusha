@@ -54,6 +54,24 @@ test('Transcript.upsert: 同じ id の更新は全文の置き換え（付け足
   assert.equal(tr.toJsonl().split('\n').length, 1);
 });
 
+test('Transcript.settle: 話者が替わらず 6 秒伸びなければ確定。また伸びたら確定を取り消す（拡張機能の確定は戻さない）', () => {
+  const tr = new Transcript();
+  tr.upsert({ id: 'a', speaker: '山田', text: '長い説明の途中です', firstSeen: T0, lastUpdate: T0, final: false }, T0);
+  assert.equal(tr.settle(T0 + 5999), 0);
+  assert.equal(tr.entries[0].final, false);
+  assert.equal(tr.settle(T0 + 6000), 1);
+  assert.equal(tr.entries[0].final, true);
+  assert.equal(tr.settle(T0 + 9000), 0, '確定済みは数えない');
+  // 同じブロックがまた伸びた → まだ話している
+  tr.upsert({ id: 'a', speaker: '山田', text: '長い説明の途中です。続けます', firstSeen: T0, lastUpdate: T0 + 9000, final: false }, T0 + 9000);
+  assert.equal(tr.entries[0].final, false);
+  assert.equal(tr.settle(T0 + 15000), 1);
+  // 拡張機能が確定と言った発言は、あとから伸びても確定のまま
+  tr.upsert({ id: 'b', speaker: '佐々木', text: '了解です', firstSeen: T0 + 16000, lastUpdate: T0 + 16000, final: true }, T0 + 16000);
+  tr.upsert({ id: 'b', speaker: '佐々木', text: '了解です。進めます', firstSeen: T0 + 16000, lastUpdate: T0 + 17000, final: false }, T0 + 17000);
+  assert.equal(tr.byId.get('b').final, true);
+});
+
 test('Transcript: firstSeen 順に並ぶ', () => {
   const tr = new Transcript();
   tr.upsert(entry(2, '佐々木', '二番目', T0 + 2000), T0);

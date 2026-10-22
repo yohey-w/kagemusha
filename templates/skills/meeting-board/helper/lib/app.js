@@ -82,6 +82,7 @@ class MeetingBoardApp {
     this.notesDirty = false;
     this.lastLineCount = 0;
     this.lastTotalChars = 0;
+    this.lastTextRevision = 0;
     // 帯の「最終更新・更新 N 回」と診断の件数は、会議ごとに数え直す
     this.updateCount = 0;
     this.failCount = 0;
@@ -188,16 +189,24 @@ class MeetingBoardApp {
     return Math.max(0, this.transcript.totalChars() - this.lastTotalChars);
   }
 
+  /** 前回の整理のあとに字幕が変わったか（書き換えで短くなった・同じ長さで言い直した、も変化に数える） */
+  pendingChange() {
+    const chars = this.pendingChars();
+    if (chars > 0) return chars;
+    return this.transcript.textRevision !== this.lastTextRevision ? 1 : 0;
+  }
+
   tick() {
     try {
       const now = this.now();
+      this.transcript.settle(now);
       this.persist(false);
       let reason = shouldUpdate({
         inFlight: this.inFlight,
         now,
         lastEndAt: this.lastEndAt,
         blockedUntil: this.blockedUntil,
-        newChars: this.pendingChars(),
+        newChars: this.pendingChange(),
         intervalMs: this.intervalMs,
         notesDirty: this.notesDirty,
         hasTranscript: this.transcript.entries.length > 0,
@@ -206,7 +215,7 @@ class MeetingBoardApp {
       if (
         !reason &&
         this.flushNow &&
-        this.pendingChars() > 0 &&
+        this.pendingChange() > 0 &&
         !this.inFlight &&
         now >= this.blockedUntil &&
         now - this.lastEndAt >= 5000
@@ -245,6 +254,7 @@ class MeetingBoardApp {
     const hasNotes = !!this.notes.trim();
     let snapshotLines = this.lastLineCount;
     let snapshotChars = this.lastTotalChars;
+    let snapshotTextRev = this.lastTextRevision;
 
     // ここから先で何が起きても inFlight は必ず戻す（0.1 では窓の切り出しの例外で戻らず、
     // 以後ずっと整理が止まった）。例外は「内部エラー」として扱い、間をあけて次の回にやり直す
@@ -253,6 +263,7 @@ class MeetingBoardApp {
       const lines = this.transcript.lines(this.selfName());
       snapshotLines = lines.length;
       snapshotChars = this.transcript.totalChars();
+      snapshotTextRev = this.transcript.textRevision;
       const win = buildWindow(lines, this.lastLineCount);
       const prompt = buildPrompt({
         promptMd: this.promptMd,
@@ -304,6 +315,7 @@ class MeetingBoardApp {
     this.lastError = null;
     this.lastLineCount = snapshotLines;
     this.lastTotalChars = snapshotChars;
+    this.lastTextRevision = snapshotTextRev;
     if (this.notesVersion === notesVersion) this.notesDirty = false;
     this.safe(() => this.store.saveBoard(this.board));
     this.persist(true);

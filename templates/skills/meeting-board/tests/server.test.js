@@ -460,6 +460,37 @@ test('整理: claude の返事の要素が欠けていても（text の無い要
   }
 });
 
+test('整理: 話者が替わらない長い発言（final:false のまま）も整理に渡り、6 秒伸びなければ確定になる', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    const long = 'まだ話し続けています。' + 'これは長い独り語りの一部です。'.repeat(12);
+    await post(h, '/captions', { entries: [cap('solo', '山田', long, { final: false })] });
+    h.clock.t += 3000;
+    h.app.tick();
+    assert.equal((await get(h, '/state')).json.recent[0].final, false, '3 秒ではまだ確定にしない');
+    h.clock.t += 4000;
+    h.app.tick();
+    assert.equal((await get(h, '/state')).json.recent[0].final, true, '6 秒伸びなければ確定');
+
+    h.clock.t += 20000;
+    h.app.tick();
+    await S.waitFor(() => h.app.updateCount === 1, 15000);
+    assert.match(h.calls()[0].stdin, /山田：まだ話し続けています。/, '確定を待たずに整理へ渡る');
+
+    // 同じ長さのまま言い直された（字数は増えない）→ 間隔が来れば整理し直す
+    const revised = long.replace('まだ', 'いま');
+    assert.equal(revised.length, long.length);
+    await post(h, '/captions', { entries: [cap('solo', '山田', revised, { final: false, lastUpdate: T0 + 90000 })] });
+    assert.equal(h.app.pendingChars(), 0);
+    h.clock.t += 61000;
+    h.app.tick();
+    await S.waitFor(() => h.app.updateCount === 2, 15000);
+    assert.match(h.calls()[1].stdin, /山田：いま話し続けています。/);
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 同時に 2 つは走らせない', async () => {
   const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '500' } });
   try {
