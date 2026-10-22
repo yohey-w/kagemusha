@@ -28,8 +28,11 @@ function buildWindow(lines, lastLineCount) {
     return { range: '全部', lines: all };
   }
 
-  // 前回の最後の行は、あとから伸びていることがあるのでもう一度含める
-  const from = Math.max(0, lastLineCount - 1);
+  // 前回の最後の行は、あとから伸びていることがあるのでもう一度含める。
+  // 字幕は書き換わって短くなることがある（長い発言の切れ目が変わる・言い直し）ので、
+  // 前回の行数がいまの行数より多くても、いまの最後の行を越えて読まない
+  // （0.1 では越えて読み、undefined.text で整理が止まった）
+  const from = Math.min(Math.max(0, lastLineCount - 1), lines.length - 1);
   let start = from;
   let overlap = 0;
   while (start > 0 && overlap < OVERLAP_CHARS) {

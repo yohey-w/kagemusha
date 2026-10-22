@@ -87,6 +87,19 @@ test('buildWindow: 超えたら「前回より後だけ」＋手前に約 2000 �
   assert.ok(overlapChars < OVERLAP_CHARS + 300, '重なりは 2000 字ほど: ' + overlapChars);
 });
 
+test('buildWindow: 字幕が書き換わって前回より行が減っても、いまの最後の行を越えて読まない', () => {
+  // 0.1 では lines[start] が undefined になり「Cannot read properties of undefined (reading 'text')」で止まった
+  const tr = new Transcript();
+  for (let i = 0; i < 200; i++) tr.upsert(entry(i, '山田', String(i).padStart(3, '0') + 'あ'.repeat(97)), T0);
+  const lines = tr.lines('');
+  const w = buildWindow(lines, lines.length + 30);
+  assert.equal(w.range, '前回より後だけ');
+  assert.equal(w.lines[w.lines.length - 1].text, lines[199].text, 'いまの最後の行まで入る');
+  assert.ok(w.lines.every((l) => l && typeof l.text === 'string'));
+  const overlap = w.lines.slice(0, -1).reduce((n, l) => n + l.text.length + 1, 0);
+  assert.ok(overlap >= OVERLAP_CHARS, '手前の重なりも付く: ' + overlap);
+});
+
 test('buildWindow: 初回（前回が無い）は長くても「全部」', () => {
   const tr = new Transcript();
   for (let i = 0; i < 200; i++) tr.upsert(entry(i, '山田', 'あ'.repeat(100)), T0);

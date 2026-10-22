@@ -365,6 +365,101 @@ test('整理: 使用上限は上限として知らせ、5 分は呼び直さな�
   }
 });
 
+test('整理: 長い発言が書き換わって行が減っても止まらない（0.1 の「内部エラー: reading \'text\'」で以後ずっと止まった件）', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    // 前半: 100 字 × 130 発言（1 万 3 千字。窓は「前回より後だけ」になる）、後半: 1 人の長い発言（600 字ごとに分かれて何行にもなる）
+    const many = [];
+    for (let i = 0; i < 130; i++) many.push(cap('m' + i, '佐々木', String(i).padStart(3, '0') + 'い'.repeat(97), { firstSeen: T0 + i * 1000 }));
+    const longText = 'これは長い発言の一文です。'.repeat(1000).slice(0, 12000);
+    await post(h, '/captions', { entries: many.concat([cap('long', '山田', longText, { firstSeen: T0 + 200000, lastUpdate: T0 + 200000 })]) });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    const before = h.app.lastLineCount;
+    assert.ok(before > 140, '長い発言が何行にもなっている: ' + before);
+
+    // 同じ発言（同じ id）が短く書き換わった → 行の数が前回より減る
+    await post(h, '/captions', { entries: [cap('long', '山田', '言い直して短くなりました。', { firstSeen: T0 + 200000, lastUpdate: T0 + 300000 })] });
+    h.clock.t += 30000;
+    const r = await h.app.runUpdate('test');
+    assert.equal(r.ok, true, r.message);
+    assert.equal(h.app.inFlight, false);
+    assert.ok(h.app.lastLineCount < before);
+    assert.equal(h.app.updateCount, 2);
+    assert.match(h.calls()[1].stdin, /言い直して短くなりました。/);
+  } finally {
+    await h.close();
+  }
+});
+
+test('整理: 途中で例外が出ても「整理中」のまま固まらず、黒い画面に（本文を伏せて）出し、間をあけて次の回にやり直す', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  const warned = [];
+  h.app.warn = (m) => warned.push(m);
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a').concat([cap('s', '山田', SECRET)]) });
+    const realLines = h.app.transcript.lines.bind(h.app.transcript);
+    h.app.transcript.lines = () => {
+      throw new Error('試験の例外: ' + SECRET);
+    };
+    h.clock.t += 30000;
+    const r = await h.app.runUpdate('test');
+    assert.equal(r.ok, false);
+    assert.equal(r.kind, 'internal');
+    assert.equal(h.app.inFlight, false, '整理中のまま固まらない');
+    assert.equal(warned.length, 1);
+    assert.match(warned[0], /整理のエラー \[internal\]/);
+    assert.ok(!warned.join('\n').includes('ZQX9172'), '黒い画面に字幕の本文を出さない');
+
+    // 直したら、待ち時間のあとの tick で自動でやり直して更新される
+    h.app.transcript.lines = realLines;
+    h.clock.t += 1000;
+    h.app.tick();
+    await S.sleep(100);
+    assert.equal(h.calls().length, 0, '失敗の直後は呼ばない');
+    h.clock.t += 60000;
+    h.app.tick();
+    await S.waitFor(() => h.app.updateCount === 1, 15000);
+    assert.equal((await get(h, '/state')).json.status.lastError, null);
+  } finally {
+    await h.close();
+  }
+});
+
+test('整理: claude の返事の要素が欠けていても（text の無い要点・オブジェクトでない話題）落ちず、次の回も更新される', async () => {
+  const h = await S.startApp({ fakeClock: true, notes: '## 聞くこと\n- 月額はいくらか' });
+  const bad = path.join(h.dataDir, 'bad.json');
+  const good = path.join(h.dataDir, 'good.json');
+  fs.writeFileSync(bad, JSON.stringify({
+    topics: [null, 'ただの文字列', { title: '費用', current: true, points: [{ speaker: '佐々木' }, null, { text: '月額は400円です', speaker: '佐々木' }], todos: [{ who: '山田' }, null], decisions: [null, 1] }],
+    open_questions: [null, { q: 'x' }],
+    checklist: [null, { evidence: 'item が無い' }, { item: '月額はいくらか', done: 'はい' }],
+    cards: [null, {}],
+    next_action: 'ただの文字列',
+    warnings: [{ heard: '' }, null],
+  }));
+  fs.writeFileSync(good, JSON.stringify({ topics: [{ title: '費用の続き', current: true, points: [{ speaker: '佐々木', text: '初期費用は30万円です' }] }] }));
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.app.env.STUB_BOARD = bad;
+    h.clock.t += 30000;
+    const r1 = await h.app.runUpdate('test');
+    assert.equal(r1.ok, true, r1.message);
+    const t = r1.board.topics.find((x) => x.title === '費用');
+    assert.deepEqual(t.points.map((p) => p.text), ['月額は400円です'], 'text の無い要点は捨てる');
+
+    h.app.env.STUB_BOARD = good;
+    await post(h, '/captions', { entries: lines(8, 'b') });
+    h.clock.t += 30000;
+    const r2 = await h.app.runUpdate('test');
+    assert.equal(r2.ok, true, r2.message);
+    assert.equal(h.app.updateCount, 2, '次の回も更新される');
+    assert.ok(r2.board.topics.some((x) => x.title === '費用の続き'));
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 同時に 2 つは走らせない', async () => {
   const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '500' } });
   try {

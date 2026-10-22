@@ -33,6 +33,8 @@ class MeetingBoardApp {
     this.timeoutMs = o.timeoutMs || 120000;
     this.now = o.now || (() => Date.now());
     this.log = o.log || (() => {});
+    // エラーを黒い画面（標準出力）にも出す。字幕・事前メモと同じ並びを含む文は伏せてから渡す
+    this.warn = o.warn || (() => {});
     this.env = o.env || process.env;
     this.promptMd = fs.readFileSync(o.promptPath, 'utf8');
     this.boardHtmlPath = o.boardHtmlPath;
@@ -175,6 +177,11 @@ class MeetingBoardApp {
     this.lastError = { at, kind, message };
     this.errors.unshift({ at, kind, detail: detail || '' });
     if (this.errors.length > 5) this.errors.length = 5;
+    try {
+      this.warn('整理のエラー [' + kind + '] ' + this.scrub(detail || message || ''));
+    } catch (_) {
+      /* 表示できなくても動作には影響しない */
+    }
   }
 
   pendingChars() {
@@ -236,20 +243,24 @@ class MeetingBoardApp {
     const startedAt = this.now();
     const notesVersion = this.notesVersion;
     const hasNotes = !!this.notes.trim();
-    const lines = this.transcript.lines(this.selfName());
-    const snapshotLines = lines.length;
-    const snapshotChars = this.transcript.totalChars();
-    const win = buildWindow(lines, this.lastLineCount);
-    const prompt = buildPrompt({
-      promptMd: this.promptMd,
-      notes: this.notes,
-      prevBoard: this.board,
-      range: win.range,
-      lines: win.lines,
-    });
+    let snapshotLines = this.lastLineCount;
+    let snapshotChars = this.lastTotalChars;
 
+    // ここから先で何が起きても inFlight は必ず戻す（0.1 では窓の切り出しの例外で戻らず、
+    // 以後ずっと整理が止まった）。例外は「内部エラー」として扱い、間をあけて次の回にやり直す
     let outcome;
     try {
+      const lines = this.transcript.lines(this.selfName());
+      snapshotLines = lines.length;
+      snapshotChars = this.transcript.totalChars();
+      const win = buildWindow(lines, this.lastLineCount);
+      const prompt = buildPrompt({
+        promptMd: this.promptMd,
+        notes: this.notes,
+        prevBoard: this.board,
+        range: win.range,
+        lines: win.lines,
+      });
       const r = await callClaude({
         resolved: this.resolved,
         model: this.model,
@@ -262,10 +273,11 @@ class MeetingBoardApp {
       outcome = this.digest(r, hasNotes);
     } catch (e) {
       outcome = { ok: false, kind: 'internal', message: '内部エラー: ' + clip(errMsg(e), 160), detail: clip(errMsg(e), 160) };
+    } finally {
+      this.inFlight = false;
     }
 
     const endedAt = this.now();
-    this.inFlight = false;
     this.lastEndAt = endedAt;
     this.lastDurationMs = endedAt - startedAt;
 

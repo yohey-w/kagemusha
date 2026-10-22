@@ -113,6 +113,12 @@ async function main() {
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
     },
+    // 整理のエラーは黒い画面にも出す（--once では標準エラー）。字幕の本文と名前は伏せてある
+    warn: function (m) {
+      const d = new Date();
+      const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) { return String(n).padStart(2, '0'); }).join(':');
+      say(t + ' ' + m);
+    },
   });
 
   // ── --once: 全部読み込んで 1 回だけ整理し、JSON を出して終わる ──
