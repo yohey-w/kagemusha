@@ -50,6 +50,25 @@ test('--once: 全部読み込んで整理を 1 回だけ行い、標準出力に
   }
 });
 
+test('--once --me: 使う人の名前と、事前メモの表・こちらの理解が claude に渡る。結果に次の一手と 3 状態の表がある', () => {
+  const dir = S.tmpDir();
+  const log = path.join(dir, 'calls.jsonl');
+  try {
+    const r = runCli(['--replay', SAMPLE_TX, '--notes', SAMPLE_NOTES, '--me', '山田', '--once', '--data-dir', dir, '--port', '0'], { STUB_LOG: log });
+    assert.equal(r.status, 0, r.stderr);
+    const board = JSON.parse(r.stdout);
+    assert.ok(board.next_action && board.next_action.text, '次の一手がある');
+    assert.ok(board.checklist.every((c) => ['done', 'deferred', 'open'].includes(c.state)));
+    assert.equal(board.checklist.length, 4, '事前メモの聞くこと 3 つと伝えること 1 つ');
+    const input = JSON.parse(fs.readFileSync(log, 'utf8').trim().split('\n')[0]).stdin;
+    assert.match(input, /【使う人】\n山田（/);
+    assert.match(input, /【こちらの理解】\na1（前回の決定）: 切り替えは来年の4月1日に行う。\na2（こちらの理解）: 解約の連絡は1か月前で足りる。/);
+    assert.match(input, /\[\d\d:\d\d\] 山田：もしもし/, '字幕の名前はそのまま');
+  } finally {
+    S.rmDir(dir);
+  }
+});
+
 test('--once: 整理に失敗したら標準出力は空、終了コード 1、理由は標準エラーに日本語で', () => {
   const dir = S.tmpDir();
   try {

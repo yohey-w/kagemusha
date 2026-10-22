@@ -165,9 +165,92 @@ function buildChecklist(spec, rawChecklist, prevList, todos, hasNotes) {
     .filter((c) => c.item);
 }
 
+const WARN_KINDS = ['drift', 'premise', 'missing'];
+const MAX_WARNINGS = 2;
+const MAX_CONFLICTS = 20;
+const LINE_MAX = 60;
+
+function stripEnd(s) {
+  return s.replace(/[。．.]+$/, '');
+}
+
+/**
+ * 次の一手。claude の提案が使えればそれ。使えなければ規則で作る（事前メモがあれば空にしない）:
+ *   事前メモの順で最初の「まだ」→「聞く：…」/「伝える：…」。全部「済」か「持ち帰り」→ 持ち帰りの読み上げ
+ */
+function decideNextAction(rawNext, checklist, beliefs, todos) {
+  const ids = new Set(checklist.map((c) => c.id).concat((beliefs || []).map((b) => b.id)));
+  if (isObj(rawNext)) {
+    const text = str(rawNext.text);
+    let ref = str(rawNext.ref || (isObj(rawNext.source) ? rawNext.source.ref : ''));
+    if (ref && !ids.has(ref)) ref = '';
+    const target = checklist.find((c) => c.id === ref);
+    // 済んだ項目を指したままの提案は古い（使う人がもう言った・聞いた）ので使わない
+    if (text && !(target && target.state === 'done')) {
+      return { text: clip(text, LINE_MAX), reason: clip(str(rawNext.reason), LINE_MAX), ref, by: 'llm' };
+    }
+  }
+  if (!checklist.length) return null;
+  const open = checklist.find((c) => c.state === 'open');
+  if (open) {
+    const no = checklist.indexOf(open) + 1;
+    const tell = open.kind === 'tell';
+    return {
+      text: clip((tell ? '伝える：' : '聞く：') + stripEnd(open.item), LINE_MAX),
+      reason: (tell ? 'まだ伝えていない' : 'まだ答えをもらっていない') + '（事前メモの ' + no + ' 番目）',
+      ref: open.id,
+      by: 'rule',
+    };
+  }
+  return {
+    text: '持ち帰りを読み上げて確かめる',
+    reason: '聞くこと・伝えることは全部「済」か「持ち帰り」' + (todos.length ? '（持ち帰り ' + todos.length + ' 件）' : ''),
+    ref: '',
+    by: 'rule',
+  };
+}
+
+/** 警告（ずれ・前提と違う・言い忘れ）。相手の発言の要点と返す一言がそろったものだけ。多くても 2 つ */
+function normWarnings(rawList, checklist, beliefs) {
+  const beliefIds = new Set((beliefs || []).map((b) => b.id));
+  return arr(rawList)
+    .filter(isObj)
+    .map((w) => {
+      const kind = str(w.kind);
+      let ref = str(w.ref);
+      if (kind === 'premise' && ref && !beliefIds.has(ref)) ref = ''; // 事前メモに無い前提の id は作り話
+      return {
+        kind,
+        what: clip(str(w.what || w.point || w.heard), 80),
+        speaker: str(w.speaker).slice(0, 40),
+        reply: clip(str(w.reply), LINE_MAX),
+        ref,
+      };
+    })
+    .filter((w) => WARN_KINDS.includes(w.kind) && w.what && w.reply)
+    .filter((w) => {
+      if (w.kind !== 'missing') return true;
+      const c = checklist.find((x) => x.id === w.ref);
+      return !(c && c.state !== 'open'); // もう済んだ・持ち帰りになった項目の言い忘れは出さない
+    })
+    .slice(0, MAX_WARNINGS);
+}
+
+/** 前提と食い違ったこと（会議のあとの振り返り・議事録用）。一度出たものは会議の間ずっと残す */
+function mergeConflicts(prevList, warnings, beliefs, now) {
+  const out = arr(prevList).filter(isObj).slice();
+  for (const w of warnings) {
+    if (w.kind !== 'premise') continue;
+    if (out.some((x) => x.ref === w.ref && x.heard === w.what)) continue;
+    const b = (beliefs || []).find((x) => x.id === w.ref);
+    out.push({ ref: w.ref, premise: b ? b.text : '', kind: b ? b.kind : '', heard: w.what, speaker: w.speaker, reply: w.reply, at: now || 0 });
+  }
+  return out.slice(-MAX_CONFLICTS);
+}
+
 /**
  * claude の返事（オブジェクト）→ schema 2 のボード。
- *   ctx = { hasNotes, spec（parseNotes の結果）, prev（前のボード。無ければ null） }
+ *   ctx = { hasNotes, spec（parseNotes の結果）, prev（前のボード。無ければ null）, users（使う人の名前）, now }
  * topics が配列でなければ失敗（呼び出し側は前のボードを残す）。それ以外は何が来ても例外を出さない。
  */
 function normalizeBoardV2(raw, ctx) {
@@ -180,14 +263,58 @@ function normalizeBoardV2(raw, ctx) {
   const allTodos = [];
   for (const t of topics) for (const d of t.todos) allTodos.push(d);
   const checklist = buildChecklist(c.spec, raw.checklist, prev ? prev.checklist : [], allTodos, !!c.hasNotes);
+  const beliefs = c.hasNotes && c.spec && Array.isArray(c.spec.beliefs) ? c.spec.beliefs : [];
+  const warnings = c.hasNotes ? normWarnings(raw.warnings, checklist, beliefs) : normWarnings(raw.warnings, [], []).filter((w) => w.kind !== 'missing');
   const board = {
     topics,
     open_questions: base.board.open_questions,
     checklist,
     cards: base.board.cards.slice(0, MAX_CARDS),
+    next_action: decideNextAction(raw.next_action, checklist, beliefs, allTodos),
+    warnings,
+    status: clip(str(raw.status), LINE_MAX),
+    premise_conflicts: mergeConflicts(prev ? prev.premise_conflicts : [], warnings, beliefs, c.now),
+    users: arr(c.users).map(str).filter(Boolean),
     schema: 2,
   };
   return { ok: true, board };
 }
 
-module.exports = { normalizeBoardV2, buildChecklist, buildTopics, stateOf, isNoiseTopic, MAX_CARDS };
+/**
+ * 【前回までの整理】として claude に渡す形。ヘルパーだけが使う欄（by・users・schema など）は渡さない。
+ * topics を先頭、各話題は title を先頭にする（JSON の並びは入れた順）
+ */
+function toPromptBoard(board) {
+  if (!isObj(board)) return board;
+  const out = {
+    topics: arr(board.topics).map((t) => ({
+      title: t.title,
+      id: t.id,
+      headline: t.headline,
+      current: t.current,
+      points: t.points,
+      decisions: t.decisions,
+      todos: t.todos,
+      numbers: t.numbers,
+    })),
+    open_questions: arr(board.open_questions),
+    checklist: arr(board.checklist).map((x) => (x.kind ? { id: x.id, state: x.state, owner: x.owner, evidence: x.evidence } : x)),
+  };
+  if (board.next_action) out.next_action = { text: board.next_action.text, reason: board.next_action.reason, ref: board.next_action.ref };
+  if (Array.isArray(board.warnings)) out.warnings = board.warnings;
+  if (typeof board.status === 'string') out.status = board.status;
+  out.cards = arr(board.cards);
+  return out;
+}
+
+module.exports = {
+  normalizeBoardV2,
+  toPromptBoard,
+  buildChecklist,
+  buildTopics,
+  decideNextAction,
+  normWarnings,
+  stateOf,
+  isNoiseTopic,
+  MAX_CARDS,
+};

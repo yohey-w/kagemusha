@@ -4,7 +4,7 @@
 // ボード（http://127.0.0.1:47431/）に出す。127.0.0.1 だけで待ち受け、外には何も送らない。
 //
 //   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
-//                         [--notes ファイル] [--replay ファイル [--speed 10]] [--once] [--data-dir フォルダ]
+//                         [--notes ファイル] [--replay ファイル [--speed 10]] [--once] [--data-dir フォルダ] [--me 名前]
 
 // 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
 const nodeMajor = Number(String(process.versions.node).split('.')[0]);
@@ -110,6 +110,7 @@ async function main() {
     promptPath: path.join(HELPER_DIR, 'prompt.md'),
     boardHtmlPath: path.join(HELPER_DIR, 'board.html'),
     notes: notes,
+    me: opts.me,
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
     },

@@ -152,6 +152,21 @@ test('buildPrompt: prompt.md のあとに 4 つの節が順に続く。無いも
   assert.ok(q.includes('【字幕の範囲】\n前回より後だけ'));
 });
 
+test('buildPrompt: 【使う人】【聞くこと・伝えることの表】【こちらの理解】の節が入る（0.1 からの 4 つの順は変えない）', () => {
+  const promptMd = fs.readFileSync(path.join(HELPER, 'prompt.md'), 'utf8');
+  const { parseNotes } = require(path.join(HELPER, 'lib', 'notes.js'));
+  const notes = '## 前回の決定\n- 切り替えは4月1日\n## 今日伝えること\n- 予算は150万円\n## 今日聞くこと\n1. 月額はいくらか';
+  const p = buildPrompt({ promptMd, notes, prevBoard: null, range: '全部', lines: [{ text: '[09:05] 山田：こんにちは' }], users: '山田（…）', spec: parseNotes(notes) });
+  const order = ['【使う人】\n山田（…）', '【事前メモ】\n## 前回の決定', '【聞くこと・伝えることの表】\nq1（伝える）: 予算は150万円\nq2（聞く）: 月額はいくらか', '【こちらの理解】\na1（前回の決定）: 切り替えは4月1日', '【前回までの整理】\nなし', '【字幕の範囲】\n全部', '【字幕】\n[09:05] 山田：こんにちは'].map((x) => p.indexOf('\n' + x));
+  assert.ok(order.every((n) => n > 0), '節がある: ' + order);
+  assert.deepEqual(order.slice().sort((a, b) => a - b), order, '順番どおり');
+  const none = buildPrompt({ promptMd, notes: '', prevBoard: null, range: '全部', lines: [] });
+  assert.ok(none.includes('【使う人】\nなし') && none.includes('【聞くこと・伝えることの表】\nなし') && none.includes('【こちらの理解】\nなし'));
+  for (const sec of ['【使う人】', '【聞くこと・伝えることの表】', '【こちらの理解】', 'next_action', 'warnings', '"status"']) {
+    assert.ok(promptMd.includes(sec), 'prompt.md が ' + sec + ' を説明している');
+  }
+});
+
 test('shouldUpdate: 120 字以上かつ前回の終わりから 20 秒、または 1 字以上かつ interval 秒', () => {
   const base = { inFlight: false, now: 100000, lastEndAt: 0, blockedUntil: 0, newChars: 0, intervalMs: 60000, notesDirty: false, hasTranscript: true };
   const go = (o) => shouldUpdate(Object.assign({}, base, o));
@@ -208,4 +223,7 @@ test('parseArgs: 既定値・値つきオプション・誤り', () => {
   assert.ok(parseArgs(['--port']).errors.length > 0);
   assert.ok(parseArgs(['--port', 'abc']).errors.length > 0);
   assert.ok(parseArgs(['--once']).errors.length > 0, '--once は --replay が要る');
+  assert.equal(parseArgs(['--me', ' 山田  太郎 ']).opts.me, '山田 太郎');
+  assert.equal(parseArgs([]).opts.me, null);
+  assert.ok(parseArgs(['--me', '  ']).errors.length > 0);
 });

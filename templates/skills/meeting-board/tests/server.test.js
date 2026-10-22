@@ -286,6 +286,26 @@ test('整理: しきい値を満たすと偽 claude に渡り、ボードが出�
   }
 });
 
+test('整理: claude が次の一手を返さなくても、事前メモの最初の「まだ」が次の一手になる。使う人の名前が【使う人】に入る', async () => {
+  const h = await S.startApp({ fakeClock: true, notes: '自分：山田\n## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか' });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    const st = (await get(h, '/state')).json;
+    assert.deepEqual(Object.keys(st).sort(), ['board', 'notesPresent', 'recent', 'selfName', 'status'], '/state の最上位の欄は増やさない');
+    assert.equal(st.board.next_action.ref, 'q1');
+    assert.equal(st.board.next_action.by, 'rule');
+    assert.equal(st.board.next_action.text, '聞く：月額はいくらか');
+    assert.deepEqual(st.board.checklist.map((c) => [c.id, c.state]), [['q1', 'open'], ['q2', 'open']]);
+    assert.match(h.calls()[0].stdin, /【使う人】\n山田（/);
+    assert.match(h.calls()[0].stdin, /【聞くこと・伝えることの表】\nq1（聞く）: 月額はいくらか\nq2（聞く）: 納期はいつか/);
+    assert.equal(st.selfName, '', '画面で決めた表示名は変えない');
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 2 回目は前回のボードを渡す。事前メモが無ければ聞くことの表とカードは空', async () => {
   const h = await S.startApp({ fakeClock: true });
   try {

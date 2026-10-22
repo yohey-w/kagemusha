@@ -45,17 +45,38 @@ function buildWindow(lines, lastLineCount) {
   return { range: '前回より後だけ', lines: picked };
 }
 
+const KIND_LABEL = { ask: '聞く', tell: '伝える', decision: '前回の決定', belief: 'こちらの理解' };
+
+/** 【聞くこと・伝えることの表】【こちらの理解】の 1 行 1 項目（例: 「q1（聞く）: 月額はいくらか。」） */
+function specLines(list) {
+  if (!Array.isArray(list) || !list.length) return 'なし';
+  return list.map((x) => x.id + '（' + (KIND_LABEL[x.kind] || x.kind) + '）: ' + x.text).join('\n');
+}
+
 /**
- * claude へ標準入力で渡す全文。prompt.md の後ろに 4 つの節を続ける。
+ * claude へ標準入力で渡す全文。prompt.md の後ろに節を続ける:
+ *   【使う人】【事前メモ】【聞くこと・伝えることの表】【こちらの理解】【前回までの整理】【字幕の範囲】【字幕】
+ * （0.1 からある 4 つ —— 事前メモ・前回までの整理・字幕の範囲・字幕 —— の順番は変えない）
+ *   users: 使う人の説明の 1 行（無ければ「なし」）/ spec: parseNotes() の結果（無ければ「なし」）
  */
-function buildPrompt({ promptMd, notes, prevBoard, range, lines }) {
+function buildPrompt({ promptMd, notes, prevBoard, range, lines, users, spec }) {
   const memo = (notes || '').trim();
   const memoText = memo ? (memo.length > NOTES_CAP_CHARS ? memo.slice(0, NOTES_CAP_CHARS) : memo) : 'なし';
+  const sp = spec || {};
   return [
     String(promptMd).replace(/\s+$/, ''),
     '',
+    '【使う人】',
+    users ? String(users) : 'なし',
+    '',
     '【事前メモ】',
     memoText,
+    '',
+    '【聞くこと・伝えることの表】',
+    specLines(sp.items),
+    '',
+    '【こちらの理解】',
+    specLines(sp.beliefs),
     '',
     '【前回までの整理】',
     prevBoard ? JSON.stringify(prevBoard) : 'なし',

@@ -11,6 +11,7 @@ const DEFAULTS = {
   speed: 10,
   once: false,
   dataDir: null,
+  me: null,
   help: false,
 };
 
@@ -25,6 +26,7 @@ const USAGE = [
   '  --speed N         --replay の速さ（既定 10 倍。1 倍は 1 行あたり約 4 秒）',
   '  --once            --replay を全部読み込み、整理を 1 回だけ行い、結果の JSON を出力して終わる',
   '  --data-dir フォルダ  記録の保存先（既定は helper の隣の data/）',
+  '  --me 名前         字幕に出る自分の名前（自分の発言を言い直して返さないため。Meet の「あなた」も自分として扱う）',
 ].join('\n');
 
 function toNumber(name, value, errors, { min, max, int }) {
@@ -47,7 +49,7 @@ function toNumber(name, value, errors, { min, max, int }) {
 function parseArgs(argv) {
   const opts = Object.assign({}, DEFAULTS);
   const errors = [];
-  const takesValue = new Set(['--port', '--interval', '--model', '--notes', '--replay', '--speed', '--data-dir']);
+  const takesValue = new Set(['--port', '--interval', '--model', '--notes', '--replay', '--speed', '--data-dir', '--me']);
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline;
@@ -82,6 +84,11 @@ function parseArgs(argv) {
       else if (arg === '--notes') opts.notes = value;
       else if (arg === '--replay') opts.replay = value;
       else if (arg === '--data-dir') opts.dataDir = value;
+      else if (arg === '--me') {
+        const n = String(value).replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (n) opts.me = n;
+        else errors.push('--me には名前を指定してください');
+      }
     } else {
       errors.push('知らないオプションです: ' + argv[i]);
     }

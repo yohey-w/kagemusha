@@ -14,7 +14,7 @@ const { Store } = require('./store');
 const { Transcript } = require('./transcript');
 const { buildWindow, buildPrompt, shouldUpdate } = require('./prompt');
 const { extractJsonObject } = require('./extract');
-const { normalizeBoardV2 } = require('./board');
+const { normalizeBoardV2, toPromptBoard } = require('./board');
 const { parseNotes } = require('./notes');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
@@ -40,6 +40,8 @@ class MeetingBoardApp {
     this.env = o.env || process.env;
     this.promptMd = fs.readFileSync(o.promptPath, 'utf8');
     this.boardHtmlPath = o.boardHtmlPath;
+    this.boardCorePath = o.boardCorePath || null;
+    this.me = o.me ? String(o.me).replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN) : ''; // --me（字幕に出る自分の名前）
 
     this.store = new Store(o.dataDir);
     this.settings = this.store.loadSettings();
@@ -182,8 +184,29 @@ class MeetingBoardApp {
     return this._spec;
   }
 
+  /** Meet の「あなた」（__SELF__）を整理に渡すときの名前: 画面で決めた表示名 → --me → 事前メモの「自分：」→「自分」 */
   selfName() {
-    return this.settings.selfName || '自分';
+    return this.settings.selfName || this.me || this.notesSpec().me || '自分';
+  }
+
+  /** 使う人の名前（字幕でこの名前の発言は使う人のもの） */
+  userNames() {
+    const names = [];
+    for (const n of [this.selfName(), this.me, this.settings.selfName, this.notesSpec().me]) {
+      if (n && names.indexOf(n) < 0) names.push(n);
+    }
+    return names;
+  }
+
+  /** 【使う人】の節の 1 行 */
+  usersLine() {
+    const names = this.userNames();
+    return (
+      names.join('、') +
+      '（字幕でこの名前の発言は使う人のもの。Meet の字幕で「あなた」と出た発言も「' +
+      this.selfName() +
+      '」として渡しています）'
+    );
   }
 
   // ── 整理（claude への依頼） ──────────────────────────────
@@ -286,9 +309,11 @@ class MeetingBoardApp {
       const prompt = buildPrompt({
         promptMd: this.promptMd,
         notes: this.notes,
-        prevBoard: this.board,
+        prevBoard: this.board ? toPromptBoard(this.board) : null,
         range: win.range,
         lines: win.lines,
+        users: this.usersLine(),
+        spec: hasNotes ? this.notesSpec() : null,
       });
       inChars = prompt.length;
       range = win.range;
@@ -383,7 +408,7 @@ class MeetingBoardApp {
         detail: 'JSON が見つからない返事（' + r.text.length + ' 文字）',
       };
     }
-    const norm = normalizeBoardV2(obj, { hasNotes, spec: this.notesSpec(), prev: this.board });
+    const norm = normalizeBoardV2(obj, { hasNotes, spec: this.notesSpec(), prev: this.board, users: this.userNames(), now: this.now() });
     if (!norm.ok) {
       return {
         ok: false,
