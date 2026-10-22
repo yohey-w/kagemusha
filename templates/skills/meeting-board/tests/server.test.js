@@ -59,6 +59,23 @@ test('GET / だけは札なしで読める。それ以外は札が無ければ 4
   }
 });
 
+test('GET / のボードには board-core.js が埋め込まれていて、外のファイルを読まない', async () => {
+  const h = await S.startApp();
+  try {
+    const home = await S.request(h.port, 'GET', '/');
+    assert.equal(home.status, 200);
+    assert.match(home.text, /MeetingBoardView/);
+    assert.ok(!home.text.includes('<!--BOARD_CORE-->'), '印が差し替わっている');
+    assert.doesNotMatch(home.text, /<script[^>]+src=/i);
+    assert.match(home.text, /次の一手/);
+    assert.match(home.text, /会議の前と後/);
+    const notes = await get(h, '/notes');
+    assert.deepEqual(notes.json.spec, { items: [], beliefs: [], me: '' }, 'GET /notes は事前メモを読んだ結果も返す');
+  } finally {
+    await h.close();
+  }
+});
+
 test('Host が 127.0.0.1 / localhost 以外なら断る（DNS リバインディング対策）', async () => {
   const h = await S.startApp();
   try {

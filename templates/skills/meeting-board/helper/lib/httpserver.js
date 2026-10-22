@@ -1,12 +1,13 @@
 'use strict';
 // 127.0.0.1 だけで待ち受ける小さな HTTP サーバー。
-//   GET  /          ボード（board.html）。ヘッダ不要
+//   GET  /          ボード（board.html に board-core.js を埋め込んだもの）。ヘッダ不要
 //   それ以外は X-Meeting-Board: 1 が必須（付いていなければ 403）。
 //   別のサイトのページから勝手に叩かれないようにするための札で、ブラウザは他サイトからは
 //   この独自ヘッダを付けて送れない（事前確認が必要になり、こちらは許可を返さない）。
 
 const fs = require('fs');
 const http = require('http');
+const pathMod = require('path');
 
 const HEADER = 'x-meeting-board';
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
@@ -67,6 +68,19 @@ async function readJson(req) {
   }
 }
 
+const CORE_MARK = '<!--BOARD_CORE-->';
+
+/** board.html の印 <!--BOARD_CORE--> を board-core.js の中身（<script> で包む）に差し替える */
+function buildBoardPage(app) {
+  const html = fs.readFileSync(app.boardHtmlPath, 'utf8');
+  const corePath = app.boardCorePath || pathMod.join(pathMod.dirname(app.boardHtmlPath), 'board-core.js');
+  const core = fs.readFileSync(corePath, 'utf8');
+  if (/<\/script/i.test(core)) throw new Error('board-core.js に </script が含まれています');
+  return html.replace(CORE_MARK, function () {
+    return '<script>\n' + core + '\n</script>';
+  });
+}
+
 function createHandler(app) {
   return async function handle(req, res) {
     try {
@@ -82,9 +96,9 @@ function createHandler(app) {
       if (method === 'GET' && path === '/') {
         let html;
         try {
-          html = fs.readFileSync(app.boardHtmlPath, 'utf8');
+          html = buildBoardPage(app);
         } catch (_) {
-          send(res, 500, 'text/plain; charset=utf-8', 'board.html が読めません');
+          send(res, 500, 'text/plain; charset=utf-8', 'board.html（または board-core.js）が読めません');
           return;
         }
         const buf = Buffer.from(html, 'utf8');
@@ -114,7 +128,7 @@ function createHandler(app) {
           send(res, 200, 'text/plain; charset=utf-8', app.diagText());
           return;
         case 'GET /notes':
-          sendJson(res, 200, { text: app.notes });
+          sendJson(res, 200, { text: app.notes, spec: app.notesSpec() });
           return;
         case 'POST /captions': {
           const body = await readJson(req);
@@ -203,4 +217,4 @@ function probeExisting(port) {
   });
 }
 
-module.exports = { createHandler, listen, probeExisting, HEADER };
+module.exports = { createHandler, listen, probeExisting, buildBoardPage, HEADER, CORE_MARK };

@@ -185,8 +185,8 @@ function decideNextAction(rawNext, checklist, beliefs, todos) {
     let ref = str(rawNext.ref || (isObj(rawNext.source) ? rawNext.source.ref : ''));
     if (ref && !ids.has(ref)) ref = '';
     const target = checklist.find((c) => c.id === ref);
-    // 済んだ項目を指したままの提案は古い（使う人がもう言った・聞いた）ので使わない
-    if (text && !(target && target.state === 'done')) {
+    // 済んだ・持ち帰りになった項目を指したままの提案は古い（もう言った・聞いた・相手が調べる）ので使わない
+    if (text && !(target && target.state !== 'open')) {
       return { text: clip(text, LINE_MAX), reason: clip(str(rawNext.reason), LINE_MAX), ref, by: 'llm' };
     }
   }

@@ -285,6 +285,7 @@ class MeetingBoardApp {
     }
 
     this.inFlight = true;
+    this.inFlightSince = this.now();
     const token = this.sessionToken;
     const startedAt = this.now();
     const notesVersion = this.notesVersion;
@@ -454,6 +455,8 @@ class MeetingBoardApp {
           lastAt: this.lastUpdateAt || null,
           ageSec: sec(this.lastUpdateAt),
           inFlight: this.inFlight,
+          inFlightSince: this.inFlight ? this.inFlightSince : null,
+          intervalSec: Math.round(this.intervalMs / 1000),
           pendingChars: this.pendingChars(),
           lastDurationMs: this.lastDurationMs,
           lastClaudeMs: this.lastClaudeMs,

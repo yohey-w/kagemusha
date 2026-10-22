@@ -138,6 +138,8 @@ test('次の一手: claude の提案が使えればそれ。済んだ項目を�
   assert.deepEqual(ok.next_action, { text: '解約の期限を聞く', reason: '契約の話が出た', ref: 'q3', by: 'llm' });
   const stale = v2({ topics: [], checklist: [{ id: 'q2', state: 'done' }], next_action: { text: '月額を聞く', reason: '', ref: 'q2' } });
   assert.equal(stale.next_action.by, 'rule', 'もう済んだことは次の一手にしない');
+  const deferred = v2({ topics: [], checklist: [{ id: 'q3', state: 'deferred', owner: '佐々木' }], next_action: { text: '解約の期限を聞く', ref: 'q3' } });
+  assert.equal(deferred.next_action.by, 'rule', '持ち帰りになった項目も次の一手にしない');
   const unknown = v2({ topics: [], checklist: [], next_action: { text: 'それとなく聞く', ref: 'q99' } });
   assert.equal(unknown.next_action.ref, '');
 });

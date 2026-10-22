@@ -15,6 +15,7 @@
   --line: #d6dce6;
   --accent: #1a56c4;
   --accent-soft: #e5eeff;
+  --accent-ink: #0d2f73;
   --ok: #17703c;
   --ok-soft: #e0f4e8;
   --warn: #8a4b00;
@@ -32,6 +33,7 @@
     --line: #2d3545;
     --accent: #8ab4ff;
     --accent-soft: #1d2a45;
+    --accent-ink: #d6e4ff;
     --ok: #74d9a0;
     --ok-soft: #153324;
     --warn: #f2b955;
@@ -43,33 +45,34 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; --strip-h: 100px; }
+html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.65 "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans CJK JP", system-ui, sans-serif;
+  font: 15px/1.6 "Yu Gothic UI", "Meiryo UI", "Hiragino Sans", "Noto Sans CJK JP", system-ui, sans-serif;
 }
 button { font: inherit; color: inherit; }
 
-/* ── 上の帯（いつも見える） ─────────────────────────────── */
-#strip {
+/* ── 上の帯（細く・いつも見える） ─────────────────────────── */
+#bar {
   position: sticky;
   top: 0;
   z-index: 5;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   box-shadow: var(--shadow);
-  padding: 8px 12px 8px;
+  padding: 6px 12px;
 }
-.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .pill {
   display: inline-block;
   max-width: 100%;
-  padding: 2px 10px;
+  padding: 1px 10px;
   border-radius: 14px;
   font-weight: 700;
-  line-height: 1.5;
+  font-size: 0.9em;
+  line-height: 1.6;
   border: 1px solid var(--line);
   background: var(--bg);
 }
@@ -77,95 +80,144 @@ button { font: inherit; color: inherit; }
 .pill.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .pill.bad { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
 .pill small { font-weight: 500; margin-left: 0.35em; }
-#updateInfo { color: var(--muted); font-size: 0.93em; }
+.tabs { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.tab { border: 0; background: var(--panel); padding: 2px 12px; cursor: pointer; font-size: 0.9em; }
+.tab + .tab { border-left: 1px solid var(--line); }
+.tab[aria-selected="true"] { background: var(--accent); color: #fff; font-weight: 700; }
+@media (prefers-color-scheme: dark) { .tab[aria-selected="true"] { color: #0b1020; } }
+.right { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+#busy { color: var(--muted); font-size: 0.88em; min-width: 4.5em; text-align: right; }
+#busy.off { visibility: hidden; }
+#left { font-size: 0.88em; color: var(--muted); font-weight: 700; min-width: 3.5em; text-align: right; }
 #errorBox {
-  margin-top: 6px;
-  padding: 6px 10px;
+  margin-top: 4px;
+  padding: 3px 10px;
   border-radius: 8px;
   background: var(--bad-soft);
   color: var(--bad);
   font-weight: 600;
+  font-size: 0.9em;
   overflow-wrap: anywhere;
 }
 #noteBox {
-  margin-top: 6px;
-  padding: 6px 10px;
+  margin-top: 4px;
+  padding: 3px 10px;
   border-radius: 8px;
   background: var(--warn-soft);
   color: var(--warn);
+  font-size: 0.9em;
   overflow-wrap: anywhere;
 }
-#buttons { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
-.btn {
-  padding: 3px 9px;
-  font-size: 0.92em;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  cursor: pointer;
-}
-.btn:hover { background: var(--accent-soft); }
-.btn:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-@media (prefers-color-scheme: dark) { .btn.primary { color: #0b1020; } }
-.btn.quiet { margin-left: auto; color: var(--muted); }
-#todoJump { cursor: pointer; }
 
-/* ── 本体 ──────────────────────────────────────────────── */
-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  padding: 12px;
-  max-width: 1280px;
-  margin: 0 auto;
+/* ── 会議中（既定） ─────────────────────────────────────── */
+main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
+.zone { border-radius: 12px; padding: 10px 16px 12px; margin: 0 0 12px; }
+.zhead { display: flex; align-items: baseline; gap: 10px; }
+.zlabel { font-size: 0.82em; font-weight: 700; letter-spacing: 0.04em; }
+.zhead .aside { margin-left: auto; font-size: 0.82em; color: var(--muted); }
+.help { font-size: 0.82em; color: var(--muted); margin: 2px 0 0; }
+.hideHelp .help { display: none; }
+
+#zNext { background: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { #zNext { background: #2b5bb8; } }
+#zNext .zlabel, #zNext .help, #zNext .aside { color: rgba(255, 255, 255, 0.85); }
+#nextText {
+  font-size: clamp(22px, 3.1vw, 30px);
+  font-weight: 800;
+  line-height: 1.35;
+  margin-top: 4px;
+  min-height: calc(2 * 1.35em);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
-@media (min-width: 900px) {
-  main { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
-  #side {
-    position: sticky;
-    top: calc(var(--strip-h) + 10px);
-    max-height: calc(100vh - var(--strip-h) - 110px); /* 末尾の余白ぶん空けて、ページの底で押し上げられないようにする */
-    overflow-y: auto;
-  }
+#nextText.placeholder { font-size: 18px; font-weight: 600; opacity: 0.9; }
+#nextReason { font-size: 0.92em; min-height: 1.6em; color: rgba(255, 255, 255, 0.9); overflow-wrap: anywhere; }
+
+#zSignal { min-height: 112px; border: 2px solid transparent; }
+#zSignal.ok { background: var(--ok-soft); color: var(--ok); }
+#zSignal.warn { background: var(--bad-soft); color: var(--bad); border-color: var(--bad); }
+#zSignal.idle { background: var(--panel); color: var(--muted); border: 1px dashed var(--line); }
+#sigMain { font-size: 1.2em; font-weight: 700; margin-top: 2px; overflow-wrap: anywhere; }
+#sigSub { margin-top: 2px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+#sigSub b { color: var(--bad); }
+
+#zList { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+#itemList { list-style: none; margin: 6px 0 0; padding: 0; }
+#itemList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 2em;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
 }
+#itemList li:last-child { border-bottom: 0; }
+#itemList .mark { width: 1.3em; text-align: center; font-weight: 700; flex: none; }
+#itemList .txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+#itemList .st { flex: none; font-size: 0.82em; font-weight: 700; border-radius: 6px; padding: 0 7px; }
+#itemList li.done { color: var(--muted); }
+#itemList li.done .mark { color: var(--ok); }
+#itemList li.done .st { background: var(--ok-soft); color: var(--ok); }
+#itemList li.deferred .st { background: var(--accent-soft); color: var(--accent-ink); }
+#itemList li.open .mark { color: var(--warn); }
+#itemList li.open .st { background: var(--warn-soft); color: var(--warn); }
+#itemList .nx { flex: none; font-size: 0.78em; font-weight: 700; color: var(--accent); }
+.empty { color: var(--muted); padding: 6px 2px; }
+
+#meeting.stale .zone { opacity: 0.45; }
+#meeting.stale #staleNote { opacity: 1; }
+#staleNote {
+  display: block;
+  text-align: center;
+  font-weight: 700;
+  color: var(--bad);
+  min-height: 1.6em;
+  margin: -4px 0 8px;
+}
+
+/* ── 会議の前と後 ───────────────────────────────────────── */
 section.panel {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 14px 12px;
+  margin: 0 0 12px;
   box-shadow: var(--shadow);
 }
-h2 { font-size: 1.05em; margin: 2px 0 8px; }
-h3 { font-size: 1em; margin: 0; }
-.empty { color: var(--muted); padding: 10px 2px; }
-.empty b { color: var(--text); }
-
-.topic {
-  border: 1px solid var(--line);
-  border-left: 5px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 12px 10px;
-  margin: 0 0 10px;
-  scroll-margin-top: calc(var(--strip-h) + 12px);
-}
-.topic.current {
-  border-color: var(--accent);
-  border-left-color: var(--accent);
-  background: var(--accent-soft);
-}
-.topic .head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.now {
-  font-size: 0.78em;
+h2 { font-size: 1.02em; margin: 2px 0 4px; }
+ul.plain { margin: 6px 0 0; padding: 0; list-style: none; }
+ul.plain li { padding: 3px 0; overflow-wrap: anywhere; }
+.decisions li::before { content: "✔ "; color: var(--ok); font-weight: 700; }
+.k {
+  display: inline-block;
+  font-size: 0.75em;
   font-weight: 700;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 5px;
+  margin: 0 4px 0 8px;
 }
+.k:first-child { margin-left: 0; }
+.dim { color: var(--muted); font-size: 0.9em; }
+.tag { display: inline-block; font-size: 0.78em; font-weight: 700; border-radius: 6px; padding: 0 7px; margin-right: 6px; }
+.tag.done { background: var(--ok-soft); color: var(--ok); }
+.tag.deferred { background: var(--accent-soft); color: var(--accent-ink); }
+.tag.open { background: var(--warn-soft); color: var(--warn); }
+.evidence { display: block; font-size: 0.88em; color: var(--muted); }
+ul.conflicts li { border-left: 4px solid var(--bad); padding-left: 10px; margin-bottom: 6px; }
+details { margin-top: 4px; }
+summary { cursor: pointer; }
+details.topic { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; margin: 6px 0; }
+details.topic.current { border-color: var(--accent); background: var(--accent-soft); }
+details.topic summary { font-weight: 700; }
+details.topic summary .hl { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.now { font-size: 0.75em; font-weight: 700; padding: 0 7px; border-radius: 999px; background: var(--accent); color: #fff; margin-left: 6px; }
 @media (prefers-color-scheme: dark) { .now { color: #0b1020; } }
-ul { margin: 4px 0 0; padding: 0; list-style: none; }
-.points li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+.points li { display: flex; gap: 8px; align-items: baseline; }
 .points .txt { min-width: 0; overflow-wrap: anywhere; }
 .chip {
   --h: 210;
@@ -184,70 +236,33 @@ ul { margin: 4px 0 0; padding: 0; list-style: none; }
 @media (prefers-color-scheme: dark) {
   .chip { background: hsl(var(--h) 35% 24%); color: hsl(var(--h) 85% 88%); border-color: hsl(var(--h) 35% 38%); }
 }
-.sub { margin-top: 8px; }
-.sub .label { font-size: 0.85em; font-weight: 700; color: var(--muted); }
-.decisions li::before { content: "✔ "; color: var(--ok); font-weight: 700; }
-.decisions li { overflow-wrap: anywhere; }
-.todos li { padding: 2px 0; overflow-wrap: anywhere; }
-.todos .k {
-  display: inline-block;
-  font-size: 0.75em;
-  font-weight: 700;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0 5px;
-  margin: 0 4px 0 8px;
-}
-.todos .k:first-child { margin-left: 0; }
-.todos .nodue { color: var(--muted); font-size: 0.9em; }
 .numbers { display: flex; flex-wrap: wrap; gap: 6px; }
-.numbers li {
-  padding: 0 10px;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.open li { padding: 2px 0 2px 1.4em; text-indent: -1.4em; overflow-wrap: anywhere; }
-.open li::before { content: "？ "; color: var(--warn); font-weight: 700; }
-
-.check li {
-  padding: 5px 8px;
-  margin: 0 0 6px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  overflow-wrap: anywhere;
-}
-.check li.todo { border-left: 5px solid var(--warn); background: var(--warn-soft); font-weight: 700; }
-.check li.done { color: var(--muted); }
-.tag { display: inline-block; font-size: 0.78em; font-weight: 700; border-radius: 6px; padding: 0 7px; margin-right: 6px; }
-.tag.done { background: var(--ok-soft); color: var(--ok); }
-.tag.todo { background: var(--warn); color: #fff; }
-@media (prefers-color-scheme: dark) { .tag.todo { color: #1a1204; } }
-.evidence { display: block; font-weight: 400; font-size: 0.88em; color: var(--muted); margin-top: 2px; }
-
-.card {
-  border: 1px solid var(--accent);
-  border-radius: 10px;
-  padding: 8px 12px;
-  margin: 0 0 8px;
-  background: var(--accent-soft);
-  overflow-wrap: anywhere;
-}
+.numbers li { padding: 0 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); }
+.card { border: 1px solid var(--accent); border-radius: 10px; padding: 6px 12px; margin: 6px 0; background: var(--accent-soft); overflow-wrap: anywhere; }
 .card .title { font-weight: 700; }
-.card .meta { color: var(--muted); font-size: 0.88em; margin-top: 3px; }
-
-details.captions { margin: 0 12px 24px; max-width: 1256px; }
-@media (min-width: 900px) { details.captions { margin-left: auto; margin-right: auto; } }
-details.captions summary { cursor: pointer; padding: 6px 2px; color: var(--muted); font-weight: 700; }
-#capList { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.card .meta { color: var(--muted); font-size: 0.88em; }
+#capList { list-style: none; margin: 6px 0 0; padding: 0; }
 #capList li { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
 #capList .time { color: var(--muted); font-size: 0.82em; font-variant-numeric: tabular-nums; flex: none; }
 #capList .txt { min-width: 0; overflow-wrap: anywhere; }
 
-footer { color: var(--muted); font-size: 0.82em; padding: 0 14px 24px; text-align: center; }
+/* ── 下 ─────────────────────────────────────────────────── */
+footer { max-width: 980px; margin: 0 auto; padding: 4px 16px 24px; color: var(--muted); font-size: 0.85em; }
+#updated { text-align: center; margin-bottom: 8px; }
+#buttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.btn {
+  padding: 2px 9px;
+  font-size: 0.92em;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.btn:hover { background: var(--accent-soft); }
+.btn:focus-visible, .tab:focus-visible, summary:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #0b1020; } }
+#ver { text-align: center; margin-top: 8px; }
 
 dialog {
   width: min(560px, calc(100vw - 24px));
@@ -289,58 +304,81 @@ dialog textarea { min-height: 220px; resize: vertical; }
 }
 #toast.show { opacity: 1; }
 </style>
+<!--BOARD_CORE-->
 </head>
 <body>
 
-<div id="strip">
+<div id="bar">
   <div class="row">
     <span id="capPill" class="pill">字幕 …</span>
-    <span id="updateInfo">最終更新 —</span>
-    <span id="todoJump" class="pill" hidden></span>
+    <span class="tabs" role="tablist" aria-label="画面の切り替え">
+      <button class="tab" id="tabMeeting" role="tab" type="button" aria-selected="true">会議中</button>
+      <button class="tab" id="tabAfter" role="tab" type="button" aria-selected="false">会議の前と後</button>
+    </span>
+    <span class="right">
+      <span id="busy" class="off">整理中…</span>
+      <span id="left" title="事前メモの「今日聞くこと・伝えること」で、まだのもの"></span>
+    </span>
   </div>
   <div id="errorBox" hidden></div>
   <div id="noteBox" hidden></div>
+</div>
+
+<main id="meeting">
+  <span id="staleNote" aria-live="polite"></span>
+  <section class="zone" id="zNext" aria-labelledby="lbNext">
+    <div class="zhead"><span class="zlabel" id="lbNext">次の一手</span></div>
+    <p class="help" id="hpNext"></p>
+    <div id="nextText"></div>
+    <div id="nextReason"></div>
+  </section>
+  <section class="zone idle" id="zSignal" aria-live="polite">
+    <div class="zhead"><span class="zlabel" id="sigLabel">順調</span><span class="aside" id="sigMore"></span></div>
+    <p class="help" id="hpSignal"></p>
+    <div id="sigMain"></div>
+    <div id="sigSub"></div>
+  </section>
+  <section class="zone" id="zList" aria-labelledby="lbList">
+    <div class="zhead"><span class="zlabel" id="lbList">伝え済み／まだ</span></div>
+    <p class="help" id="hpList"></p>
+    <ul id="itemList"></ul>
+  </section>
+</main>
+
+<main id="after" hidden>
+  <section class="panel" id="pDecisions" hidden><h2></h2><p class="help"></p><ul class="plain decisions" id="decList"></ul></section>
+  <section class="panel" id="pTodos" hidden><h2></h2><p class="help"></p><ul class="plain" id="todoList"></ul></section>
+  <section class="panel" id="pCheck" hidden><h2></h2><p class="help"></p><ul class="plain" id="checkOpen"></ul>
+    <details id="checkDoneBox" hidden><summary id="checkDoneSum"></summary><ul class="plain" id="checkDone"></ul></details>
+  </section>
+  <section class="panel" id="pConflicts" hidden><h2></h2><p class="help"></p><ul class="plain conflicts" id="conflictList"></ul></section>
+  <section class="panel" id="pOpen" hidden><h2></h2><p class="help"></p><ul class="plain" id="openList"></ul></section>
+  <section class="panel" id="pTopics"><h2></h2><p class="help"></p><div id="topicList"></div></section>
+  <section class="panel" id="pCards" hidden><h2></h2><p class="help"></p><div id="cardList"></div></section>
+  <section class="panel" id="pNotes">
+    <h2>事前メモから読んだこと</h2>
+    <p class="help">会議の前に、ここで「今日聞くこと・伝えること」と「こちらの理解」が読めているか確かめます。</p>
+    <div id="notesView"></div>
+  </section>
+  <details class="panel" id="capDetails"><summary id="capSummary">字幕（最新）</summary><ul id="capList"></ul></details>
+</main>
+
+<footer>
+  <div id="updated">まだ整理していません</div>
   <div id="buttons">
     <button class="btn" id="btnMemo" type="button">事前メモ</button>
     <button class="btn" id="btnName" type="button">自分の表示名</button>
     <button class="btn" id="btnDiag" type="button">診断をコピー</button>
-    <button class="btn quiet" id="btnReset" type="button">新しい会議</button>
+    <button class="btn" id="btnHelp" type="button">説明を隠す</button>
+    <button class="btn" id="btnReset" type="button">新しい会議</button>
   </div>
-</div>
-
-<main>
-  <section class="panel" id="story" aria-labelledby="storyTitle">
-    <h2 id="storyTitle">ここまでの話</h2>
-    <div id="topics"></div>
-    <div id="openBox" hidden>
-      <h2>まだ答えが出ていない問い</h2>
-      <ul class="open" id="openList"></ul>
-    </div>
-  </section>
-
-  <div id="side" hidden>
-    <section class="panel" id="checkBox" hidden aria-labelledby="checkTitle">
-      <h2 id="checkTitle">聞くことの表</h2>
-      <ul class="check" id="checkList"></ul>
-    </section>
-    <section class="panel" id="cardBox" hidden aria-labelledby="cardTitle" style="margin-top:14px">
-      <h2 id="cardTitle">カード</h2>
-      <div id="cardList"></div>
-    </section>
-  </div>
-</main>
-
-<details class="captions" id="capDetails">
-  <summary id="capSummary">字幕（最新）</summary>
-  <ul id="capList"></ul>
-</details>
-
-<footer id="foot">会議ボード ・ この画面の内容はこの PC の中だけにあります</footer>
+  <div id="ver">会議ボード ・ この画面の内容はこの PC の中だけにあります</div>
+</footer>
 
 <dialog id="memoDlg">
   <h2>事前メモ</h2>
-  <p>会議の前の「聞きたいこと」「前回の決定」「資料の数字」などを貼ってください。聞くことの表とカードが出ます。この PC の Claude Code にだけ渡します。</p>
-  <textarea id="memoText" placeholder="例:&#10;## 前回の決定&#10;- …&#10;## 今日聞くこと&#10;1. …"></textarea>
+  <p>「今日聞くこと」「今日伝えること」「こちらの理解（違うと言われたら知らせてほしい前提）」「前回の決定」「資料の数字」などを、見出しつきで貼ってください。この PC の Claude Code にだけ渡します。</p>
+  <textarea id="memoText" placeholder="例:&#10;自分：山田&#10;## 前回の決定&#10;- …&#10;## こちらの理解&#10;- …&#10;## 今日伝えること&#10;- …&#10;## 今日聞くこと&#10;1. …"></textarea>
   <div class="dlgRow">
     <button class="btn primary" id="memoSave" type="button">保存</button>
     <button class="btn" id="memoClose" type="button">閉じる</button>
@@ -350,7 +388,7 @@ dialog textarea { min-height: 220px; resize: vertical; }
 
 <dialog id="nameDlg">
   <h2>自分の表示名</h2>
-  <p>Meet の字幕では自分が「あなた」と出ます。整理には、ここで決めた名前で渡します（空なら「自分」）。</p>
+  <p>Meet の字幕では自分が「あなた」と出ます。整理には、ここで決めた名前で渡します（空なら起動時の --me か、事前メモの「自分：」、どれも無ければ「自分」）。</p>
   <input type="text" id="nameText" maxlength="40" autocomplete="off">
   <div class="dlgRow">
     <button class="btn primary" id="nameSave" type="button">保存</button>
@@ -363,6 +401,7 @@ dialog textarea { min-height: 220px; resize: vertical; }
 <script>
 (function () {
   'use strict';
+  var V = window.MeetingBoardView;
   var HEADERS = { 'X-Meeting-Board': '1' };
   var $ = function (id) { return document.getElementById(id); };
 
@@ -374,12 +413,49 @@ dialog textarea { min-height: 220px; resize: vertical; }
     return e;
   }
   function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  function setText(node, text) { if (node.textContent !== text) node.textContent = text; }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function clock(ms) { var d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
-  function clockSec(ms) { var d = new Date(ms); return clock(ms) + ':' + pad(d.getSeconds()); }
   function ago(sec) { return sec === null || sec === undefined ? '' : (sec < 90 ? sec + '秒前' : Math.round(sec / 60) + '分前'); }
+  function store(key, value) {
+    try {
+      if (value === undefined) return window.localStorage.getItem(key);
+      window.localStorage.setItem(key, value);
+    } catch (e) { /* 保存できない環境でも動く */ }
+    return null;
+  }
 
-  // 話者ごとの色: 出てきた順に黄金角でずらす（近い色にならない）
+  if (!V) {
+    $('nextText').textContent = 'ボードの部品（board-core.js）が読み込まれていません。黒い画面に出ている http://127.0.0.1:47431/ から開いてください。';
+    return;
+  }
+
+  // 欄の名前と 1 行の説明
+  (function () {
+    var L = V.LABELS;
+    $('lbNext').textContent = L.next.title; $('hpNext').textContent = L.next.help;
+    $('hpSignal').textContent = L.warn.help + ' ' + L.ok.help;
+    $('lbList').textContent = L.list.title; $('hpList').textContent = L.list.help;
+    [['pDecisions', L.decisions], ['pTodos', L.todos], ['pCheck', L.check], ['pConflicts', L.conflicts], ['pOpen', L.open], ['pTopics', L.topics], ['pCards', L.cards]].forEach(function (p) {
+      var sec = $(p[0]);
+      sec.querySelector('h2').textContent = p[1].title;
+      sec.querySelector('.help').textContent = p[1].help;
+    });
+  })();
+
+  // 説明の 1 行は「説明を隠す」を押すまで出す（押したことはこのブラウザに覚える）
+  function applyHelp() {
+    var hidden = store('mb.hideHelp') === '1';
+    document.body.classList.toggle('hideHelp', hidden);
+    $('btnHelp').textContent = hidden ? '説明を出す' : '説明を隠す';
+  }
+  $('btnHelp').addEventListener('click', function () {
+    store('mb.hideHelp', document.body.classList.contains('hideHelp') ? '0' : '1');
+    applyHelp();
+  });
+  applyHelp();
+
+  // 話者ごとの色: 出てきた順に黄金角でずらす
   var speakerIndex = {};
   var speakerCount = 0;
   function chip(name) {
@@ -404,27 +480,41 @@ dialog textarea { min-height: 220px; resize: vertical; }
     return fetch(path, opts);
   }
 
-  // ── 描画 ─────────────────────────────────────────────────
-  var last = { board: null, recent: null, current: null, count: -1, check: null };
+  // ── 画面の切り替え（会議中 / 会議の前と後）。?view=after でも開ける ──
+  var view = 'meeting';
+  (function () {
+    var q = /[?&]view=(after|meeting)\b/.exec(location.search || '');
+    view = q ? q[1] : (store('mb.view') === 'after' ? 'after' : 'meeting');
+  })();
+  function applyView() {
+    $('meeting').hidden = view !== 'meeting';
+    $('after').hidden = view !== 'after';
+    $('tabMeeting').setAttribute('aria-selected', String(view === 'meeting'));
+    $('tabAfter').setAttribute('aria-selected', String(view === 'after'));
+  }
+  function setView(v) {
+    view = v;
+    store('mb.view', v);
+    applyView();
+    if (v === 'after') { loadNotesView(); if (lastState) renderAfter(lastState, true); }
+  }
+  $('tabMeeting').addEventListener('click', function () { setView('meeting'); });
+  $('tabAfter').addEventListener('click', function () { setView('after'); });
+  applyView();
 
-  function renderStrip(s, reachable) {
+  // ── 上の帯 ───────────────────────────────────────────────
+  function renderBar(s, reachable) {
     var pill = $('capPill');
-    var info = $('updateInfo');
-    var err = $('errorBox');
-    var note = $('noteBox');
     pill.className = 'pill';
     clear(pill);
     if (!reachable) {
       pill.classList.add('bad');
       pill.appendChild(document.createTextNode('× ヘルパーに届きません'));
       pill.appendChild(el('small', null, '（起動したウィンドウを閉じていませんか。start.cmd をもう一度）'));
-      info.textContent = '';
       return;
     }
     var c = s.captions;
-    var label;
-    var small = '';
-    var klass = '';
+    var label, small = '', klass = '';
     if (s.replay && s.replay.active) {
       label = '● 受信中'; klass = 'ok'; small = '（会話ファイルを再生中 ' + s.replay.index + '/' + s.replay.total + '）';
     } else if (c.state === 'receiving') {
@@ -436,188 +526,240 @@ dialog textarea { min-height: 220px; resize: vertical; }
     } else if (c.state === 'no-extension') {
       label = '× 拡張機能から何も届いていません'; klass = 'bad'; small = '（Meet のタブを開き直してください）';
     } else {
-      label = '○ 待っています'; klass = ''; small = '（Meet で字幕をオン：C キー）';
+      label = '○ 待っています'; small = '（Meet で字幕をオン：C キー）';
     }
     if (klass) pill.classList.add(klass);
     pill.appendChild(document.createTextNode('字幕 ' + label));
     pill.appendChild(el('small', null, small));
 
-    var u = s.update;
-    var parts = [];
-    parts.push('最終更新 ' + (u.lastAt ? clockSec(u.lastAt) : '—'));
-    parts.push('更新 ' + u.count + ' 回');
-    if (u.inFlight) parts.push('整理中…');
-    else if (u.pendingChars > 0) parts.push('未反映の字幕 ' + u.pendingChars + ' 字');
-    info.textContent = parts.join('・');
-
+    var err = $('errorBox');
     if (s.lastError) {
       err.hidden = false;
-      err.textContent = clockSec(s.lastError.at) + ' ' + s.lastError.message;
+      setText(err, clock(s.lastError.at) + ' ' + s.lastError.message);
     } else {
       err.hidden = true;
     }
     var bad = (s.selfCheck || []).filter(function (x) { return !x.ok && x.name !== 'claude'; });
+    var note = $('noteBox');
     if (bad.length) {
       note.hidden = false;
-      note.textContent = '起動時の点検で気になる点: ' + bad.map(function (x) { return x.name + '（' + x.detail + '）'; }).join(' / ');
+      setText(note, '起動時の点検で気になる点: ' + bad.map(function (x) { return x.name + '（' + x.detail + '）'; }).join(' / '));
     } else {
       note.hidden = true;
     }
   }
 
-  function renderTopics(board) {
-    var box = $('topics');
-    clear(box);
-    if (!board || !board.topics.length) {
-      var e = el('div', 'empty');
-      e.appendChild(el('b', null, board ? 'まだ話題がありません。' : 'まだ整理がありません。'));
-      e.appendChild(document.createTextNode(' 字幕が届くと、およそ 1 分ごとに「ここまでの話」がここに出ます。'));
-      box.appendChild(e);
-      return -1;
+  // ── 会議中 ───────────────────────────────────────────────
+  var lastItemsKey = null;
+  function renderMeeting(state) {
+    var m = V.meetingView(state, state.status.now);
+    var nt = $('nextText');
+    setText(nt, m.next.text);
+    nt.classList.toggle('placeholder', !!m.next.placeholder);
+    setText($('nextReason'), m.next.reason ? 'なぜいま：' + m.next.reason : '');
+
+    var z = $('zSignal');
+    if (m.warning) {
+      z.className = 'zone warn';
+      setText($('sigLabel'), '警告：' + m.warning.label);
+      setText($('sigMore'), m.warning.more ? 'ほか ' + m.warning.more + ' 件' : '');
+      setText($('sigMain'), m.warning.what);
+      var sub = $('sigSub');
+      clear(sub);
+      sub.appendChild(el('b', null, '返す一言：'));
+      sub.appendChild(document.createTextNode(m.warning.reply));
+    } else if (m.ok) {
+      z.className = 'zone ok';
+      setText($('sigLabel'), '順調');
+      setText($('sigMore'), '');
+      setText($('sigMain'), m.ok.text);
+      setText($('sigSub'), '');
+    } else {
+      z.className = 'zone idle';
+      setText($('sigLabel'), '順調');
+      setText($('sigMore'), '');
+      setText($('sigMain'), '整理が出ると、ここに進み具合か警告が出ます');
+      setText($('sigSub'), '');
     }
-    var currentIdx = -1;
-    var lastIdx = board.topics.length - 1;
-    board.topics.forEach(function (t, i) { if (t.current) currentIdx = i; });
-    if (currentIdx < 0) currentIdx = lastIdx;
-    board.topics.forEach(function (t, i) {
-      var card = el('article', 'topic' + (i === currentIdx ? ' current' : ''));
-      card.id = 'topic-' + i;
-      var head = el('div', 'head');
-      head.appendChild(el('h3', null, t.title));
-      if (i === currentIdx) head.appendChild(el('span', 'now', 'いま'));
-      card.appendChild(head);
+
+    var key = JSON.stringify(m.items);
+    if (key !== lastItemsKey) {
+      lastItemsKey = key;
+      var ul = $('itemList');
+      clear(ul);
+      if (!m.items.length) {
+        ul.appendChild(el('li', 'empty', state.notesPresent ? '事前メモから項目が読めると、ここに並びます' : '事前メモの「今日聞くこと・伝えること」がここに並びます'));
+      }
+      m.items.forEach(function (it) {
+        var li = el('li', it.state);
+        li.appendChild(el('span', 'mark', it.state === 'done' ? '✓' : it.state === 'deferred' ? '↩' : '・'));
+        var tx = el('span', 'txt', it.text);
+        tx.title = it.text;
+        li.appendChild(tx);
+        if (it.next) li.appendChild(el('span', 'nx', '← 次'));
+        li.appendChild(el('span', 'st', it.label));
+        ul.appendChild(li);
+      });
+    }
+    setText($('left'), m.left);
+    $('busy').className = m.updating ? '' : 'off';
+    $('meeting').classList.toggle('stale', m.stale.stale);
+    setText($('staleNote'), m.stale.stale ? m.stale.text + '（整理が止まっているか遅れています。上の帯を見てください）' : '');
+    setText($('updated'), m.updatedText);
+  }
+
+  // ── 会議の前と後 ─────────────────────────────────────────
+  var openTopics = {};
+  var lastAfterKey = null;
+  function renderAfter(state, force) {
+    var key = JSON.stringify([state.board, state.selfName]);
+    if (!force && key === lastAfterKey) return;
+    lastAfterKey = key;
+    var a = V.afterView(state);
+
+    function fill(secId, listId, items, make) {
+      $(secId).hidden = !items.length;
+      var ul = $(listId);
+      clear(ul);
+      items.forEach(function (x) { ul.appendChild(make(x)); });
+    }
+    fill('pDecisions', 'decList', a.decisions, function (d) {
+      var li = el('li', null, d.text);
+      li.appendChild(el('span', 'dim', '（' + d.topic + '）'));
+      return li;
+    });
+    fill('pTodos', 'todoList', a.todos, function (d) {
+      var li = el('li');
+      li.appendChild(el('span', 'k', '誰が'));
+      li.appendChild(document.createTextNode(d.who || '（未定）'));
+      li.appendChild(el('span', 'k', '何を'));
+      li.appendChild(document.createTextNode(d.what));
+      li.appendChild(el('span', 'k', 'いつまで'));
+      li.appendChild(d.when ? document.createTextNode(d.when) : el('span', 'dim', '決まっていない'));
+      return li;
+    });
+    function checkLi(c) {
+      var li = el('li');
+      li.appendChild(el('span', 'tag ' + c.state, c.label));
+      li.appendChild(document.createTextNode((c.kind === 'tell' ? '伝える：' : '聞く：') + c.item));
+      if (c.evidence) li.appendChild(el('span', 'evidence', '根拠: ' + c.evidence));
+      return li;
+    }
+    $('pCheck').hidden = !(a.checkOpen.length + a.checkDone.length);
+    var co = $('checkOpen');
+    clear(co);
+    a.checkOpen.forEach(function (c) { co.appendChild(checkLi(c)); });
+    $('checkDoneBox').hidden = !a.checkDone.length;
+    $('checkDoneSum').textContent = '済 ' + a.checkDone.length + ' 件';
+    var cd = $('checkDone');
+    clear(cd);
+    a.checkDone.forEach(function (c) { cd.appendChild(checkLi(c)); });
+    fill('pConflicts', 'conflictList', a.conflicts, function (k) {
+      var li = el('li');
+      if (k.premise) li.appendChild(el('div', 'dim', 'こちらの理解：' + k.premise));
+      li.appendChild(el('div', null, (k.speaker ? k.speaker + '：' : '') + k.heard));
+      if (k.reply) li.appendChild(el('div', 'dim', '返す一言：' + k.reply));
+      return li;
+    });
+    fill('pOpen', 'openList', a.openQuestions, function (q) { return el('li', null, q); });
+
+    var tl = $('topicList');
+    clear(tl);
+    if (!a.topics.length) tl.appendChild(el('div', 'empty', state.board ? 'まだ話題がありません。' : 'まだ整理がありません。字幕が届くと、およそ 1 分ごとに「ここまでの話」が出ます。'));
+    a.topics.forEach(function (t) {
+      var d = el('details', 'topic' + (t.current ? ' current' : ''));
+      if (openTopics[t.id]) d.open = true;
+      d.addEventListener('toggle', function () { openTopics[t.id] = d.open; });
+      var sm = el('summary', null, t.title);
+      if (t.current) sm.appendChild(el('span', 'now', 'いま'));
+      if (t.headline) sm.appendChild(el('span', 'hl', t.headline));
+      d.appendChild(sm);
       if (t.points.length) {
-        var ul = el('ul', 'points');
+        var ul = el('ul', 'plain points');
         t.points.forEach(function (p) {
           var li = el('li');
           li.appendChild(chip(p.speaker));
           li.appendChild(el('span', 'txt', p.text));
           ul.appendChild(li);
         });
-        card.appendChild(ul);
+        d.appendChild(ul);
       }
-      if (t.decisions.length) {
-        var d = el('div', 'sub');
-        d.appendChild(el('div', 'label', '決まったこと'));
-        var dl = el('ul', 'decisions');
-        t.decisions.forEach(function (x) { dl.appendChild(el('li', null, x)); });
-        d.appendChild(dl);
-        card.appendChild(d);
-      }
-      if (t.todos.length) {
-        var td = el('div', 'sub');
-        td.appendChild(el('div', 'label', '持ち帰り'));
-        var tl = el('ul', 'todos');
-        t.todos.forEach(function (x) {
-          var li = el('li');
-          li.appendChild(el('span', 'k', '誰が'));
-          li.appendChild(document.createTextNode(x.who || '（未定）'));
-          li.appendChild(el('span', 'k', '何を'));
-          li.appendChild(document.createTextNode(x.what));
-          li.appendChild(el('span', 'k', 'いつ'));
-          if (x.when) li.appendChild(document.createTextNode(x.when));
-          else li.appendChild(el('span', 'nodue', '決まっていない'));
-          tl.appendChild(li);
-        });
-        td.appendChild(tl);
-        card.appendChild(td);
-      }
+      if (t.hiddenSelf) d.appendChild(el('div', 'dim', '自分の発言 ' + t.hiddenSelf + ' 件は省いています'));
+      if (t.decisions.length) d.appendChild(el('div', null, '決まったこと：' + t.decisions.join('／')));
       if (t.numbers.length) {
-        var n = el('div', 'sub');
-        n.appendChild(el('div', 'label', '数字'));
-        var nl = el('ul', 'numbers');
+        var nl = el('ul', 'plain numbers');
         t.numbers.forEach(function (x) { nl.appendChild(el('li', null, x)); });
-        n.appendChild(nl);
-        card.appendChild(n);
+        d.appendChild(nl);
       }
-      box.appendChild(card);
+      tl.appendChild(d);
     });
-    return currentIdx;
-  }
 
-  function renderOpen(board) {
-    var qs = board ? board.open_questions : [];
-    $('openBox').hidden = !qs.length;
-    var ul = $('openList');
-    clear(ul);
-    qs.forEach(function (q) { ul.appendChild(el('li', null, q)); });
-  }
-
-  function renderSide(board) {
-    var checks = board ? board.checklist : [];
-    var cards = board ? board.cards : [];
-    $('side').hidden = !(checks.length || cards.length);
-    $('checkBox').hidden = !checks.length;
-    $('cardBox').hidden = !cards.length;
-    var cl = $('checkList');
+    $('pCards').hidden = !a.cards.length;
+    var cl = $('cardList');
     clear(cl);
-    checks.forEach(function (c) {
-      var li = el('li', c.done ? 'done' : 'todo');
-      li.appendChild(el('span', 'tag ' + (c.done ? 'done' : 'todo'), c.done ? '済' : 'まだ'));
-      li.appendChild(document.createTextNode(c.item));
-      if (c.evidence) li.appendChild(el('span', 'evidence', '根拠: ' + c.evidence));
-      cl.appendChild(li);
-    });
-    var cd = $('cardList');
-    clear(cd);
-    cards.forEach(function (c) {
+    a.cards.forEach(function (c) {
       var d = el('div', 'card');
       d.appendChild(el('div', 'title', c.title));
-      if (c.body) d.appendChild(el('div', 'body', c.body));
+      if (c.body) d.appendChild(el('div', null, c.body));
       if (c.why) d.appendChild(el('div', 'meta', 'いま出す理由: ' + c.why));
       if (c.source) d.appendChild(el('div', 'meta', '出所: ' + c.source));
-      cd.appendChild(d);
+      cl.appendChild(d);
     });
-    // 帯に「まだ N 件」を出す（押すと表へ）
-    var jump = $('todoJump');
-    var remaining = checks.filter(function (c) { return !c.done; }).length;
-    if (checks.length) {
-      jump.hidden = false;
-      jump.className = 'pill ' + (remaining ? 'warn' : 'ok');
-      jump.textContent = remaining ? '聞くこと あと ' + remaining + ' 件' : '聞くこと 全部済';
-    } else {
-      jump.hidden = true;
-    }
-  }
 
-  function renderCaptions(recent) {
-    var shown = recent.slice(-20);
+    var shown = (state.recent || []).slice(-20);
     $('capSummary').textContent = '字幕（最新）' + (shown.length ? ' — ' + shown.length + ' 行' : '');
-    var ul = $('capList');
-    clear(ul);
-    if (!shown.length) { ul.appendChild(el('li', null, 'まだ字幕が届いていません。')); return; }
+    var cap = $('capList');
+    clear(cap);
     shown.forEach(function (r) {
       var li = el('li');
       li.appendChild(el('span', 'time', clock(r.at)));
       li.appendChild(chip(r.speaker));
       li.appendChild(el('span', 'txt', r.text));
-      ul.appendChild(li);
+      cap.appendChild(li);
     });
   }
 
-  function render(state) {
-    var s = state.status;
-    renderStrip(s, true);
-    var boardKey = JSON.stringify(state.board);
-    if (boardKey !== last.board) {
-      last.board = boardKey;
-      var idx = renderTopics(state.board);
-      renderOpen(state.board);
-      renderSide(state.board);
-      var count = state.board ? state.board.topics.length : 0;
-      var curKey = idx + ':' + count + ':' + (state.board && idx >= 0 ? state.board.topics[idx].title : '');
-      if (idx >= 0 && curKey !== last.current) {
-        last.current = curKey;
-        var node = $('topic-' + idx);
-        if (node && node.scrollIntoView) node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  function loadNotesView() {
+    api('GET', '/notes').then(function (r) { return r.json(); }).then(function (j) {
+      var box = $('notesView');
+      clear(box);
+      var spec = j.spec || { items: [], beliefs: [] };
+      if (!String(j.text || '').trim()) { box.appendChild(el('div', 'empty', '事前メモはまだありません（下の「事前メモ」から貼れます）。')); return; }
+      if (!spec.items.length && !spec.beliefs.length) {
+        box.appendChild(el('div', 'empty', '見出しが見つかりませんでした。「## 今日聞くこと」「## こちらの理解」のように見出しを付けると、表の文言と順番が固定されます。'));
+        return;
       }
+      if (spec.me) box.appendChild(el('div', 'dim', '自分：' + spec.me));
+      if (spec.items.length) {
+        var ul = el('ul', 'plain');
+        spec.items.forEach(function (x) { ul.appendChild(el('li', null, x.no + '. ' + (x.kind === 'tell' ? '伝える：' : '聞く：') + x.text)); });
+        box.appendChild(el('div', 'dim', '今日聞くこと・伝えること'));
+        box.appendChild(ul);
+      }
+      if (spec.beliefs.length) {
+        var ub = el('ul', 'plain');
+        spec.beliefs.forEach(function (x) { ub.appendChild(el('li', null, (x.kind === 'decision' ? '前回の決定：' : 'こちらの理解：') + x.text)); });
+        box.appendChild(el('div', 'dim', 'こちらの理解・前回の決定'));
+        box.appendChild(ub);
+      }
+    }).catch(function () { /* 次の機会に */ });
+  }
+
+  // ── 読み込み ─────────────────────────────────────────────
+  var lastState = null;
+  var lastNotesPresent = null;
+  function render(state) {
+    lastState = state;
+    renderBar(state.status, true);
+    renderMeeting(state);
+    if (view === 'after') {
+      renderAfter(state, false);
+      if (state.notesPresent !== lastNotesPresent) loadNotesView();
     }
-    var recentKey = JSON.stringify(state.recent);
-    if (recentKey !== last.recent) { last.recent = recentKey; renderCaptions(state.recent); }
-    $('foot').textContent = '会議ボード ' + s.version + ' ・ この画面の内容はこの PC の中だけにあります';
-    $('btnName').title = state.selfName ? '今の表示名: ' + state.selfName : '今は「自分」で渡しています';
+    lastNotesPresent = state.notesPresent;
+    setText($('ver'), '会議ボード ' + state.status.version + ' ・ この画面の内容はこの PC の中だけにあります');
+    $('btnName').title = state.selfName ? '今の表示名: ' + state.selfName : '表示名は未設定です';
     $('btnMemo').textContent = state.notesPresent ? '事前メモ ✓' : '事前メモ';
-    $('btnMemo').title = state.notesPresent ? '事前メモは登録済みです（押すと見直せます）' : '会議の前の「聞きたいこと」などを貼ります';
   }
 
   var busy = false;
@@ -632,16 +774,11 @@ dialog textarea { min-height: 220px; resize: vertical; }
       render(state);
     }).catch(function () {
       busy = false;
-      renderStrip(null, false);
+      renderBar(null, false);
     });
   }
 
   // ── ボタン ───────────────────────────────────────────────
-  $('todoJump').addEventListener('click', function () {
-    var b = $('checkBox');
-    if (b && b.scrollIntoView) b.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  });
-
   $('btnMemo').addEventListener('click', function () {
     $('memoMsg').textContent = '';
     api('GET', '/notes').then(function (r) { return r.json(); }).then(function (j) {
@@ -655,6 +792,7 @@ dialog textarea { min-height: 220px; resize: vertical; }
     api('POST', '/notes', { text: $('memoText').value }).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       $('memoMsg').textContent = '保存しました。次の整理から使います。';
+      loadNotesView();
       setTimeout(function () { if ($('memoDlg').open) $('memoDlg').close(); poll(); }, 900);
     }).catch(function () { $('memoMsg').textContent = '保存できませんでした（ヘルパーに届きません）'; });
   });
@@ -704,20 +842,13 @@ dialog textarea { min-height: 220px; resize: vertical; }
     if (!window.confirm('いまの内容を保存して、新しい会議を始めます。ボードは空になります。よろしいですか？')) return;
     api('POST', '/reset').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      last = { board: null, recent: null, current: null, count: -1, check: null };
+      lastItemsKey = null; lastAfterKey = null; openTopics = {};
       toast('新しい会議を始めました');
       poll();
     }).catch(function () { toast('リセットできませんでした（ヘルパーに届きません）'); });
   });
 
-  // 帯の高さ（折り返しで変わる）を、貼りつき位置とスクロール位置の計算に使う
-  function syncStrip() {
-    document.documentElement.style.setProperty('--strip-h', $('strip').offsetHeight + 'px');
-  }
-  if (window.ResizeObserver) new ResizeObserver(syncStrip).observe($('strip'));
-  window.addEventListener('resize', syncStrip);
-  syncStrip();
-
+  if (view === 'after') loadNotesView();
   poll();
   setInterval(poll, 2500);
 })();
