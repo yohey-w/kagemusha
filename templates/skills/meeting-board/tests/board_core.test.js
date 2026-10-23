@@ -162,3 +162,18 @@ test('人が直す: 会議中の一覧を押すと まだ → 済 → 持ち帰�
   assert.deepEqual(V.meetingView(state(b)).items.map((x) => x.byUser), [false, false, true, false]);
   assert.equal(V.afterView(state(b)).checkOpen[0].byUser, true);
 });
+
+test('台本: いまの節の台詞を、済んだ・いま・次・この先に分ける。全体の一覧といまの字幕 6 行', () => {
+  const { parseScript } = require(path.join(S.HELPER_DIR, 'lib', 'script.js'));
+  const sections = parseScript(fs.readFileSync(path.join(__dirname, 'fixtures', 'sample_script.md'), 'utf8'));
+  assert.equal(V.scriptView(state(BOARD)), null, '--script が無ければ出さない');
+  const recent = Array.from({ length: 9 }, (_, i) => ({ speaker: '佐々木', text: '発言' + i }));
+  const v = V.scriptView(state(BOARD, { script: { sections, pos: { sectionIndex: 1, lineIndex: 0, by: 'match' } }, recent }));
+  assert.equal(v.title, '候補と費用');
+  assert.equal(v.start, '1:00');
+  assert.deepEqual(v.lines.map((l) => l.status), ['current', 'next', 'later']);
+  assert.deepEqual(v.all.map((a) => a.current), [false, true, false, false]);
+  assert.deepEqual(v.captions.map((c) => c.text), ['発言3', '発言4', '発言5', '発言6', '発言7', '発言8']);
+  const t = V.scriptView(state(BOARD, { script: { sections, pos: { sectionIndex: 2, lineIndex: -1, by: 'time' } } }));
+  assert.deepEqual(t.lines.map((l) => l.status), ['next', 'later', 'later'], '時間で選んだ節は、最初の台詞が「次」');
+});

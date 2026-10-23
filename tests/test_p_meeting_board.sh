@@ -33,7 +33,7 @@ for p_f in SKILL.md README.md start.cmd start.sh .gitattributes data/.gitignore 
            helper/lib/app.js helper/lib/args.js helper/lib/claude.js helper/lib/diag.js \
            helper/lib/extract.js helper/lib/httpserver.js helper/lib/prompt.js helper/lib/replay.js \
            helper/lib/store.js helper/lib/transcript.js helper/lib/util.js \
-           helper/lib/board.js helper/lib/minutes.js helper/lib/notes.js helper/lib/importers.js \
+           helper/lib/board.js helper/lib/minutes.js helper/lib/notes.js helper/lib/importers.js helper/lib/script.js \
            sample/sample_transcript.txt sample/sample_notes.md \
            tests/fixtures/claude_stub.js tests/fixtures/support.js \
            tests/run.js tests/e2e/meet_fixture.html tests/e2e/run_e2e.js tests/eval/score_board.js; do

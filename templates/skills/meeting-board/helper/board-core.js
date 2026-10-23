@@ -246,6 +246,53 @@
     };
   }
 
+  /**
+   * 台本の欄（--script のときだけ）。state.script = { sections, pos }。
+   * 戻り値: null | { title, sectionIndex, total, by, lines: [{ kind, text, who, status: 'past'|'current'|'next'|'later' }],
+   *                  all: [{ index, title, start, current }], captions: 直近 6 行 [{ speaker, text }] }
+   */
+  function scriptView(state) {
+    var st = state || {};
+    var sc = st.script;
+    if (!sc || !Array.isArray(sc.sections) || !sc.sections.length) return null;
+    var pos = sc.pos || { sectionIndex: 0, lineIndex: -1, by: 'none' };
+    var si = pos.sectionIndex >= 0 && pos.sectionIndex < sc.sections.length ? pos.sectionIndex : 0;
+    var sec = sc.sections[si];
+    var li = si === pos.sectionIndex ? pos.lineIndex : -1;
+    // 次に言う台詞: いまの行より後で最初の台詞
+    var nextIdx = -1;
+    for (var i = li + 1; i < sec.lines.length; i++) {
+      if (sec.lines[i].kind === 'say') {
+        nextIdx = i;
+        break;
+      }
+    }
+    var lines = sec.lines.map(function (l, i) {
+      var status = i === li ? 'current' : i < li ? 'past' : i === nextIdx ? 'next' : 'later';
+      return { kind: l.kind, text: str(l.text), who: str(l.who), status: status };
+    });
+    function mmss(t) {
+      if (typeof t !== 'number') return '';
+      return Math.floor(t / 60) + ':' + pad(t % 60);
+    }
+    return {
+      title: str(sec.title),
+      start: mmss(sec.startSec),
+      sectionIndex: si,
+      total: sc.sections.length,
+      by: pos.by || 'none',
+      lines: lines,
+      all: sc.sections.map(function (s, i) {
+        return { index: i, title: str(s.title), start: mmss(s.startSec), current: i === si };
+      }),
+      captions: arr(st.recent)
+        .slice(-6)
+        .map(function (r) {
+          return { speaker: str(r.speaker), text: str(r.text) };
+        }),
+    };
+  }
+
   // 画面の欄の名前（役目そのものの言葉）と、初めて見る人向けの 1 行の説明
   var LABELS = {
     next: { title: '次の一手', help: '次に言うこと・聞くことを 1 つだけ。会議中はここだけ見れば足ります。' },
@@ -263,6 +310,7 @@
 
   return {
     meetingView: meetingView,
+    scriptView: scriptView,
     afterView: afterView,
     staleness: staleness,
     progressLine: progressLine,

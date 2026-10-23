@@ -16,6 +16,7 @@ const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./p
 const { extractJsonObject } = require('./extract');
 const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
 const { parseNotes } = require('./notes');
+const { parseScript, locate } = require('./script');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
 const { errMsg, clip, shortenHome } = require('./util');
@@ -48,6 +49,9 @@ class MeetingBoardApp {
     this.minGapMs = this.mode === 'diff' ? o.minGapMs || 8000 : 0; // 前倒しの整理の最短の間
     this.boardHtmlPath = o.boardHtmlPath;
     this.boardCorePath = o.boardCorePath || null;
+    // 台本（--script）。claude には渡さない。いまの位置は字幕から規則で当てる
+    this.scriptSections = o.script ? parseScript(o.script) : null;
+    this.scriptPos = null;
     this.me = o.me ? String(o.me).replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN) : ''; // --me（字幕に出る自分の名前）
 
     this.store = new Store(o.dataDir);
@@ -250,6 +254,7 @@ class MeetingBoardApp {
     try {
       const now = this.now();
       this.transcript.settle(now);
+      this.updateScriptPos();
       this.persist(false);
       let reason = shouldUpdate({
         inFlight: this.inFlight,
@@ -516,7 +521,7 @@ class MeetingBoardApp {
   stateJson() {
     const now = this.now();
     const sec = (t) => (t ? Math.max(0, Math.round((now - t) / 1000)) : null);
-    return {
+    const out = {
       status: {
         version: this.version,
         now,
@@ -559,6 +564,9 @@ class MeetingBoardApp {
       notesPresent: !!this.notes.trim(),
       selfName: this.settings.selfName || '',
     };
+    // 台本は --script のときだけ（診断には入れない）
+    if (this.scriptSections) out.script = { sections: this.scriptSections, pos: this.scriptPos || this.updateScriptPos() };
+    return out;
   }
 
   /** 字幕・名前・会議コードを含めない診断テキスト */
@@ -667,6 +675,16 @@ class MeetingBoardApp {
     if (listenInfo) checks.push(listenInfo);
     this.selfCheck = checks;
     return checks;
+  }
+
+  /** 台本のいまの位置を、直近の字幕から当て直す（tick ごと・claude は使わない） */
+  updateScriptPos() {
+    if (!this.scriptSections) return null;
+    const entries = this.transcript.entries;
+    const first = entries.length ? entries[0].firstSeen : 0;
+    const elapsed = first ? Math.max(0, (this.now() - first) / 1000) : null;
+    this.scriptPos = locate(this.scriptSections, this.transcript.recent(40, this.selfName()), elapsed, this.scriptPos, { me: this.me || this.selfName() });
+    return this.scriptPos;
   }
 
   startLoop() {

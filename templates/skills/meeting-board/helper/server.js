@@ -140,6 +140,15 @@ async function main() {
       return 2;
     }
   }
+  let scriptText = '';
+  if (opts.script) {
+    try {
+      scriptText = fs.readFileSync(path.resolve(opts.script), 'utf8');
+    } catch (e) {
+      console.error('台本を読めませんでした（' + opts.script + '）: ' + e.message);
+      return 2;
+    }
+  }
   let replayLines = null;
   if (opts.replay) {
     let imported;
@@ -168,6 +177,7 @@ async function main() {
     boardHtmlPath: path.join(HELPER_DIR, 'board.html'),
     notes: notes,
     me: opts.me,
+    script: scriptText,
     mode: opts.mode,
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);

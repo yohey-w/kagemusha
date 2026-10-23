@@ -47,6 +47,7 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 | `helper/server.js` + `helper/lib/*.js` | 起動・HTTP・claude の呼び出し・整理の間隔・保存。`prompt.md` はそのまま使う |
 | `helper/lib/notes.js` | 事前メモから「今日聞くこと・伝えること」「こちらの理解・前回の決定」「自分：名前」を読む（表の文言と順番を固定する） |
 | `helper/lib/board.js` | claude の返事を schema 2 のボードに整える（話題の id・聞くことの 3 状態・次の一手の規則の補い・警告の検証・前提と食い違ったことの記録・差分の重ね合わせ・人が直した状態）。何が来ても例外を出さない |
+| `helper/lib/script.js` | 台本（`--script`）を節と台詞に分け、直近の字幕から「いま台本のどこか」を規則で当てる（claude は使わない） |
 | `helper/lib/importers.js` | `--replay` の文字起こしの形を見分ける（「話者：本文」・WebVTT・「名前 時刻」＋本文。Teams・Zoom の形は推定で、実物では未確認） |
 | `helper/prompt_patch.md` | 差分の整理（2 回目から）のときだけ `prompt.md` のあとに足す、出力の決まり。`board.js` の `mergePatch()` が前回のボードに重ねる |
 | `helper/lib/minutes.js` | 保存したボードから議事録の素（Markdown）を作る（`--minutes`） |
@@ -59,6 +60,6 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 
 画面は 3 つの場面で使い分ける: 会議の前（事前メモを貼り、「会議の前と後」タブで読めたか確かめる）／会議中（次の一手・警告／順調・伝え済み／まだ だけ。項目を押すと状態を直せる）／会議の後（「会議の前と後」タブで振り返り・状態を直し、`--minutes` で議事録の素）。人が直した状態は `POST /override` で会議フォルダの `overrides.json` に残り、整理より優先する。
 
-主なオプション: `--notes` 事前メモ・`--me 名前` 字幕に出る自分の名前・`--mode diff|full`（既定 full＝毎回全体。diff＝2 回目から差分の整理・試験中）・`--replay ファイル`（`--speed auto` が既定。行に `[時:分:秒]` があればその間隔）・`--once`・`--minutes 会議フォルダ [--out ファイル]`・`--data-dir`。
+主なオプション: `--notes` 事前メモ・`--script 台本.md`（会議中の画面に台本の位置と直近の字幕）・`--me 名前` 字幕に出る自分の名前・`--mode diff|full`（既定 full＝毎回全体。diff＝2 回目から差分の整理・試験中）・`--replay ファイル`（`--speed auto` が既定。行に `[時:分:秒]` があればその間隔）・`--once`・`--minutes 会議フォルダ [--out ファイル]`・`--data-dir`。
 
 守る線: ヘルパーは `127.0.0.1` だけ・`X-Meeting-Board: 1` の札と Host の確認が無ければ断る・診断に字幕の本文と名前を入れない・音声は扱わない。
