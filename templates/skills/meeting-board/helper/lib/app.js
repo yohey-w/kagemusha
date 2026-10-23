@@ -51,6 +51,7 @@ class MeetingBoardApp {
     this.boardCorePath = o.boardCorePath || null;
     // 台本（--script）。claude には渡さない。いまの位置は字幕から規則で当てる
     this.scriptSections = o.script ? parseScript(o.script) : null;
+    this.scriptManual = !!o.scriptManual; // 台本の位置は人が押したときだけ動かす
     this.scriptPos = null;
     this.closingLine = this.scriptSections ? findClosingLine(this.scriptSections) : null; // 最後に確かめる文（穴あき）
     this.me = o.me ? String(o.me).replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN) : ''; // --me（字幕に出る自分の名前）
@@ -682,6 +683,7 @@ class MeetingBoardApp {
   /** 台本のいまの位置を、直近の字幕から当て直す（tick ごと・claude は使わない） */
   updateScriptPos() {
     if (!this.scriptSections) return null;
+    if (this.scriptManual) return this.scriptPos || (this.scriptPos = { sectionIndex: 0, lineIndex: -1, by: 'manual', score: 1 });
     const entries = this.transcript.entries;
     const first = entries.length ? entries[0].firstSeen : 0;
     const elapsed = first ? Math.max(0, (this.now() - first) / 1000) : null;

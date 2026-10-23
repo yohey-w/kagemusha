@@ -10,6 +10,7 @@ const DEFAULTS = {
   replay: null,
   speed: 'auto',
   once: false,
+  scriptManual: false, // --script-manual: 台本の位置を字幕で自動に動かさない（押したときだけ動く）
   dataDir: null,
   me: null,
   minutes: null,
@@ -30,6 +31,7 @@ const USAGE = [
   '  --speed N|auto    --replay の速さ（既定 auto＝整理が 6 回ほど入る速さ。1 倍は 1 行あたり約 4 秒、',
   '                    行に [時:分:秒] があればその間隔）',
   '  --once            --replay を全部読み込み、整理を 1 回だけ行い、結果の JSON を出力して終わる',
+  '  --script-manual   台本の位置を字幕で自動に動かさない（台詞や節を押したときだけ動く）',
   '  --data-dir フォルダ  記録の保存先（既定は helper の隣の data/）',
   '  --me 名前         字幕に出る自分の名前（自分の発言を言い直して返さないため。Meet の「あなた」も自分として扱う）',
   '  --mode diff|full  整理の仕方（既定 full＝毎回全体。diff＝2 回目から変わったところだけ・試験中）',
@@ -70,6 +72,7 @@ function parseArgs(argv) {
     }
     if (arg === '--open') opts.open = true;
     else if (arg === '--once') opts.once = true;
+    else if (arg === '--script-manual') opts.scriptManual = true;
     else if (arg === '--help' || arg === '-h') opts.help = true;
     else if (takesValue.has(arg)) {
       let value = inline;

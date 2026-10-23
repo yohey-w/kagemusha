@@ -178,6 +178,7 @@ async function main() {
     notes: notes,
     me: opts.me,
     script: scriptText,
+    scriptManual: opts.scriptManual,
     mode: opts.mode,
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
