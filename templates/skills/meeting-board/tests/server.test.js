@@ -961,7 +961,9 @@ test('会議を終える: 前の整理のあとに字幕が増えていなけれ
 
     // 新しい会議 → 整理が済んでいて、字幕が増えていない
     h.app.reset();
-    await post(h, '/captions', { entries: lines(8, 'a') });
+    // 新しい会議はリセットの時刻より前の字幕を捨てる。lines() の時刻はファイルを読んだ時刻（T0）からなので、
+    // 遅い機械では 7 秒を過ぎて全部捨てられる。いまの時計からの時刻にしておく
+    await post(h, '/captions', { entries: lines(8, 'a').map((e, j) => Object.assign(e, { firstSeen: h.clock.t + j })) });
     h.clock.t += 30000;
     assert.equal((await h.app.runUpdate('test')).ok, true);
     info = await h.app.finishMeeting();
