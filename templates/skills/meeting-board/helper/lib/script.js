@@ -149,7 +149,7 @@ function locate(sections, recent, elapsedSec, prev, opts) {
     sections.forEach((s, i) => {
       if (typeof s.startSec === 'number' && s.startSec <= elapsedSec) si = i;
     });
-    if (p && p.sectionIndex > si && p.by === 'match') return p; // 一致で進んだ位置から、時間で戻さない
+    if (p && p.sectionIndex > si && p.by !== 'time') return p; // 一致・手で決めた位置から、時間で戻さない // 一致で進んだ位置から、時間で戻さない
     return { sectionIndex: si, lineIndex: p && p.sectionIndex === si ? p.lineIndex : -1, by: 'time', score: best ? best.score : 0 };
   }
   return p || { sectionIndex: 0, lineIndex: -1, by: 'none', score: 0 };

@@ -11,7 +11,7 @@ const fs = require('fs');
 const os = require('os');
 
 const { Store } = require('./store');
-const { Transcript } = require('./transcript');
+const { Transcript, SELF_TOKEN } = require('./transcript');
 const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./prompt');
 const { extractJsonObject } = require('./extract');
 const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
@@ -685,8 +685,34 @@ class MeetingBoardApp {
     const entries = this.transcript.entries;
     const first = entries.length ? entries[0].firstSeen : 0;
     const elapsed = first ? Math.max(0, (this.now() - first) / 1000) : null;
-    this.scriptPos = locate(this.scriptSections, this.transcript.recent(40, this.selfName()), elapsed, this.scriptPos, { me: this.me || this.selfName() });
+    let recent = this.transcript.recent(40, this.selfName());
+    if (this.scriptPin) {
+      // 人が位置を決めたあとは、そのあとに増えた字幕だけで位置を当てる（決めた位置へ前の字幕で引き戻さない）
+      const pin = this.scriptPin;
+      recent = entries
+        .slice(-40)
+        .map((e) => {
+          const before = pin.has(e.id) ? pin.get(e.id) : 0;
+          const text = String(e.text || '').slice(before);
+          return { speaker: e.speaker === SELF_TOKEN ? this.selfName() : e.speaker || '不明', text, at: e.lastUpdate || e.firstSeen };
+        })
+        .filter((c) => c.text.trim().length >= 4);
+      if (!recent.length) return this.scriptPos;
+    }
+    this.scriptPos = locate(this.scriptSections, recent, elapsed, this.scriptPos, { me: this.me || this.selfName() });
     return this.scriptPos;
+  }
+
+  /** 人が台本の位置を決める（台詞・節を押したとき）。lineIndex が -1 なら節の頭 */
+  setScriptPos(sectionIndex, lineIndex) {
+    const secs = this.scriptSections;
+    const si = Number(sectionIndex);
+    const li = lineIndex === undefined || lineIndex === null ? -1 : Number(lineIndex);
+    if (!secs || !Number.isInteger(si) || si < 0 || si >= secs.length) return { ok: false, status: 400, error: '節の番号が台本にありません' };
+    if (!Number.isInteger(li) || li < -1 || li >= secs[si].lines.length) return { ok: false, status: 400, error: '台詞の番号が台本にありません' };
+    this.scriptPin = new Map(this.transcript.entries.map((e) => [e.id, String(e.text || '').length]));
+    this.scriptPos = { sectionIndex: si, lineIndex: li, by: 'manual', score: 1 };
+    return { ok: true };
   }
 
   startLoop() {

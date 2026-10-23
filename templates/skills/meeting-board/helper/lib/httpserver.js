@@ -165,6 +165,14 @@ function createHandler(app) {
           else sendJson(res, 200, { ok: true });
           return;
         }
+        case 'POST /script-pos': {
+          // 人が台本の位置を決める: { sectionIndex, lineIndex }（lineIndex -1 で節の頭）
+          const body = await readJson(req);
+          const r = app.setScriptPos(body.sectionIndex, body.lineIndex);
+          if (!r.ok) sendJson(res, r.status, { error: r.error });
+          else sendJson(res, 200, { ok: true });
+          return;
+        }
         case 'POST /reset':
           app.reset();
           sendJson(res, 200, { ok: true });
@@ -172,7 +180,7 @@ function createHandler(app) {
         default:
           break;
       }
-      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset', '/override'];
+      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset', '/override', '/script-pos'];
       if (known.indexOf(path) >= 0) sendJson(res, 405, { error: 'method not allowed' });
       else sendJson(res, 404, { error: 'not found' });
     } catch (e) {

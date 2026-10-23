@@ -627,20 +627,35 @@ dialog textarea { min-height: 220px; resize: vertical; }
     var moved = !lastScriptKey || JSON.parse(lastScriptKey)[0].sectionIndex !== v.sectionIndex || JSON.stringify(JSON.parse(lastScriptKey)[0].lines.map(function (l) { return l.status; })) !== JSON.stringify(v.lines.map(function (l) { return l.status; }));
     lastScriptKey = key;
     setText($('scriptTitle'), (v.start ? v.start + '〜 ' : '') + v.title + '（' + (v.sectionIndex + 1) + '/' + v.total + '）');
-    setText($('scriptBy'), v.by === 'match' ? '字幕から' : v.by === 'time' ? '経過時間から' : '');
+    setText($('scriptBy'), v.by === 'match' ? '字幕から' : v.by === 'time' ? '経過時間から' : v.by === 'manual' ? '手で決めた位置' : '');
     var ol = $('scriptList');
     clear(ol);
-    function lineLi(l) {
+    // 押した台詞・節を「いまの位置」にする（字幕の当て方がずれたときに人が直す）
+    function pick(si, li) {
+      api('POST', '/script-pos', { sectionIndex: si, lineIndex: li }).then(function (r) {
+        if (!r.ok) throw new Error(String(r.status));
+        lastScriptKey = null;
+        return poll && poll();
+      }).catch(function () { toast('台本の位置を変えられませんでした'); });
+    }
+    function lineLi(l, i) {
       var li = el('li', l.kind + ' ' + l.status, l.kind === 'say' ? (l.who ? l.who + '「' : '「') + l.text + '」' : l.text);
+      li.title = '押すと、ここをいまの位置にします';
+      li.style.cursor = 'pointer';
+      li.addEventListener('click', function () { pick(v.sectionIndex, i); });
       return li;
     }
     if (scriptAll) {
-      v.all.forEach(function (sec) {
-        ol.appendChild(el('li', 'sec' + (sec.current ? ' cur' : ''), (sec.start ? sec.start + '〜 ' : '') + sec.title));
-        if (sec.current) v.lines.forEach(function (l) { ol.appendChild(lineLi(l)); });
+      v.all.forEach(function (sec, si) {
+        var h = el('li', 'sec' + (sec.current ? ' cur' : ''), (sec.start ? sec.start + '〜 ' : '') + sec.title);
+        h.title = '押すと、この節の頭をいまの位置にします';
+        h.style.cursor = 'pointer';
+        h.addEventListener('click', function () { pick(si, -1); });
+        ol.appendChild(h);
+        if (sec.current) v.lines.forEach(function (l, i) { ol.appendChild(lineLi(l, i)); });
       });
     } else {
-      v.lines.forEach(function (l) { ol.appendChild(lineLi(l)); });
+      v.lines.forEach(function (l, i) { ol.appendChild(lineLi(l, i)); });
     }
     // ページは動かさず、台本の枠の中だけを動かして、いまの台詞（無ければ次の台詞）を見える位置に
     if (moved) {

@@ -147,3 +147,4 @@ test('台本: 1 つの長い字幕の中で次の台詞を言い始めたら、�
   assert.equal(pos.lineIndex, 1);
   assert.equal(pos.by, 'match');
 });
+
