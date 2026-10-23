@@ -15,6 +15,7 @@ const MAX_LEN = 300;
 const WINDOW_MS = 60000;
 const THRESHOLD = 0.3; // これ以上で「一致」
 const STRONG = 0.55; // これ以上なら、前の節へ大きく戻ってもよい
+const HEAD_THRESHOLD = 0.7; // 台詞の頭 24 字が、直近の字幕の末尾にこれ以上出ていれば「言い始めた」
 
 function clean(s) {
   return String(s).replace(/\s+/g, ' ').trim();
@@ -99,6 +100,33 @@ function locate(sections, recent, elapsedSec, prev, opts) {
     .reverse()
     .slice(0, 20)
     .map((c, age) => ({ grams: bigrams(c.text), w: (isUser(c.speaker, o.me) ? 1 : 0.6) * Math.max(0.5, 1 - 0.03 * age) }));
+  const p0 = prev && prev.sectionIndex >= 0 ? prev : null;
+  // 言い始めの一致: 台詞の頭 24 字が直近の字幕（最後の 2 行）に出ていれば、その台詞を言い始めたとみなし、
+  // 字幕の中でいちばん後ろで言い始めた台詞に移る。Meet は 1 人の発言を 1 つの長い字幕にまとめるので、
+  // 全体の重なりで比べると前の台詞が勝ち続けて切り替わりが遅れる
+  const tailText = win.slice(-2).map((c) => String(c.text || '')).join('\n');
+  let head = null;
+  sections.forEach((s, si) => {
+    s.lines.forEach((l, li) => {
+      if (l.kind !== 'say') return;
+      const hg = bigrams(String(l.text).slice(0, 24));
+      if (!hg.size) return;
+      const at = [];
+      for (const g of hg) {
+        const k = tailText.lastIndexOf(g);
+        if (k >= 0) at.push(k);
+      }
+      const sc = at.length / hg.size;
+      if (sc < HEAD_THRESHOLD) return;
+      at.sort((x, y) => x - y);
+      const where = at[Math.floor(at.length / 2)]; // 頭が字幕のどこで言われたか（中央値）
+      if (!head || where > head.where || (where === head.where && sc > head.score)) {
+        head = { sectionIndex: si, lineIndex: li, by: 'match', score: Math.round(sc * 100) / 100, where };
+      }
+    });
+  });
+  if (head) delete head.where;
+  if (head && (!p0 || head.sectionIndex >= p0.sectionIndex - 1 || head.score >= STRONG)) return head;
   let best = null;
   sections.forEach((s, si) => {
     s.lines.forEach((l, li) => {

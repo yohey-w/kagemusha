@@ -137,3 +137,13 @@ test('台本: 見出しのあとに注記が続く行も節として読む', () 
   assert.equal(secs[1].title, 'ゴールを聞く');
   assert.equal(secs[1].startSec, 840);
 });
+
+test('台本: 1 つの長い字幕の中で次の台詞を言い始めたら、すぐその台詞に移る', () => {
+  const r = parseScript('**【0:00〜 はじめ】**\n\n山田「本日はお時間をいただきありがとうございます。山田と申します。よろしくお願いいたします。」\n\n山田「最初にひとつだけお伝えさせてください。今日はお話を伺うだけの場です。」\n\n**【3:00〜 本題】**\n\n山田「では、今の流れを教えていただけますか。」\n');
+  const secs = r.sections || r;
+  const said = '本日はお時間をいただきありがとうございます。山田と申します。よろしくお願いいたします。最初にひとつだけお伝えさせてください。今日は';
+  const pos = locate(secs, [{ speaker: '山田', text: said, at: 1000 }], 10, null, { me: '山田' });
+  assert.equal(pos.sectionIndex, 0);
+  assert.equal(pos.lineIndex, 1);
+  assert.equal(pos.by, 'match');
+});
