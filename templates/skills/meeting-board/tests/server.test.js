@@ -371,7 +371,7 @@ test('人が直す: POST /override は札が要り、直した状態は保存さ
 });
 
 test('差分の整理: 2 回目から「前回より後」と差分の形を頼み、重ねる。おかしな返事のあとと、決まった回数ごとは全体に戻す', async () => {
-  const h = await S.startApp({ fakeClock: true, notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか' });
+  const h = await S.startApp({ fakeClock: true, mode: 'diff', notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか' });
   const f = (name, obj) => {
     const p = path.join(h.dataDir, name);
     fs.writeFileSync(p, typeof obj === 'string' ? obj : JSON.stringify(obj));

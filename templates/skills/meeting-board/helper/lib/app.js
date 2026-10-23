@@ -40,7 +40,7 @@ class MeetingBoardApp {
     this.env = o.env || process.env;
     this.promptMd = fs.readFileSync(o.promptPath, 'utf8');
     // 差分の整理（2 回目から「変わったところだけ」を返してもらう）。'full' なら毎回全体
-    this.mode = o.mode === 'full' ? 'full' : 'diff';
+    this.mode = o.mode === 'diff' ? 'diff' : 'full';
     const patchPath = o.patchPromptPath || require('path').join(require('path').dirname(o.promptPath), 'prompt_patch.md');
     this.patchMd = this.mode === 'diff' ? fs.readFileSync(patchPath, 'utf8') : '';
     this.fullEvery = o.fullEvery || 8; // 差分をこの回数続けたら、1 回は全体でまとめ直す

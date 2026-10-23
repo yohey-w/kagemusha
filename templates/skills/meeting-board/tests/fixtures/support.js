@@ -42,6 +42,7 @@ async function startApp(options) {
     promptPath: path.join(HELPER_DIR, 'prompt.md'),
     boardHtmlPath: path.join(HELPER_DIR, 'board.html'),
     notes: o.notes || '',
+    mode: o.mode,
     env: stubEnv(Object.assign({ STUB_LOG: log }, o.env || {})),
     now: o.fakeClock ? () => clock.t : undefined,
   });
