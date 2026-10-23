@@ -136,11 +136,10 @@ function setup(extraEnv) {
 test('callClaude: 全部入りのオプションで呼び、プロンプトは標準入力で渡る', async () => {
   const t = setup();
   try {
-    const state = { flagSet: 'full' };
+    const state = {};
     const r = await t.run(state);
     assert.equal(r.ok, true, JSON.stringify(r));
     assert.match(r.text, /"topics"/);
-    assert.equal(r.flagSet, 'full');
     assert.equal(state.confirmed, true, '返事が来たオプションの組は「確かめた」と覚える');
     const calls = t.calls();
     assert.equal(calls.length, 1);
@@ -152,37 +151,40 @@ test('callClaude: 全部入りのオプションで呼び、プロンプトは�
   }
 });
 
-test('callClaude: 古い版（未対応オプション）→ 1 回目は失敗、2 回目は最小で成功、以後は最初から最小', async () => {
+test('callClaude: 古い版（未対応オプション）→ 安全のためのオプションを外して呼び直さず、claude update を案内して止まる', async () => {
   const t = setup({ STUB_MODE: 'old-cli' });
   try {
-    const state = { flagSet: 'full' };
+    const state = {};
     const r1 = await t.run(state);
-    assert.equal(r1.ok, true, JSON.stringify(r1));
-    assert.equal(r1.flagSet, 'minimal');
-    assert.equal(state.flagSet, 'minimal', '落とした結果は覚えておく');
+    assert.equal(r1.ok, false, '偽 claude は、オプションを外した呼び出しなら成功する。外したら ok になってしまう: ' + JSON.stringify(r1));
+    assert.equal(r1.kind, 'unknown-flag');
+    assert.match(r1.message, /claude update/);
+    assert.match(r1.message, /起動し直/);
+    assert.match(r1.detail, /claude update/, '黒い画面（detail を出す）にも案内が載る');
+    assert.notEqual(state.confirmed, true, '失敗では「確かめた」にしない');
     let calls = t.calls();
-    assert.equal(calls.length, 2, '全部入りで 1 回失敗 + 最小で 1 回成功');
-    assert.ok(calls[0].argv.includes('--safe-mode'), '1 回目は全部入り');
-    assert.deepEqual(calls[1].argv, ['-p', '--output-format', 'json', '--model', 'sonnet'], '2 回目は最小');
+    assert.equal(calls.length, 1, '外して呼び直さない（呼び出しは 1 回だけ）');
+    assert.deepEqual(calls[0].argv, ['-p', '--output-format', 'json', '--model', 'sonnet'].concat(FLAGS_FULL));
 
     const r2 = await t.run(state);
-    assert.equal(r2.ok, true);
+    assert.equal(r2.ok, false);
+    assert.equal(r2.kind, 'unknown-flag');
     calls = t.calls();
-    assert.equal(calls.length, 3, '3 回目は全部入りを試さず、最初から最小（呼び出しは 1 回だけ増える）');
-    assert.deepEqual(calls[2].argv, ['-p', '--output-format', 'json', '--model', 'sonnet']);
+    assert.equal(calls.length, 2, '呼び直したときも 1 回だけ増える');
+    for (const c of calls) assert.deepEqual(c.argv.slice(-FLAGS_FULL.length), FLAGS_FULL, 'どの呼び出しも安全のためのオプションつき');
   } finally {
     t.cleanup();
   }
 });
 
-test('callClaude: 未対応オプション以外の失敗では、最小に落とさない', async () => {
+test('callClaude: 未対応オプション以外の失敗は、ふつうの失敗として返す（古い版の案内にはしない）', async () => {
   const t = setup({ STUB_MODE: 'exit1' });
   try {
-    const state = { flagSet: 'full' };
+    const state = {};
     const r = await t.run(state);
     assert.equal(r.ok, false);
     assert.equal(r.kind, 'exit');
-    assert.equal(state.flagSet, 'full');
+    assert.doesNotMatch(r.message, /claude update/);
     assert.notEqual(state.confirmed, true, '失敗では「確かめた」にしない');
     assert.equal(t.calls().length, 1);
   } finally {
@@ -193,7 +195,7 @@ test('callClaude: 未対応オプション以外の失敗では、最小に落�
 test('callClaude: エラー JSON は message に出す（ログイン切れの案内つき）。上限は上限として知らせる', async () => {
   let t = setup({ STUB_MODE: 'error-json' });
   try {
-    const r = await t.run({ flagSet: 'full' });
+    const r = await t.run({});
     assert.equal(r.ok, false);
     assert.equal(r.kind, 'claude-error');
     assert.match(r.message, /Invalid API key/);
@@ -203,7 +205,7 @@ test('callClaude: エラー JSON は message に出す（ログイン切れの�
   }
   t = setup({ STUB_MODE: 'limit-json' });
   try {
-    const r = await t.run({ flagSet: 'full' });
+    const r = await t.run({});
     assert.equal(r.ok, false);
     assert.equal(r.kind, 'usage-limit');
     assert.match(r.message, /利用上限/);
@@ -217,7 +219,7 @@ test('callClaude: 返事が来なければタイムアウトで止める（子�
   const t = setup({ STUB_MODE: 'slow' });
   try {
     const started = Date.now();
-    const r = await t.run({ flagSet: 'full' }, { timeoutMs: 600 });
+    const r = await t.run({}, { timeoutMs: 600 });
     assert.equal(r.ok, false);
     assert.equal(r.kind, 'timeout');
     assert.ok(Date.now() - started < 10000, '60 秒の居座りを待たない');
@@ -235,7 +237,7 @@ test('callClaude: 起動できない claude は spawn エラーとして返す',
       prompt: 'x',
       cwd: dir,
       timeoutMs: 5000,
-      state: { flagSet: 'full' },
+      state: {},
     });
     assert.equal(r.ok, false);
     assert.equal(r.kind, 'spawn');

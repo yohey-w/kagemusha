@@ -5,6 +5,7 @@
 //   <data-dir>/<開始時刻>/notes.md          事前メモ
 //   <data-dir>/<開始時刻>/overrides.json    人が手で直した聞くことの状態（人の操作が claude より勝つ）
 //   <data-dir>/<開始時刻>/updates.jsonl     整理 1 回ごとの数字（所要時間・費用・字数。本文は入れない）
+//   <data-dir>/<開始時刻>/minutes.md        「会議を終える」で書く議事録の素（--minutes と同じ中身）
 //   <data-dir>/settings.json                自分の表示名
 //   <data-dir>/_cwd/                        claude を走らせる空のフォルダ
 // data/ の中身は .gitignore で「コミットできない」ようにしてある。
@@ -86,6 +87,14 @@ class Store {
 
   saveNotes(text) {
     if (this.sessionDir) writeFileAtomic(path.join(this.sessionDir, 'notes.md'), text);
+  }
+
+  /** 議事録の素を会議フォルダに書く。戻り値: 書いたファイルの絶対パス（会議フォルダが無ければ ''） */
+  saveMinutes(md) {
+    if (!this.sessionDir) return '';
+    const file = path.join(this.sessionDir, 'minutes.md');
+    writeFileAtomic(file, md);
+    return file;
   }
 
   loadSettings() {

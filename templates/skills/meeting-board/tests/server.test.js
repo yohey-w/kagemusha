@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const S = require('./fixtures/support.js');
 
@@ -790,6 +791,339 @@ test('診断: 拡張機能の木（領域の下 4 段）は、いちばん下の
     const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.15 Safari/537.36 Edg/147.0.3912.60';
     await post(h, '/diag', { v: 1, ua });
     assert.ok((await get(h, '/diag')).text.includes('Edg/147.0.3912.60'));
+  } finally {
+    await h.close();
+  }
+});
+
+// ── 古い claude（安全のためのオプションを知らない） ───────────────
+test('古い claude: 安全のためのオプションを外して呼び直さず、claude update を案内して止まる（以後の tick・再生の終わり・新しい会議でも呼ばない）', async () => {
+  const h = await S.startApp({ fakeClock: true, env: { STUB_MODE: 'old-cli' } });
+  const warns = [];
+  h.app.warn = (m) => warns.push(m);
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    h.app.tick();
+    await S.waitFor(() => h.app.lastError && !h.app.inFlight, 15000);
+
+    let calls = h.calls();
+    assert.equal(calls.length, 1, 'claude は 1 回しか呼ばない（外して呼び直さない）');
+    for (const flag of ['--tools', '--safe-mode', '--no-session-persistence']) assert.ok(calls[0].argv.includes(flag), flag + ' を付けて呼んだ');
+    let st = (await get(h, '/state')).json;
+    assert.equal(st.board, null, '外して呼び直していれば、偽 claude は成功してボードが出てしまう');
+    assert.equal(st.status.lastError.kind, 'unknown-flag');
+    assert.match(st.status.lastError.message, /claude update/);
+    assert.match(st.status.lastError.message, /起動し直/);
+    assert.ok(warns.some((w) => w.includes('claude update')), '黒い画面にも案内が出る: ' + JSON.stringify(warns));
+    assert.match((await get(h, '/diag')).text, /古くて使えない/);
+
+    // 字幕が増えても、時間がたっても、呼ばない（待ち時間のやり直しではなく、止まる）
+    for (let i = 0; i < 3; i++) {
+      await post(h, '/captions', { entries: lines(8, 'b' + i).map((e, j) => Object.assign(e, { firstSeen: h.clock.t + j })) });
+      h.clock.t += 600000;
+      h.app.tick();
+      await S.sleep(80);
+    }
+    h.app.flushNow = true; // --replay が流し終わったあとの最後の整理も、呼ばない
+    h.clock.t += 600000;
+    h.app.tick();
+    await S.sleep(80);
+    assert.equal(h.calls().length, 1, 'あとの tick でも呼ばない');
+    const direct = await h.app.runUpdate('test');
+    assert.equal(direct.kind, 'unknown-flag');
+    assert.equal(h.calls().length, 1, '直接頼まれても呼ばない');
+
+    // 「新しい会議」でも、同じ claude なので呼ばない（案内は出し続ける）
+    h.app.reset();
+    await post(h, '/captions', { entries: lines(8, 'c').map((e, j) => Object.assign(e, { firstSeen: h.clock.t + j })) });
+    h.clock.t += 600000;
+    h.app.tick();
+    await S.sleep(80);
+    assert.equal(h.calls().length, 1, '新しい会議でも呼ばない');
+    st = (await get(h, '/state')).json;
+    assert.equal(st.status.lastError.kind, 'unknown-flag');
+
+    // 会議を終えるときも、呼ばずに今あるものを保存する
+    await h.app.finishMeeting();
+    assert.equal(h.calls().length, 1, '会議を終えるときも呼ばない');
+    assert.equal(h.app.finishInfo.skip, 'blocked');
+  } finally {
+    await h.close();
+  }
+});
+
+// ── 会議を終える ────────────────────────────────────────────
+function lastLogRows(h) {
+  const f = path.join(h.app.store.sessionDir, 'updates.jsonl');
+  return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
+}
+async function finished(h) {
+  await S.waitFor(() => h.app.finishInfo && h.app.finishInfo.phase === 'done', 15000);
+  return h.app.finishInfo;
+}
+
+test('会議を終える: 字幕が増えたまま押すと、全体の整理（final）が 1 回だけ走り、議事録の素が会議フォルダに書かれ、以後は自動の整理をしない', async () => {
+  const h = await S.startApp({ fakeClock: true, mode: 'live' });
+  try {
+    const step = async (prefix) => {
+      await post(h, '/captions', { entries: lines(8, prefix).map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+      h.clock.t += 30000;
+      return h.app.runUpdate('test');
+    };
+    assert.equal((await step('a')).ok, true);
+    assert.equal((await step('b')).ok, true);
+    assert.equal(h.app.lastMode, 'live', '直近の整理は会議中の短い版');
+    await post(h, '/captions', { entries: lines(4, 'c').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+    assert.equal(h.calls().length, 2);
+    assert.equal((await get(h, '/state')).json.status.finish, null, '押すまでは null');
+
+    const r = await post(h, '/finish');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.ok, true);
+    assert.equal(r.json.finish.phase, 'finishing', 'すぐ返す（整理の完了は待たない）');
+    const info = await finished(h);
+    assert.equal(info.rebuild, 'done');
+    assert.equal(info.skip, '');
+    assert.equal(h.calls().length, 3, 'claude を呼んだのは、あと 1 回');
+    assert.ok(!h.calls()[2].stdin.includes('## 出力（会議中の短い版）'), '最後は全体の整理（短い版ではない）');
+    const rows = lastLogRows(h);
+    assert.deepEqual(rows.map((x) => [x.reason, x.mode, x.ok]), [['test', 'full', true], ['test', 'live', true], ['final', 'full', true]]);
+
+    // 議事録の素: 会議フォルダの minutes.md。--minutes と同じ中身
+    const minutes = path.join(h.app.store.sessionDir, 'minutes.md');
+    assert.equal(info.minutesPath, minutes);
+    const md = fs.readFileSync(minutes, 'utf8');
+    assert.match(md, /^# 会議の記録（自動整理の下書き）/);
+    assert.match(md, /勤怠システムの入れ替え/);
+    const cli = spawnSync(process.execPath, [path.join(S.HELPER_DIR, 'server.js'), '--minutes', h.app.store.sessionDir], { encoding: 'utf8' });
+    assert.equal(cli.status, 0, cli.stderr);
+    assert.equal(md, cli.stdout, '--minutes で書き出したものと同じ');
+    const saved = JSON.parse(fs.readFileSync(path.join(h.app.store.sessionDir, 'board.json'), 'utf8'));
+    assert.equal(saved.topics[0].title, '勤怠システムの入れ替え');
+    assert.ok(fs.readFileSync(path.join(h.app.store.sessionDir, 'transcript.jsonl'), 'utf8').includes('c0'), '字幕も保存済み');
+
+    // 状態に出る（画面が読む）
+    const st = (await get(h, '/state')).json;
+    assert.deepEqual([st.status.finish.phase, st.status.finish.rebuild, st.status.finish.minutesPath, st.status.finish.hasBoard], ['done', 'done', minutes, true]);
+
+    // 以後の tick・字幕の増加・字幕が止まったあとの「まとめ直し」でも、自動の整理はしない。字幕の記録は続く
+    const before = st.status.captions.entries;
+    await post(h, '/captions', { entries: lines(8, 'd').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+    h.clock.t += 600000;
+    h.app.tick();
+    h.app.flushNow = true;
+    h.clock.t += 600000;
+    h.app.tick();
+    await S.sleep(120);
+    assert.equal(h.calls().length, 3, '終えたあとは呼ばない');
+    assert.equal((await get(h, '/state')).json.status.captions.entries, before + 8, '字幕の記録は変わらず続く');
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: 整理の最中に押すと、終わるのを待ってから、あと 1 回だけ全体を整理する', async () => {
+  const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '500' } });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    const first = h.app.runUpdate('test'); // 整理の最中
+    await S.waitFor(() => h.calls().length === 1, 5000);
+    await post(h, '/captions', { entries: lines(4, 'b').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) }); // 最中に増えた字幕
+    assert.equal(h.app.inFlight, true);
+
+    const r = await post(h, '/finish');
+    assert.equal(r.json.finish.phase, 'finishing');
+    await S.sleep(150);
+    assert.equal(h.calls().length, 1, '最中のあいだは、次の呼び出しをしない');
+    assert.equal(h.app.finishInfo.phase, 'finishing');
+    assert.equal((await first).ok, true);
+
+    const info = await finished(h);
+    assert.equal(info.rebuild, 'done');
+    assert.equal(h.calls().length, 2, '待ってから、あと 1 回だけ');
+    assert.deepEqual(lastLogRows(h).map((x) => [x.reason, x.ok]), [['test', true], ['final', true]]);
+    assert.ok(fs.existsSync(path.join(h.app.store.sessionDir, 'minutes.md')));
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: 前の整理のあとに字幕が増えていなければ（直近が全体の整理なら）整理し直さず、今あるボードを保存する。字幕が無くても落ちない', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    // 字幕が無い
+    let info = await h.app.finishMeeting();
+    assert.deepEqual([info.rebuild, info.skip, info.hasBoard], ['skipped', 'no-captions', false]);
+    assert.equal(h.calls().length, 0);
+    assert.match(fs.readFileSync(info.minutesPath, 'utf8'), /^# 会議の記録/, '中身の無い下書きでも、ファイルはできる');
+
+    // 新しい会議 → 整理が済んでいて、字幕が増えていない
+    h.app.reset();
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    info = await h.app.finishMeeting();
+    assert.deepEqual([info.rebuild, info.skip, info.hasBoard], ['skipped', 'no-new', true]);
+    assert.equal(h.calls().length, 1, '呼び直さない');
+    assert.match(fs.readFileSync(info.minutesPath, 'utf8'), /勤怠システムの入れ替え/);
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: claude が使えない間（利用上限）は呼ばずに今あるボードを保存する。待ち時間が過ぎていれば整理する', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    h.app.env.STUB_MODE = 'limit-json';
+    await post(h, '/captions', { entries: lines(8, 'b').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).kind, 'usage-limit');
+    assert.equal(h.calls().length, 2);
+
+    h.clock.t += 60000; // 上限の待ち時間（5 分）の途中
+    await post(h, '/finish');
+    const info = await finished(h);
+    assert.equal(h.calls().length, 2, '呼ばない');
+    assert.deepEqual([info.rebuild, info.skip, info.hasBoard], ['skipped', 'blocked', true]);
+    assert.match(fs.readFileSync(info.minutesPath, 'utf8'), /勤怠システムの入れ替え/, '前のボードから議事録の素を書く');
+    assert.equal(h.app.lastError.kind, 'usage-limit', '理由の帯は残る');
+  } finally {
+    await h.close();
+  }
+
+  // 待ち時間が過ぎたあとなら、整理する
+  const h2 = await S.startApp({ fakeClock: true, env: { STUB_MODE: 'limit-json' } });
+  try {
+    await post(h2, '/captions', { entries: lines(8, 'a') });
+    h2.clock.t += 30000;
+    assert.equal((await h2.app.runUpdate('test')).kind, 'usage-limit');
+    h2.app.env.STUB_MODE = 'ok';
+    h2.clock.t += 400000;
+    const info = await h2.app.finishMeeting();
+    assert.equal(info.rebuild, 'done');
+    assert.equal(h2.calls().length, 2);
+  } finally {
+    await h2.close();
+  }
+});
+
+test('会議を終える: 押した最後の整理が失敗しても、直前までのボードで議事録の素を書く', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    h.app.env.STUB_MODE = 'garbage';
+    await post(h, '/captions', { entries: lines(8, 'b').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+    const info = await h.app.finishMeeting();
+    assert.equal(info.rebuild, 'failed');
+    assert.match(info.error, /JSON/);
+    assert.match(fs.readFileSync(info.minutesPath, 'utf8'), /勤怠システムの入れ替え/);
+    assert.equal(h.calls().length, 2, '最後の整理は 1 回だけ（失敗しても重ねない）');
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: 二度押し（重なっても、終わったあとでも）で整理は 1 回だけ', async () => {
+  const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '300' } });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    await post(h, '/captions', { entries: lines(4, 'b').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+
+    const [r1, r2] = await Promise.all([post(h, '/finish'), post(h, '/finish')]);
+    assert.equal(r1.status, 200);
+    assert.equal(r2.status, 200);
+    const p1 = h.app.finishMeeting();
+    assert.equal(h.app.finishMeeting(), p1, '同じ処理を指す');
+    const info = await p1;
+    assert.equal(info.rebuild, 'done');
+    const after = await post(h, '/finish'); // 終わったあとの三度目
+    assert.equal(after.json.finish.phase, 'done');
+    assert.equal(await h.app.finishMeeting(), info);
+    await S.sleep(100);
+    assert.equal(h.calls().length, 2, '最初の整理 + 最後の整理（1 回だけ）');
+    assert.equal(lastLogRows(h).filter((x) => x.reason === 'final').length, 1);
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: 「新しい会議」で自動の整理が戻る。前の会議のフォルダには minutes.md が残る', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    const info = await h.app.finishMeeting();
+    assert.equal(info.rebuild, 'done');
+    const oldDir = h.app.store.sessionDir;
+
+    await post(h, '/reset');
+    assert.equal((await get(h, '/state')).json.status.finish, null);
+    assert.notEqual(h.app.store.sessionDir, oldDir);
+    assert.ok(fs.existsSync(path.join(oldDir, 'minutes.md')), '前の会議のフォルダに残る');
+    assert.ok(!fs.existsSync(path.join(h.app.store.sessionDir, 'minutes.md')));
+
+    const n = h.calls().length;
+    await post(h, '/captions', { entries: lines(8, 'z').map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+    h.clock.t += 30000;
+    h.app.tick();
+    await S.waitFor(() => h.calls().length === n + 1, 15000);
+  } finally {
+    await h.close();
+  }
+});
+
+test('会議を終える: 最中に「新しい会議」が押されたら、古い会議の結果で新しい会議を汚さない', async () => {
+  const h = await S.startApp({ fakeClock: true, env: { STUB_DELAY_MS: '400' } });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    const p = h.app.finishMeeting(); // 最後の整理の最中
+    await S.waitFor(() => h.calls().length === 1, 5000);
+    h.app.reset();
+    const newDir = h.app.store.sessionDir;
+    assert.equal(await p, null);
+    assert.equal(h.app.finishInfo, null);
+    assert.equal(h.app.board, null);
+    assert.ok(!fs.existsSync(path.join(newDir, 'minutes.md')), '新しい会議のフォルダに書かない');
+  } finally {
+    await h.close();
+  }
+});
+
+test('POST /finish は、ほかの書き込みと同じ札（X-Meeting-Board）と Host の確認を通らなければ断る。断ったときは何も起きない', async () => {
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    const noHeader = await S.request(h.port, 'POST', '/finish', {});
+    assert.equal(noHeader.status, 403);
+    const wrongValue = await S.request(h.port, 'POST', '/finish', { headers: { 'X-Meeting-Board': '0' } });
+    assert.equal(wrongValue.status, 403);
+    const wrongHost = await S.request(h.port, 'POST', '/finish', { headers: S.API, host: 'evil.example.com' });
+    assert.equal(wrongHost.status, 403);
+    const wrongHostPort = await S.request(h.port, 'POST', '/finish', { headers: S.API, host: '127.0.0.1.evil.example.com:80' });
+    assert.equal(wrongHostPort.status, 403);
+    assert.equal((await get(h, '/finish')).status, 405, 'GET では受けない');
+
+    await S.sleep(100);
+    assert.equal(h.app.finishInfo, null, '断った要求では何も始まらない');
+    assert.equal(h.calls().length, 0, 'claude も呼ばない');
+    assert.ok(!fs.existsSync(path.join(h.app.store.sessionDir, 'minutes.md')));
+    assert.equal((await get(h, '/state')).json.status.finish, null);
+
+    // 札と Host が正しければ通る（対照）
+    const ok = await post(h, '/finish');
+    assert.equal(ok.status, 200);
+    await finished(h);
   } finally {
     await h.close();
   }

@@ -4,7 +4,8 @@
 //  ・claude の場所の見つけ方: 環境変数 CLAUDE_BIN → Windows は PATH などから claude.exe →
 //    claude.cmd（隣の node_modules にある cli.js を node で直接起動）/ それ以外は PATH の claude
 //  ・シェルは使わない（shell:true と引数配列の組み合わせは使わない）
-//  ・フラグは「全部入り」で試し、未対応の版なら「最小」に落として以後ずっとそのまま
+//  ・安全のためのオプション（FLAGS_FULL）は、いつも付けて呼ぶ。未対応の古い版なら、外して呼び直さずに止める
+//    （道具が使える状態で動かさない。直し方は「claude update」と伝える）
 
 const fs = require('fs');
 const os = require('os');
@@ -14,6 +15,11 @@ const { shortenHome, clip } = require('./util');
 
 const FLAGS_FULL = ['--tools', '', '--safe-mode', '--no-session-persistence'];
 const UNKNOWN_FLAG_RE = /unknown option|unknown argument|error: option/i;
+// 古い版の claude が安全のためのオプションを知らないとき、画面と黒い画面に出す文
+const OLD_CLAUDE_MESSAGE =
+  'お使いの Claude Code が古く、安全のための設定（道具を使わせない・会話を残さない など）に対応していません。' +
+  '設定を外しての実行はしないので、整理はこれ以上行いません（字幕の記録は続きます）。' +
+  'ターミナルで「claude update」を実行して新しくしてから、このヘルパーを起動し直してください。';
 const USAGE_LIMIT_RE =
   /usage limit|limit reached|hit your .{0,40}limit|rate.?limit|quota|exceeded your|credit balance|resets? (at|in|on) |利用上限|使用上限|上限/i;
 const MAX_OUTPUT_CHARS = 8 * 1024 * 1024;
@@ -238,8 +244,9 @@ function interpret(proc, timeoutMs) {
         ok: false,
         kind: 'unknown-flag',
         unknownFlag: true,
-        message: 'この版の claude は一部のオプションを知りません。',
-        detail: clip((proc.stderr || out).trim(), 200),
+        message: OLD_CLAUDE_MESSAGE,
+        // detail は黒い画面にも出る。案内をそこにも載せる（claude の返事は添えるだけ）
+        detail: OLD_CLAUDE_MESSAGE + '（claude の返事: ' + clip((proc.stderr || out).trim(), 120) + '）',
       };
     }
     if (isUsageLimit(combined)) {
@@ -265,22 +272,16 @@ function interpret(proc, timeoutMs) {
 }
 
 /**
- * claude -p を 1 回呼ぶ。state = { flagSet: 'full' | 'minimal' } は呼び出し側が持ち回る（落とした結果が残る）。
- * 戻り値: { ok:true, text } | { ok:false, kind, message, detail }（flagSet つき）
+ * claude -p を 1 回呼ぶ。安全のためのオプション（FLAGS_FULL）は必ず付ける。
+ * 古い版が知らないときも、外して呼び直さない（kind: 'unknown-flag' の失敗をそのまま返す）。
+ * state は呼び出し側が持ち回る。返事が来たら state.confirmed = true（このオプションの組で実際に動いた）。
+ * 戻り値: { ok:true, text } | { ok:false, kind, message, detail }
  */
 async function callClaude({ resolved, model, prompt, cwd, timeoutMs, state, env }) {
-  const attempt = async (flagSet) => {
-    const args = resolved.prefix.concat(['-p', '--output-format', 'json', '--model', model], flagSet === 'full' ? FLAGS_FULL : []);
-    const proc = await runProcess(resolved.command, args, { cwd, env: env || process.env, timeoutMs, input: prompt });
-    return interpret(proc, timeoutMs);
-  };
-  let result = await attempt(state.flagSet);
-  if (!result.ok && result.unknownFlag && state.flagSet === 'full') {
-    state.flagSet = 'minimal'; // 以後ずっと最小で呼ぶ
-    result = await attempt('minimal');
-  }
-  result.flagSet = state.flagSet;
-  if (result.ok) state.confirmed = true; // このオプションの組で実際に返事が来た
+  const args = resolved.prefix.concat(['-p', '--output-format', 'json', '--model', model], FLAGS_FULL);
+  const proc = await runProcess(resolved.command, args, { cwd, env: env || process.env, timeoutMs, input: prompt });
+  const result = interpret(proc, timeoutMs);
+  if (result.ok && state) state.confirmed = true;
   return result;
 }
 
@@ -307,4 +308,5 @@ module.exports = {
   isUsageLimit,
   FLAGS_FULL,
   UNKNOWN_FLAG_RE,
+  OLD_CLAUDE_MESSAGE,
 };

@@ -5,6 +5,8 @@
 //
 // ・claude の呼び出しは同時に 1 つだけ。タイムアウトは 120 秒
 // ・失敗したら前のボードを残し、間をあけてやり直す（使い切りの上限に当たったら長めに待つ）
+// ・claude が古くて安全のためのオプションを知らないときは、外して呼び直さず、以後は呼ばずに止める
+// ・「会議を終える」: 最後の整理（全体）を 1 回行い、議事録の素を会議フォルダに書いて、以後は自動の整理をしない
 // ・診断（GET /diag）には字幕の中身を入れない
 
 const fs = require('fs');
@@ -16,6 +18,7 @@ const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./p
 const { extractJsonObject } = require('./extract');
 const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
 const { parseNotes } = require('./notes');
+const { boardToMarkdown, transcriptInfo } = require('./minutes');
 const { parseScript, locate, findClosingLine } = require('./script');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
@@ -25,11 +28,12 @@ const CAPTION_FRESH_MS = 20000; // これ以内に届いていれば「受信中
 const EXT_FRESH_MS = 30000; // 拡張機能の状態がこれ以内なら「いま見えている」とみなす
 const MAX_NAME_LEN = 40;
 const MAX_NOTES_LEN = 100000;
+const BLOCKED_FOR_GOOD = Number.MAX_SAFE_INTEGER; // 古い claude: このプロセスの間は自動では呼び直さない
 
 class MeetingBoardApp {
   constructor(options) {
     const o = options;
-    this.version = o.version || '0.3.0';
+    this.version = o.version || '0.5.0';
     this.port = o.port || 0;
     this.model = o.model || 'sonnet';
     this.intervalMs = (o.intervalSec || 60) * 1000;
@@ -64,7 +68,8 @@ class MeetingBoardApp {
     this.store = new Store(o.dataDir);
     this.settings = this.store.loadSettings();
     this.resolved = resolveClaude({ env: this.env });
-    this.claudeState = { flagSet: 'full' };
+    this.claudeState = {}; // callClaude が持ち回る（返事が来たら confirmed = true）
+    this.claudeUnusable = ''; // 古くて安全のためのオプションを知らない claude のとき、その案内文（空なら問題なし）
     this.claudeVer = null;
     this.selfCheck = [];
 
@@ -76,6 +81,7 @@ class MeetingBoardApp {
     this.consecutiveFails = 0;
     this.lastEndAt = this.startedAt;
     this.blockedUntil = 0;
+    this.blockedBy = ''; // blockedUntil まで待つ原因（失敗の kind）
     this.inFlight = false;
     this.lastDurationMs = null;
     this.lastUpdateAt = 0;
@@ -87,6 +93,8 @@ class MeetingBoardApp {
     this.replay = null; // { active, index, total }
     this.flushNow = false;
     this.sessionToken = 0;
+    this.finishing = null; // 「会議を終える」の最中〜終わったあとの Promise（二度押しは同じものを返す）
+    this.finishInfo = null; // 同じ結果の中身（null のあいだは会議中）
     this.timer = null;
 
     this.beginSession(this.startedAt, o.notes || '');
@@ -152,6 +160,9 @@ class MeetingBoardApp {
     this.lastError = null;
     this.consecutiveFails = 0;
     this.blockedUntil = 0;
+    this.blockedBy = '';
+    this.finishing = null; // 「会議を終える」の状態は会議ごと（新しい会議では自動の整理が戻る）
+    this.finishInfo = null;
     this.replay = null;
     this.beginSession(now, '');
   }
@@ -263,6 +274,7 @@ class MeetingBoardApp {
       this.transcript.settle(now);
       this.updateScriptPos();
       this.persist(false);
+      if (this.finishInfo) return; // 「会議を終える」を押したあとは、自動の整理をしない（字幕の記録は続く）
       let reason = shouldUpdate({
         inFlight: this.inFlight,
         now,
@@ -320,6 +332,14 @@ class MeetingBoardApp {
       this.blockedUntil = this.now() + 30000;
       return { ok: false, kind: 'no-claude', message: this.resolved.message };
     }
+    if (this.claudeUnusable) {
+      // 古い claude: 外して呼ぶことはしない。呼ばずに、案内を出し続ける
+      if (!this.lastError || this.lastError.kind !== 'unknown-flag') {
+        this.recordError('unknown-flag', this.claudeUnusable, this.claudeUnusable);
+      }
+      this.blockedUntil = this.now() + 30000;
+      return { ok: false, kind: 'unknown-flag', message: this.claudeUnusable };
+    }
     if (this.transcript.entries.length === 0) {
       return { ok: false, kind: 'empty', message: '字幕がまだありません' };
     }
@@ -339,7 +359,7 @@ class MeetingBoardApp {
       this.mode !== 'full' &&
       !!this.board &&
       !this.forceFull &&
-      ['once', 'flush', 'notes'].indexOf(reason) < 0 &&
+      ['once', 'flush', 'notes', 'final'].indexOf(reason) < 0 &&
       this.diffsSinceFull < this.fullEvery &&
       startedAt - this.lastFullAt < this.fullEveryMs;
     const compactIds = new Set();
@@ -442,7 +462,12 @@ class MeetingBoardApp {
       this.consecutiveFails += 1;
       const backoff =
         outcome.kind === 'usage-limit' ? 300000 : Math.min(300000, 20000 * Math.pow(2, this.consecutiveFails - 1));
-      this.blockedUntil = endedAt + backoff;
+      if (outcome.kind === 'unknown-flag') {
+        // 古い claude は、待っても直らない（claude update と起動し直しが要る）。以後は呼ばない
+        this.claudeUnusable = outcome.message;
+        this.blockedUntil = BLOCKED_FOR_GOOD;
+      } else this.blockedUntil = endedAt + backoff;
+      this.blockedBy = outcome.kind;
       this.recordError(outcome.kind, outcome.message, outcome.detail || '');
       return { ok: false, kind: outcome.kind, message: outcome.message };
     }
@@ -451,6 +476,7 @@ class MeetingBoardApp {
     this.updateCount += 1;
     this.consecutiveFails = 0;
     this.blockedUntil = 0;
+    this.blockedBy = '';
     this.lastUpdateAt = endedAt;
     this.lastError = null;
     this.lastLineCount = snapshotLines;
@@ -574,10 +600,10 @@ class MeetingBoardApp {
           lastMode: this.lastMode,
           failures: this.failCount,
         },
+        finish: this.finishStatus(),
         claude: {
           found: this.resolved.ok,
           version: this.claudeVer,
-          flagSet: this.claudeState.flagSet,
           message: this.resolved.ok ? null : this.resolved.message,
         },
         selfCheck: this.selfCheck,
@@ -613,12 +639,11 @@ class MeetingBoardApp {
         display: this.resolved.ok ? shortenHome(this.resolved.display, home) : '',
         kind: this.resolved.ok ? this.resolved.kind : '',
         version: this.claudeVer,
-        flagSet:
-          this.claudeState.flagSet === 'minimal'
-            ? 'minimal で動いた（-p --output-format json --model のみ。--tools / --safe-mode / --no-session-persistence は未対応の版）'
-            : this.claudeState.confirmed
-              ? 'full で動いた（-p --output-format json --model --tools "" --safe-mode --no-session-persistence）'
-              : 'まだ確かめていない（最初の整理で full を試し、未対応の版なら minimal に落とす）',
+        safetyFlags: this.claudeUnusable
+          ? '古くて使えない（--tools / --safe-mode / --no-session-persistence を知らない版。外しての実行はしない）'
+          : this.claudeState.confirmed
+            ? '付けて動いた（-p --output-format json --model --tools "" --safe-mode --no-session-persistence）'
+            : 'まだ確かめていない（最初の整理から、安全のためのオプションを付けて呼ぶ。知らない版なら止まる）',
         message: this.resolved.ok ? '' : this.resolved.message,
       },
       selfCheck: this.selfCheck.map((c) => ({ ok: c.ok, name: c.name, detail: this.scrub(c.detail) })),
@@ -737,6 +762,84 @@ class MeetingBoardApp {
     this.scriptPin = new Map(this.transcript.entries.map((e) => [e.id, String(e.text || '').length]));
     this.scriptPos = { sectionIndex: si, lineIndex: li, by: 'manual', score: 1 };
     return { ok: true };
+  }
+
+  // ── 会議を終える ──────────────────────────────────────────
+  /** いま claude を呼んでも通らない状態か（見つからない・古い版・利用上限の待ち時間のあいだ） */
+  claudeBlocked() {
+    if (!this.resolved.ok || this.claudeUnusable) return true;
+    return this.blockedBy === 'usage-limit' && this.now() < this.blockedUntil;
+  }
+
+  /** 整理の最中なら、終わるまで待つ（claude のタイムアウトで必ず終わる） */
+  async waitIdle() {
+    while (this.inFlight) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  /** 最後の整理をしない理由。'' なら整理する */
+  finalSkipReason() {
+    if (this.transcript.entries.length === 0) return 'no-captions';
+    // 直近の整理が全体で、そのあとに字幕が増えていない → 全体の整理は新しいまま
+    // （会議中の短い版のあとは、話題が全体でまとめ直されていないので、字幕が増えていなくても整理する）
+    if (this.board && this.lastMode === 'full' && this.pendingChange() === 0) return 'no-new';
+    if (this.claudeBlocked()) return 'blocked';
+    return '';
+  }
+
+  /**
+   * 「会議を終える」: 整理の最中なら終わるのを待ち、全体の整理を 1 回（reason 'final'）行い、
+   * 議事録の素（minutes.md）を会議フォルダに書く。以後、この会議では自動の整理をしない（字幕の記録は続く）。
+   * 字幕が増えていない・claude が使えないときは、整理せずに今あるものを保存する。
+   * 二度押しや、終わったあとの呼び直しは、同じ Promise を返すだけで、整理は 1 回しか走らない。
+   * 戻り値の Promise は決して reject しない。「新しい会議」に切り替わったら null。
+   */
+  finishMeeting() {
+    if (this.finishing) return this.finishing;
+    this.finishInfo = { phase: 'finishing' }; // 先に印を付ける（この間に tick が整理を始めないように）
+    this.finishing = this.runFinish(this.sessionToken);
+    return this.finishing;
+  }
+
+  async runFinish(token) {
+    const info = { phase: 'done', at: 0, rebuild: 'skipped', skip: '', error: '', hasBoard: false, minutesPath: '', minutesError: '' };
+    try {
+      await this.waitIdle();
+      if (token !== this.sessionToken) return null;
+      info.skip = this.finalSkipReason();
+      if (!info.skip) {
+        const r = await this.runUpdate('final');
+        if (token !== this.sessionToken) return null;
+        if (r.ok) info.rebuild = 'done';
+        else {
+          info.rebuild = 'failed';
+          info.error = r.message || '';
+        }
+      }
+    } catch (e) {
+      if (token !== this.sessionToken) return null;
+      info.rebuild = 'failed';
+      info.error = '内部エラー: ' + clip(errMsg(e), 160);
+      this.recordError('internal', info.error, clip(errMsg(e), 160));
+    }
+    // ここから先は await が無い（途中で「新しい会議」に切り替わることはない）
+    this.persist(true);
+    info.hasBoard = !!this.board;
+    try {
+      const md = boardToMarkdown(this.board, transcriptInfo(this.transcript.toJsonl(), this.selfName()));
+      info.minutesPath = this.store.saveMinutes(md);
+    } catch (e) {
+      info.minutesError = clip(errMsg(e), 120);
+      this.recordError('save', '議事録の素を保存できませんでした（' + info.minutesError + '）', info.minutesError);
+    }
+    info.at = this.now();
+    this.finishInfo = info;
+    this.log('meeting finished (' + (info.skip || info.rebuild) + ')');
+    return info;
+  }
+
+  /** 画面に渡す「会議を終える」の状態（押していなければ null） */
+  finishStatus() {
+    return this.finishInfo ? Object.assign({}, this.finishInfo) : null;
   }
 
   startLoop() {

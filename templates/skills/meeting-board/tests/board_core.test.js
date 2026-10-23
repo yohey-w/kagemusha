@@ -189,3 +189,36 @@ test('台本: 最後に確かめる文は、候補があれば第1〜第3、無�
   assert.deepEqual(V.scriptView(state(b, { script: { sections, pos: { sectionIndex: 0, lineIndex: 0 }, closing } })).closing.candidates.map((c) => c.text), ['一', '二', '三']);
   assert.equal(V.scriptView(state(b, { script: { sections, pos: { sectionIndex: 0, lineIndex: 0 }, closing: null } })).closing, null);
 });
+
+test('会議を終えたあとの案内: 押すまでは出さない。最中・整理した・しなかった（理由別）・失敗・保存できなかった', () => {
+  const withFinish = (f) => state(BOARD, { status: Object.assign({}, state(BOARD).status, { finish: f }) });
+  assert.equal(V.finishView(state(BOARD)), null, 'finish が無ければ出さない');
+  assert.equal(V.finishView(withFinish(null)), null);
+
+  const working = V.finishView(withFinish({ phase: 'finishing' }));
+  assert.equal(working.phase, 'finishing');
+  assert.equal(working.path, '');
+  assert.match(working.title, /終えています/);
+
+  const done = V.finishView(withFinish({ phase: 'done', rebuild: 'done', skip: '', hasBoard: true, minutesPath: '/tmp/x/minutes.md', minutesError: '' }));
+  assert.equal(done.phase, 'done');
+  assert.equal(done.title, '会議を終えました');
+  assert.equal(done.path, '/tmp/x/minutes.md', '保存した場所を出す');
+  const text = done.lines.join('\n');
+  assert.match(text, /全体を整理し直しました/);
+  assert.match(text, /議事録の素を保存しました/);
+  assert.match(text, /見直してください/);
+  assert.match(text, /閉じてかまいません/);
+  assert.match(text, /Ctrl\+C/);
+
+  const lines = (f) => V.finishView(withFinish(Object.assign({ phase: 'done', rebuild: 'skipped', skip: '', hasBoard: true, minutesPath: '/tmp/x/minutes.md', minutesError: '' }, f))).lines.join('\n');
+  assert.match(lines({ skip: 'no-new' }), /増えた字幕がない/);
+  assert.match(lines({ skip: 'blocked' }), /Claude が使えない状態/);
+  assert.match(lines({ skip: 'no-captions' }), /字幕がありませんでした/);
+  assert.match(lines({ rebuild: 'failed', skip: '', error: 'claude の返事が空でした。' }), /最後の整理に失敗しました（claude の返事が空でした。）/);
+  assert.match(lines({ hasBoard: false }), /日時と名前だけ/, '整理が 1 回もできていなければ、そう伝える');
+  const failedSave = V.finishView(withFinish({ phase: 'done', rebuild: 'done', hasBoard: true, minutesPath: '', minutesError: 'EACCES' }));
+  assert.equal(failedSave.path, '');
+  assert.match(failedSave.lines.join('\n'), /議事録の素を保存できませんでした（EACCES）/);
+  assert.match(failedSave.lines.join('\n'), /--minutes/);
+});

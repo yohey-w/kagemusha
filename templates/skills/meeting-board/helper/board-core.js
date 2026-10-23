@@ -247,6 +247,42 @@
   }
 
   /**
+   * 「会議を終える」を押したあとの案内。state.status.finish = null | { phase, rebuild, skip, error, hasBoard, minutesPath, minutesError }。
+   * 戻り値: null（押していない）| { phase: 'finishing'|'done', title, lines: [文], path: 保存したファイルの場所（無ければ ''） }
+   */
+  function finishView(state) {
+    var f = state && state.status ? state.status.finish : null;
+    if (!f || typeof f !== 'object') return null;
+    if (f.phase !== 'done') {
+      return {
+        phase: 'finishing',
+        title: '会議を終えています…',
+        lines: ['いまの整理が終わるのを待ち、全体をもう一度まとめ直して、議事録の素を保存します。数十秒かかることがあります。'],
+        path: '',
+      };
+    }
+    var lines = [];
+    if (f.rebuild === 'done') lines.push('最後に、全体を整理し直しました。');
+    else if (f.rebuild === 'failed') {
+      lines.push('最後の整理に失敗しました' + (f.error ? '（' + clip(f.error, 120) + '）' : '') + '。ここまでに作ったボードを保存しました。');
+    } else if (f.skip === 'no-captions') lines.push('字幕がありませんでした。');
+    else if (f.skip === 'no-new') lines.push('前の整理のあとに増えた字幕がないので、整理し直さず、いまのボードを保存しました。');
+    else if (f.skip === 'blocked') {
+      lines.push('Claude が使えない状態（利用上限・古い版・見つからない、のどれか。理由は上の赤い帯）なので、最後の整理はせず、ここまでに作ったボードを保存しました。');
+    } else lines.push('整理し直さず、いまのボードを保存しました。');
+    var path = str(f.minutesPath);
+    if (path) {
+      lines.push('議事録の素を保存しました。自動字幕からの下書きです。外に出す前に必ず見直してください。');
+      if (!f.hasBoard) lines.push('整理がまだ一度もできていないので、中身は日時と名前だけです。');
+    } else {
+      lines.push('議事録の素を保存できませんでした' + (f.minutesError ? '（' + clip(f.minutesError, 120) + '）' : '') + '。あとで --minutes で書き出せます。');
+    }
+    lines.push('この画面は読めるままです。もう閉じてかまいません。ヘルパーを止めるときは、黒い画面で Ctrl+C。');
+    lines.push('これ以降は自動の整理をしません。続けて別の会議をするときは、下の「新しい会議」を押してください。');
+    return { phase: 'done', title: '会議を終えました', lines: lines, path: path };
+  }
+
+  /**
    * 台本の欄（--script のときだけ）。state.script = { sections, pos }。
    * 戻り値: null | { title, sectionIndex, total, by, lines: [{ kind, text, who, status: 'past'|'current'|'next'|'later' }],
    *                  all: [{ index, title, start, current }], captions: 直近 6 行 [{ speaker, text }] }
@@ -325,6 +361,7 @@
   return {
     meetingView: meetingView,
     scriptView: scriptView,
+    finishView: finishView,
     afterView: afterView,
     staleness: staleness,
     progressLine: progressLine,

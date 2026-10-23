@@ -26,7 +26,7 @@ const { toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/repl
 const { importTranscript } = require('./lib/importers');
 const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
-const VERSION = '0.3.0';
+const VERSION = '0.5.0';
 const HELPER_DIR = __dirname;
 
 // 会議の最中に落ちないように、想定外のエラーは表示だけして続ける
@@ -283,6 +283,7 @@ async function main() {
     say('   claude が使えるようになるまで、字幕は集まりますが「ここまでの話」は作られません。');
   }
   say('');
+  say('会議が終わったら、ボードの「会議を終える」を押すと、最後の整理と議事録の素の保存までします。');
   say('このウィンドウを閉じると止まります。止めるときは Ctrl+C。');
   if (opts.open) openBrowser(url);
 

@@ -29,7 +29,7 @@ function buildDiagText(info) {
   } else {
     L.push('  見つかりません: ' + info.claude.message);
   }
-  L.push('  動いたオプション: ' + info.claude.flagSet);
+  L.push('  安全のためのオプション: ' + info.claude.safetyFlags);
   L.push('');
   L.push('■ 起動時の点検');
   for (const c of info.selfCheck) L.push('  ' + (c.ok ? 'OK' : 'NG') + ' ' + c.name + ' — ' + c.detail);

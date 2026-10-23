@@ -1,7 +1,7 @@
 'use strict';
 // 127.0.0.1 だけで待ち受ける小さな HTTP サーバー。
 //   GET  /          ボード（board.html に board-core.js を埋め込んだもの）。ヘッダ不要
-//   それ以外は X-Meeting-Board: 1 が必須（付いていなければ 403）。
+//   それ以外（書き込みの POST /finish などを含む）は X-Meeting-Board: 1 が必須（付いていなければ 403）。
 //   別のサイトのページから勝手に叩かれないようにするための札で、ブラウザは他サイトからは
 //   この独自ヘッダを付けて送れない（事前確認が必要になり、こちらは許可を返さない）。
 
@@ -173,6 +173,13 @@ function createHandler(app) {
           else sendJson(res, 200, { ok: true });
           return;
         }
+        case 'POST /finish': {
+          // 「会議を終える」: 始めるだけで、すぐ返す（最後の整理は数十秒かかる）。進み具合は GET /state の status.finish。
+          // 二度押しは同じ処理を指すだけ（整理は 1 回しか走らない）
+          app.finishMeeting();
+          sendJson(res, 200, { ok: true, finish: app.finishStatus() });
+          return;
+        }
         case 'POST /reset':
           app.reset();
           sendJson(res, 200, { ok: true });
@@ -180,7 +187,7 @@ function createHandler(app) {
         default:
           break;
       }
-      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset', '/override', '/script-pos'];
+      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset', '/finish', '/override', '/script-pos'];
       if (known.indexOf(path) >= 0) sendJson(res, 405, { error: 'method not allowed' });
       else sendJson(res, 404, { error: 'not found' });
     } catch (e) {

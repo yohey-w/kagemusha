@@ -99,6 +99,15 @@ button { font: inherit; color: inherit; }
   font-size: 0.9em;
   overflow-wrap: anywhere;
 }
+/* 「会議を終える」: 上の帯の右に出しておく。押すと、下に終わったことの案内が出る */
+.btn.finish { border-color: var(--accent); color: var(--accent-ink); font-weight: 700; padding: 2px 12px; }
+.btn.finish:disabled { cursor: default; opacity: 0.7; font-weight: 500; }
+#finishWrap { max-width: 980px; margin: 0 auto; padding: 12px 16px 0; }
+#finishBox { background: var(--ok-soft); color: var(--text); border: 2px solid var(--ok); margin: 0; }
+#finishBox.working { background: var(--accent-soft); border-color: var(--accent); }
+#finishTitle { font-weight: 800; font-size: 1.15em; }
+#finishLines { margin: 6px 0 0; padding-left: 1.2em; }
+#finishPath { margin-top: 6px; font-weight: 700; overflow-wrap: anywhere; user-select: all; }
 #noteBox {
   margin-top: 4px;
   padding: 3px 10px;
@@ -363,10 +372,19 @@ dialog textarea { min-height: 220px; resize: vertical; }
     <span class="right">
       <span id="busy" class="off">整理中…</span>
       <span id="left" title="事前メモの「今日聞くこと・伝えること」で、まだのもの"></span>
+      <button class="btn finish" id="btnFinish" type="button" title="最後の整理を 1 回行い、議事録の素を保存します">会議を終える</button>
     </span>
   </div>
   <div id="errorBox" hidden></div>
   <div id="noteBox" hidden></div>
+</div>
+
+<div id="finishWrap" hidden>
+  <section class="zone" id="finishBox" role="status" aria-live="polite">
+    <div id="finishTitle"></div>
+    <ul id="finishLines"></ul>
+    <div id="finishPath"></div>
+  </section>
 </div>
 
 <main id="meeting">
@@ -907,12 +925,33 @@ dialog textarea { min-height: 220px; resize: vertical; }
     }).catch(function () { /* 次の機会に */ });
   }
 
+  // ── 会議を終えたあとの案内（会議を終える） ─────────────────
+  var lastFinishKey = null;
+  function renderFinish(state) {
+    var v = V.finishView(state);
+    var btn = $('btnFinish');
+    $('finishWrap').hidden = !v;
+    btn.disabled = !!v;
+    btn.textContent = !v ? '会議を終える' : (v.phase === 'done' ? '会議を終えました' : '終えています…');
+    if (!v) { lastFinishKey = null; return; }
+    var key = JSON.stringify(v);
+    if (key === lastFinishKey) return;
+    lastFinishKey = key;
+    $('finishBox').classList.toggle('working', v.phase !== 'done');
+    setText($('finishTitle'), v.title);
+    var ul = $('finishLines');
+    clear(ul);
+    v.lines.forEach(function (t) { ul.appendChild(el('li', null, t)); });
+    setText($('finishPath'), v.path ? '保存した場所: ' + v.path : '');
+  }
+
   // ── 読み込み ─────────────────────────────────────────────
   var lastState = null;
   var lastNotesPresent = null;
   function render(state) {
     lastState = state;
     renderBar(state.status, true);
+    renderFinish(state);
     renderMeeting(state);
     if (view === 'after') {
       renderAfter(state, false);
@@ -1012,6 +1051,19 @@ dialog textarea { min-height: 220px; resize: vertical; }
     }).then(copyText).then(function () {
       toast('診断をコピーしました。作者に貼って送れます（会議の発言は入っていません）');
     }).catch(function () { toast('診断をコピーできませんでした'); });
+  });
+
+  $('btnFinish').addEventListener('click', function () {
+    if (!window.confirm('会議を終えます。最後の整理を 1 回行い、議事録の素を保存します（数十秒かかることがあります）。このあとは自動の整理をしません。よろしいですか？')) return;
+    $('btnFinish').disabled = true; // 二度押しを防ぐ（ヘルパー側も 1 回しか整理しない）
+    api('POST', '/finish').then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      toast('会議を終えます。最後の整理をしています');
+      poll();
+    }).catch(function () {
+      $('btnFinish').disabled = false;
+      toast('終えられませんでした（ヘルパーに届きません）');
+    });
   });
 
   $('btnReset').addEventListener('click', function () {

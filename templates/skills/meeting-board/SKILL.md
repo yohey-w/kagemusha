@@ -32,7 +32,8 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 - 🔴 待ち受けを `127.0.0.1` 以外にする前・外へ出る通信（`claude` 以外）を足す前・`manifest.json` の権限や `host_permissions` を増やす前
 - 🔴 `data/` の中身（実際の会議の逐語）を読む・貼る前。診断（ボードの「診断をコピー」・`GET /diag`）は発言を含まない作りなので、こちらを頼む
 - 🔴 `helper/prompt.md`・`helper/prompt_patch.md` を変える前（出力の形がボードと試験の前提になっている。変えるなら `lib/board.js`・`board-core.js`・`board.html`・試験も揃える。`lib/extract.js` の `normalizeBoard()` は 0.1 の形の土台なので変えない）
-- 🔴 議事録の素（`--minutes`）を、ファイルと標準出力以外へ送る仕組みを足す前（メール・チャットなどへの自動送信はしない作り）
+- 🔴 議事録の素（`--minutes`・「会議を終える」の `minutes.md`）を、ファイルと標準出力以外へ送る仕組みを足す前（メール・チャットなどへの自動送信はしない作り）
+- 🔴 `claude` の安全のための設定（`helper/lib/claude.js` の `FLAGS_FULL`）を外す・外して呼び直す仕組みを足す前（古い版では止めて `claude update` を案内する作り）
 
 ## Meet の画面が変わって字幕が読めないとき
 
@@ -50,7 +51,7 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 | `helper/lib/script.js` | 台本（`--script`）を節と台詞に分け、直近の字幕から「いま台本のどこか」を規則で当てる（claude は使わない） |
 | `helper/lib/importers.js` | `--replay` の文字起こしの形を見分ける（「話者：本文」・WebVTT・「名前 時刻」＋本文。Teams・Zoom の形は推定で、実物では未確認） |
 | `helper/prompt_patch.md` | 差分の整理（2 回目から）のときだけ `prompt.md` のあとに足す、出力の決まり。`board.js` の `mergePatch()` が前回のボードに重ねる |
-| `helper/lib/minutes.js` | 保存したボードから議事録の素（Markdown）を作る（`--minutes`） |
+| `helper/lib/minutes.js` | 保存したボードから議事録の素（Markdown）を作る（`--minutes`・「会議を終える」が書く `minutes.md` も同じ関数） |
 | `helper/board-core.js` | 画面に何を出すかを決める純粋な関数（会議中 / 会議の前と後・古い内容の判定）。`GET /` で `board.html` に埋め込む |
 | `helper/board.html` | ボード（1 ファイル・外部リソースなし）。会議中（既定）と「会議の前と後」のタブ |
 | `sample/` | 架空の会議と事前メモ（`--replay` 用） |
@@ -58,8 +59,8 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 | `tests/` | `node:test`。偽の `claude`（`tests/fixtures/claude_stub.js`）で全部を試す。`tests/fixtures/board_v2_sample.json` は画面と議事録の確認用の架空のボード |
 | `data/` | 実行時の保存先。`.gitignore` で中身はコミットできない |
 
-画面は 3 つの場面で使い分ける: 会議の前（事前メモを貼り、「会議の前と後」タブで読めたか確かめる）／会議中（次の一手・警告／順調・伝え済み／まだ だけ。項目を押すと状態を直せる）／会議の後（「会議の前と後」タブで振り返り・状態を直し、`--minutes` で議事録の素）。人が直した状態は `POST /override` で会議フォルダの `overrides.json` に残り、整理より優先する。
+画面は 3 つの場面で使い分ける: 会議の前（事前メモを貼り、「会議の前と後」タブで読めたか確かめる）／会議中（次の一手・警告／順調・伝え済み／まだ だけ。項目を押すと状態を直せる）／会議の後（上の帯の「会議を終える」＝`POST /finish` で、整理の最中なら待ち、全体の整理を 1 回（reason `final`。字幕が増えていない・claude が使えないときは整理せず今あるものを保存）してから、会議フォルダに `minutes.md` を書き、以後その会議では自動の整理をしない。二度押しでも整理は 1 回。進み具合は `GET /state` の `status.finish`。「新しい会議」で戻る。`--minutes` も従来どおり使える）。人が直した状態は `POST /override` で会議フォルダの `overrides.json` に残り、整理より優先する。
 
 主なオプション: `--notes` 事前メモ・`--script 台本.md`（会議中の画面に台本の位置と直近の字幕）・`--me 名前` 字幕に出る自分の名前・`--mode live|full|diff`（既定 live＝2 回目から会議中の画面の分だけ・話題は 5 分おきと会議の終わりに全体。full＝毎回全体。diff＝2 回目から差分の整理・試験中）・`--replay ファイル`（`--speed auto` が既定。行に `[時:分:秒]` があればその間隔）・`--once`・`--minutes 会議フォルダ [--out ファイル]`・`--data-dir`。
 
-守る線: ヘルパーは `127.0.0.1` だけ・`X-Meeting-Board: 1` の札と Host の確認が無ければ断る・診断に字幕の本文と名前を入れない・音声は扱わない。
+守る線: ヘルパーは `127.0.0.1` だけ・`X-Meeting-Board: 1` の札と Host の確認が無ければ断る（`POST /finish` を含む書き込み全部）・`claude` には安全のための設定（`--tools ""`・`--safe-mode`・`--no-session-persistence`）をいつも付け、知らない古い版では外して呼び直さず止めて `claude update` を案内する・診断に字幕の本文と名前を入れない・音声は扱わない。
