@@ -153,3 +153,12 @@ test('board-core.js は <script> に埋め込める（</script を含まない�
   assert.doesNotMatch(src, /<\/script/i);
   assert.doesNotMatch(src, /\bfetch\(|document\.|innerHTML/);
 });
+
+test('人が直す: 会議中の一覧を押すと まだ → 済 → 持ち帰り → まだ。直した項目には印', () => {
+  assert.equal(V.nextState('open'), 'done');
+  assert.equal(V.nextState('done'), 'deferred');
+  assert.equal(V.nextState('deferred'), 'open');
+  const b = Object.assign({}, BOARD, { checklist: BOARD.checklist.map((c, i) => Object.assign({}, c, i === 2 ? { byUser: true } : {})) });
+  assert.deepEqual(V.meetingView(state(b)).items.map((x) => x.byUser), [false, false, true, false]);
+  assert.equal(V.afterView(state(b)).checkOpen[0].byUser, true);
+});

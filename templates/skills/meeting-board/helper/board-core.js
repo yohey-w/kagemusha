@@ -90,6 +90,11 @@
     return '済 ' + n.done + '・持ち帰り ' + n.deferred + '・まだ ' + n.open;
   }
 
+  /** 会議中の一覧の項目を押したときの次の状態（まだ → 済 → 持ち帰り → まだ） */
+  function nextState(state) {
+    return state === 'open' ? 'done' : state === 'done' ? 'deferred' : 'open';
+  }
+
   var WARN_LABEL = { drift: '話がずれています', premise: '前提と違います', missing: '言い忘れそうです' };
 
   /**
@@ -141,7 +146,7 @@
     var list = arr(board && board.checklist);
     var items = list.map(function (c) {
       var stt = stateOf(c);
-      return { id: str(c.id), text: clip(stripEnd(c.item), ITEM_MAX), state: stt, label: stateLabel(c), next: !!(na && na.ref && na.ref === c.id) };
+      return { id: str(c.id), text: clip(stripEnd(c.item), ITEM_MAX), state: stt, label: stateLabel(c), next: !!(na && na.ref && na.ref === c.id), byUser: !!c.byUser };
     });
     var openCount = items.filter(function (x) {
       return x.state === 'open';
@@ -197,7 +202,7 @@
       });
     });
     var list = arr(board && board.checklist).map(function (c, i) {
-      return { id: str(c.id), no: i + 1, kind: c.kind === 'tell' ? 'tell' : 'ask', item: str(c.item), state: stateOf(c), label: stateLabel(c), evidence: str(c.evidence) };
+      return { id: str(c.id), no: i + 1, kind: c.kind === 'tell' ? 'tell' : 'ask', item: str(c.item), state: stateOf(c), label: stateLabel(c), evidence: str(c.evidence), byUser: !!c.byUser };
     });
     var shownTopics = topics
       .map(function (tp) {
@@ -246,10 +251,10 @@
     next: { title: '次の一手', help: '次に言うこと・聞くことを 1 つだけ。会議中はここだけ見れば足ります。' },
     warn: { title: '気をつけること', help: '話のずれ・事前メモの前提と違う発言・言い忘れのときだけ赤く出ます。返す一言つき。' },
     ok: { title: '順調', help: '警告が無いときは、進み具合を 1 行で出します。' },
-    list: { title: '伝え済み／まだ', help: '事前メモの「今日聞くこと・伝えること」が、済んだか・持ち帰りか・まだかの一覧です。' },
+    list: { title: '伝え済み／まだ', help: '事前メモの「今日聞くこと・伝えること」が、済んだか・持ち帰りか・まだかの一覧です。違っていたら項目を押すと、まだ→済→持ち帰り の順に直せます。' },
     decisions: { title: '決まったこと', help: 'その場で合意がはっきりしたことだけ。' },
     todos: { title: '宿題（誰・いつまで）', help: '「誰が・何を」が言われた持ち帰りです。' },
-    check: { title: '聞くこと・伝えることの結果', help: 'まだ・持ち帰りを上に、済は畳んであります。' },
+    check: { title: '聞くこと・伝えることの結果', help: 'まだ・持ち帰りを上に、済は畳んであります。状態が違っていたら、右のボタンで直せます（手で直した状態は整理より優先します）。' },
     conflicts: { title: '前提と食い違ったこと', help: '事前メモの「こちらの理解」「前回の決定」と違うことを言われた記録です。' },
     open: { title: 'まだ答えをもらっていないこと', help: '会議の中で出たのに、まだ答えが出ていない問いです。' },
     topics: { title: '話題ごとの記録（ここまでの話）', help: '新しい話題が上。見出しを押すと、誰が何を言ったかが開きます。' },
@@ -263,6 +268,7 @@
     progressLine: progressLine,
     stateOf: stateOf,
     stateLabel: stateLabel,
+    nextState: nextState,
     LABELS: LABELS,
     STALE_MIN_SEC: STALE_MIN_SEC,
   };

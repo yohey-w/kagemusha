@@ -303,6 +303,41 @@ function normalizeBoardV2(raw, ctx) {
 }
 
 /**
+ * 人が手で直した聞くことの状態（済／持ち帰り／まだ）を当てる。人の操作が claude より勝つ。
+ *   overrides = { q1: { state: 'done' | 'deferred' | 'open', owner: '' } }
+ * 当てたあと、次の一手と言い忘れの警告を、直した状態に合わせて決め直す。元のボードは変えない（新しいボードを返す）
+ */
+function applyOverrides(board, overrides, ctx) {
+  if (!isObj(board)) return board;
+  const ov = isObj(overrides) ? overrides : {};
+  const c = ctx || {};
+  const checklist = arr(board.checklist).map((item) => {
+    const o = ov[item.id];
+    const copy = Object.assign({}, item);
+    delete copy.byUser;
+    if (!isObj(o) || !STATES.includes(o.state)) return copy;
+    copy.state = o.state;
+    copy.owner = o.state === 'deferred' ? str(o.owner) || str(item.owner) : '';
+    copy.done = o.state === 'done';
+    copy.byUser = true;
+    return copy;
+  });
+  const beliefs = c.spec && Array.isArray(c.spec.beliefs) ? c.spec.beliefs : [];
+  const todos = [];
+  for (const t of arr(board.topics)) for (const d of arr(t.todos)) todos.push(d);
+  const out = Object.assign({}, board, { checklist });
+  // 規則で作った一手は作り直す（直した状態で「最初のまだ」が変わる）。claude の一手は、指す項目がまだ「まだ」なら残す
+  const prevNext = board.next_action && board.next_action.by === 'llm' ? board.next_action : null;
+  out.next_action = decideNextAction(prevNext, checklist, beliefs, todos);
+  out.warnings = arr(board.warnings).filter((w) => {
+    if (!w || w.kind !== 'missing') return true;
+    const it = checklist.find((x) => x.id === w.ref);
+    return !(it && it.state !== 'open');
+  });
+  return out;
+}
+
+/**
  * 【前回までの整理】として claude に渡す形。ヘルパーだけが使う欄（by・users・schema など）は渡さない。
  * topics を先頭、各話題は title を先頭にする（JSON の並びは入れた順）
  */
@@ -320,7 +355,12 @@ function toPromptBoard(board) {
       numbers: t.numbers,
     })),
     open_questions: arr(board.open_questions),
-    checklist: arr(board.checklist).map((x) => (x.kind ? { id: x.id, state: x.state, owner: x.owner, evidence: x.evidence } : x)),
+    checklist: arr(board.checklist).map((x) => {
+      if (!x.kind) return x;
+      const o = { id: x.id, state: x.state, owner: x.owner, evidence: x.evidence };
+      if (x.byUser) o.by_user = true; // 使う人が手で直した状態（そのまま返してもらう）
+      return o;
+    }),
   };
   if (board.next_action) out.next_action = { text: board.next_action.text, reason: board.next_action.reason, ref: board.next_action.ref };
   if (Array.isArray(board.warnings)) out.warnings = board.warnings;
@@ -334,6 +374,7 @@ function toPromptBoard(board) {
 
 module.exports = {
   normalizeBoardV2,
+  applyOverrides,
   toPromptBoard,
   buildChecklist,
   buildTopics,

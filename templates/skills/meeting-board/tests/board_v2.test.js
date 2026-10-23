@@ -205,3 +205,28 @@ test('順調の 1 行は短く切る。前回のボードとして渡す形に�
   assert.deepEqual(p.conflicts, []);
   assert.deepEqual(Object.keys(p.checklist[0]), ['id', 'state', 'owner', 'evidence'], '文言は渡さない（事前メモの表で渡す）');
 });
+
+// ── 人が直した状態（d-2） ────────────────────────────────────
+const { applyOverrides } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+
+test('人が直した状態: claude より勝つ。次の一手と言い忘れの警告も直した状態に合わせる。元のボードは変えない', () => {
+  const b = v2({ topics: [], checklist: [], warnings: [{ kind: 'missing', what: '予算をまだ伝えていない', reply: '予算を伝える', ref: 'q1' }] });
+  assert.equal(b.next_action.ref, 'q1');
+  const o = applyOverrides(b, { q1: { state: 'done' }, q3: { state: 'deferred', owner: '佐々木' }, zz: { state: 'done' }, q4: { state: 'へん' } }, { spec: SPEC });
+  assert.deepEqual(o.checklist.map((c) => [c.id, c.state, c.owner, !!c.byUser]), [
+    ['q1', 'done', '', true],
+    ['q2', 'open', '', false],
+    ['q3', 'deferred', '佐々木', true],
+    ['q4', 'open', '', false],
+  ]);
+  assert.equal(o.next_action.ref, 'q2', '規則の一手は、直した状態で最初の「まだ」へ');
+  assert.deepEqual(o.warnings, [], '済にした項目の言い忘れは出さない');
+  assert.equal(b.checklist[0].state, 'open', '元のボードは変えない');
+  // 次の整理で claude が「まだ」と返しても、人の「済」が勝つ（前回のボードに直した状態が入っている）
+  const next = applyOverrides(v2({ topics: [], checklist: [{ id: 'q1', state: 'open' }] }, o), { q1: { state: 'done' } }, { spec: SPEC });
+  assert.equal(next.checklist[0].state, 'done');
+  // 人が「まだ」に戻すこともできる（claude の済より勝つ）
+  const back = applyOverrides(v2({ topics: [], checklist: [{ id: 'q2', state: 'done' }] }), { q2: { state: 'open' } }, { spec: SPEC });
+  assert.equal(back.checklist[1].state, 'open');
+  assert.deepEqual(toPromptBoard(o).checklist[0], { id: 'q1', state: 'done', owner: '', evidence: '', by_user: true }, '直した印は claude にも渡す');
+});

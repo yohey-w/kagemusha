@@ -14,7 +14,7 @@ const { Store } = require('./store');
 const { Transcript } = require('./transcript');
 const { buildWindow, buildPrompt, shouldUpdate } = require('./prompt');
 const { extractJsonObject } = require('./extract');
-const { normalizeBoardV2, toPromptBoard } = require('./board');
+const { normalizeBoardV2, toPromptBoard, applyOverrides } = require('./board');
 const { parseNotes } = require('./notes');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
@@ -81,6 +81,7 @@ class MeetingBoardApp {
     this.store.startSession(now);
     this.transcript = new Transcript();
     this.board = null;
+    this.overrides = {}; // 人が手で直した聞くことの状態 { q1: { state, owner, at } }（会議ごと）
     this.notes = notes || '';
     this.notesVersion = 0;
     this.notesDirty = false;
@@ -418,7 +419,28 @@ class MeetingBoardApp {
         detail: norm.error,
       };
     }
-    return { ok: true, board: norm.board };
+    return { ok: true, board: applyOverrides(norm.board, this.overrides, { spec: this.notesSpec() }) };
+  }
+
+  /**
+   * 人が聞くことの状態を直す（済／持ち帰り／まだ。'auto' で claude の判断に戻す）。
+   * 戻り値: { ok:true, board } | { ok:false, status, error }
+   */
+  setOverride(id, state, owner) {
+    const key = String(id == null ? '' : id).slice(0, 20);
+    const known = new Set(this.notesSpec().items.map((x) => x.id));
+    if (this.board) for (const c of this.board.checklist || []) known.add(c.id);
+    if (!known.has(key)) return { ok: false, status: 404, error: 'その項目は聞くことの表にありません' };
+    if (state === 'auto') delete this.overrides[key];
+    else if (['done', 'deferred', 'open'].indexOf(state) >= 0) {
+      this.overrides[key] = { state, owner: String(owner == null ? '' : owner).replace(/\s+/g, ' ').trim().slice(0, 40), at: this.now() };
+    } else return { ok: false, status: 400, error: 'state は done / deferred / open / auto のどれかです' };
+    this.safe(() => this.store.saveOverrides(this.overrides));
+    if (this.board) {
+      this.board = applyOverrides(this.board, this.overrides, { spec: this.notesSpec() });
+      this.safe(() => this.store.saveBoard(this.board));
+    }
+    return { ok: true, board: this.board };
   }
 
   // ── 出力 ──────────────────────────────────────────────────

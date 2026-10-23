@@ -323,6 +323,53 @@ test('整理: claude が次の一手を返さなくても、事前メモの最�
   }
 });
 
+test('人が直す: POST /override は札が要り、直した状態は保存され、次の整理でも勝ち、claude にも渡る。新しい会議で消える', async () => {
+  const h = await S.startApp({ fakeClock: true, notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか' });
+  try {
+    assert.equal((await S.request(h.port, 'POST', '/override', { body: { id: 'q1', state: 'done' } })).status, 403, '札が無ければ断る');
+    // 整理の前に直してもよい（事前メモの項目なら）
+    assert.equal((await post(h, '/override', { target: 'checklist', id: 'q1', state: 'done' })).status, 200);
+    assert.equal((await post(h, '/override', { id: 'q9', state: 'done' })).status, 404);
+    assert.equal((await post(h, '/override', { id: 'q2', state: 'すみ' })).status, 400);
+    assert.equal((await post(h, '/override', { target: 'cards', id: 'q2', state: 'done' })).status, 400);
+    assert.equal((await S.request(h.port, 'GET', '/override', { headers: S.API })).status, 405);
+
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true); // 偽 claude は「月額はいくらか」を done:false で返す
+    let st = (await get(h, '/state')).json;
+    assert.deepEqual(st.board.checklist.map((c) => [c.id, c.state, !!c.byUser]), [['q1', 'done', true], ['q2', 'open', false]], '人の「済」が claude の「まだ」に勝つ');
+    assert.equal(st.board.next_action.ref, 'q2');
+
+    // 整理のあとに直すと、すぐボードに出て保存される
+    assert.equal((await post(h, '/override', { id: 'q2', state: 'deferred', owner: '佐々木' })).status, 200);
+    st = (await get(h, '/state')).json;
+    assert.deepEqual([st.board.checklist[1].state, st.board.checklist[1].owner], ['deferred', '佐々木']);
+    assert.equal(st.board.next_action.text, '持ち帰りを読み上げて確かめる');
+    const dir = fs.readdirSync(h.dataDir).find((d) => /^\d{4}-/.test(d));
+    const saved = JSON.parse(fs.readFileSync(path.join(h.dataDir, dir, 'overrides.json'), 'utf8'));
+    assert.deepEqual(Object.keys(saved).sort(), ['q1', 'q2']);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(h.dataDir, dir, 'board.json'), 'utf8')).checklist[1].state, 'deferred');
+
+    // 次の整理: claude に「手で直した」印が渡り、結果でも直した状態のまま
+    await post(h, '/captions', { entries: lines(4, 'b') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    assert.match(h.calls()[1].stdin, /"id":"q1","state":"done","owner":"","evidence":"","by_user":true/);
+    st = (await get(h, '/state')).json;
+    assert.deepEqual(st.board.checklist.map((c) => c.state), ['done', 'deferred']);
+
+    // 整理に任せる（auto）で人の状態をやめる
+    assert.equal((await post(h, '/override', { id: 'q2', state: 'auto' })).status, 200);
+    assert.equal((await get(h, '/state')).json.board.checklist[1].byUser, undefined);
+
+    await post(h, '/reset');
+    assert.deepEqual(h.app.overrides, {}, '新しい会議では消える');
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 2 回目は前回のボードを渡す。事前メモが無ければ聞くことの表とカードは空', async () => {
   const h = await S.startApp({ fakeClock: true });
   try {

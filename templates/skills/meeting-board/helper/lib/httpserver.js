@@ -153,6 +153,18 @@ function createHandler(app) {
           sendJson(res, 200, { ok: true, selfName });
           return;
         }
+        case 'POST /override': {
+          // 人が聞くことの状態を直す: { target: 'checklist', id: 'q1', state: 'done' | 'deferred' | 'open' | 'auto', owner }
+          const body = await readJson(req);
+          if (body.target !== undefined && body.target !== 'checklist') {
+            sendJson(res, 400, { error: 'target は checklist だけです' });
+            return;
+          }
+          const r = app.setOverride(body.id, body.state, body.owner);
+          if (!r.ok) sendJson(res, r.status, { error: r.error });
+          else sendJson(res, 200, { ok: true });
+          return;
+        }
         case 'POST /reset':
           app.reset();
           sendJson(res, 200, { ok: true });
@@ -160,7 +172,7 @@ function createHandler(app) {
         default:
           break;
       }
-      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset'];
+      const known = ['/state', '/diag', '/notes', '/captions', '/settings', '/reset', '/override'];
       if (known.indexOf(path) >= 0) sendJson(res, 405, { error: 'method not allowed' });
       else sendJson(res, 404, { error: 'not found' });
     } catch (e) {

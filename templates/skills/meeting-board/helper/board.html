@@ -165,6 +165,13 @@ main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
 #itemList li.open .mark { color: var(--warn); }
 #itemList li.open .st { background: var(--warn-soft); color: var(--warn); }
 #itemList .nx { flex: none; font-size: 0.78em; font-weight: 700; color: var(--accent); }
+#itemList li[data-id] { cursor: pointer; }
+#itemList li[data-id]:hover { background: var(--accent-soft); }
+.byuser { flex: none; font-size: 0.75em; color: var(--muted); }
+.fix { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.fix button { font-size: 0.75em; padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }
+.fix button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+@media (prefers-color-scheme: dark) { .fix button[aria-pressed="true"] { color: #0b1020; } }
 .empty { color: var(--muted); padding: 6px 2px; }
 
 #meeting.stale .zone { opacity: 0.45; }
@@ -592,11 +599,15 @@ dialog textarea { min-height: 220px; resize: vertical; }
       }
       m.items.forEach(function (it) {
         var li = el('li', it.state);
+        li.dataset.id = it.id;
+        li.dataset.state = it.state;
+        li.title = '押すと状態を直せます（まだ → 済 → 持ち帰り）';
         li.appendChild(el('span', 'mark', it.state === 'done' ? '✓' : it.state === 'deferred' ? '↩' : '・'));
         var tx = el('span', 'txt', it.text);
         tx.title = it.text;
         li.appendChild(tx);
         if (it.next) li.appendChild(el('span', 'nx', '← 次'));
+        if (it.byUser) li.appendChild(el('span', 'byuser', '手で直した'));
         li.appendChild(el('span', 'st', it.label));
         ul.appendChild(li);
       });
@@ -642,6 +653,23 @@ dialog textarea { min-height: 220px; resize: vertical; }
       var li = el('li');
       li.appendChild(el('span', 'tag ' + c.state, c.label));
       li.appendChild(document.createTextNode((c.kind === 'tell' ? '伝える：' : '聞く：') + c.item));
+      var fix = el('span', 'fix');
+      [['done', c.kind === 'tell' ? '伝え済み' : '済'], ['deferred', '持ち帰り'], ['open', 'まだ']].forEach(function (p) {
+        var b = el('button', null, p[1]);
+        b.type = 'button';
+        b.setAttribute('aria-pressed', String(c.state === p[0] && c.byUser));
+        b.addEventListener('click', function () { override(c.id, p[0]); });
+        fix.appendChild(b);
+      });
+      if (c.byUser) {
+        var back = el('button', null, '整理に任せる');
+        back.type = 'button';
+        back.title = '手で直した状態をやめて、整理の判断に戻します';
+        back.addEventListener('click', function () { override(c.id, 'auto'); });
+        fix.appendChild(back);
+      }
+      li.appendChild(fix);
+      if (c.byUser) li.appendChild(el('span', 'evidence', '手で直した状態です（整理より優先します）'));
       if (c.evidence) li.appendChild(el('span', 'evidence', '根拠: ' + c.evidence));
       return li;
     }
@@ -777,6 +805,20 @@ dialog textarea { min-height: 220px; resize: vertical; }
       renderBar(null, false);
     });
   }
+
+  // ── 人が聞くことの状態を直す ─────────────────────────────
+  function override(id, state) {
+    api('POST', '/override', { target: 'checklist', id: id, state: state }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      lastItemsKey = null;
+      toast(state === 'auto' ? '整理の判断に戻しました' : '状態を直しました（次の整理でも、この状態を使います）');
+      poll();
+    }).catch(function () { toast('直せませんでした（ヘルパーに届きません）'); });
+  }
+  $('itemList').addEventListener('click', function (ev) {
+    var li = ev.target && ev.target.closest ? ev.target.closest('li[data-id]') : null;
+    if (li) override(li.dataset.id, V.nextState(li.dataset.state));
+  });
 
   // ── ボタン ───────────────────────────────────────────────
   $('btnMemo').addEventListener('click', function () {
