@@ -438,6 +438,50 @@ test('差分の整理: --mode full なら毎回全体', async () => {
   }
 });
 
+test('短い版の整理（live）: 2 回目からは画面の分だけ頼み、話題は前回のまま残す。字幕が止まったら全体でまとめ直す', async () => {
+  const h = await S.startApp({ fakeClock: true, mode: 'live', notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか' });
+  const f = (name, obj) => {
+    const p = path.join(h.dataDir, name);
+    fs.writeFileSync(p, JSON.stringify(obj));
+    return p;
+  };
+  const full = f('full.json', { topics: [{ title: '費用', current: true, points: [{ speaker: '佐々木', text: '月額は400円' }] }], checklist: [{ id: 'q1', state: 'done', evidence: '佐々木: 400円' }] });
+  const live = f('live.json', { mode: 'live', current_id: '', checklist: [{ id: 'q2', state: 'done', evidence: '佐々木: 3月' }], next_action: { text: '持ち帰りを確かめる', ref: '' }, warnings: [], status: '順調' });
+  h.app.env.STUB_BOARDS = [full, live, full].join(',');
+  try {
+    const step = async (prefix) => {
+      await post(h, '/captions', { entries: lines(8, prefix).map((e, i) => Object.assign(e, { firstSeen: h.clock.t + i })) });
+      h.clock.t += 30000;
+      return h.app.runUpdate('test');
+    };
+    assert.equal((await step('a')).ok, true);
+    assert.equal((await step('b')).ok, true);
+    const calls = h.calls();
+    assert.ok(!calls[0].stdin.includes('## 出力（会議中の短い版）'), '1 回目は全体');
+    assert.ok(calls[1].stdin.includes('## 出力（会議中の短い版）'), '2 回目は短い版');
+    assert.ok(calls[1].stdin.includes('【字幕の範囲】\n前回より後だけ'));
+    assert.ok(!calls[1].stdin.includes('月額は400円'), '話題の中身は渡さない（見出しだけ）');
+    let st = (await get(h, '/state')).json;
+    assert.deepEqual(st.board.topics.map((t) => [t.title, t.points.length]), [['費用', 1]], '話題は前回のまま');
+    assert.deepEqual(st.board.checklist.map((c) => c.state), ['done', 'done']);
+    assert.equal(st.status.update.lastMode, 'live');
+
+    // 字幕が止まった（会議の終わり）→ 全体でまとめ直す
+    h.clock.t += 60000;
+    h.app.tick();
+    for (let i = 0; i < 200 && (h.app.inFlight || h.calls().length < 3); i++) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(h.calls().length, 3);
+    assert.ok(!h.calls()[2].stdin.includes('## 出力（会議中の短い版）'), '終わりは全体');
+    assert.equal(h.app.lastMode, 'full');
+    h.clock.t += 60000;
+    h.app.tick();
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(h.calls().length, 3, 'まとめ直しは 1 回だけ');
+  } finally {
+    await h.close();
+  }
+});
+
 test('整理: 2 回目は前回のボードを渡す。事前メモが無ければ聞くことの表とカードは空', async () => {
   const h = await S.startApp({ fakeClock: true });
   try {

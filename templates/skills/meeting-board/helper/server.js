@@ -5,7 +5,7 @@
 //
 //   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
 //                         [--notes ファイル] [--replay ファイル [--speed auto]] [--once] [--data-dir フォルダ] [--me 名前]
-//                         [--mode diff|full]
+//                         [--mode live|full|diff]
 //   node helper/server.js --minutes <会議フォルダ | board.json> [--out ファイル]   議事録の素（Markdown）を書き出す
 
 // 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
@@ -179,7 +179,7 @@ async function main() {
     me: opts.me,
     script: scriptText,
     scriptManual: opts.scriptManual,
-    mode: opts.mode,
+    mode: opts.mode || 'live',
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
     },

@@ -16,7 +16,7 @@ const DEFAULTS = {
   minutes: null,
   script: null,
   out: null,
-  mode: null, // 既定は full（毎回全体）。diff は試しに使う
+  mode: null, // 既定は live（会議中は画面の分だけ・話題は数分おきに全体）。full＝毎回全体／diff＝変わったところだけ（試験中）
   help: false,
 };
 
@@ -34,7 +34,7 @@ const USAGE = [
   '  --script-manual   台本の位置を字幕で自動に動かさない（台詞や節を押したときだけ動く）',
   '  --data-dir フォルダ  記録の保存先（既定は helper の隣の data/）',
   '  --me 名前         字幕に出る自分の名前（自分の発言を言い直して返さないため。Meet の「あなた」も自分として扱う）',
-  '  --mode diff|full  整理の仕方（既定 full＝毎回全体。diff＝2 回目から変わったところだけ・試験中）',
+  '  --mode live|full|diff  整理の仕方（既定 live＝会議中は画面の分だけ急いで作り、話題は 5 分おきと会議の終わりにまとめる。full＝毎回全体。diff＝変わったところだけ・試験中）',
   '                    --once と組むと、diff は字幕の前 6 割で全体→残りで差分の 2 回、full は全部で 1 回',
   '  --script ファイル 台本（Markdown）。会議中の画面に、台本のどこにいるかと直近の字幕を出す',
   '  --minutes 場所    会議のあとに、議事録の素（Markdown）を書き出して終わる。場所は会議フォルダ（data/<開始日時>）',
@@ -103,8 +103,8 @@ function parseArgs(argv) {
       else if (arg === '--minutes') opts.minutes = value;
       else if (arg === '--script') opts.script = value;
       else if (arg === '--mode') {
-        if (value === 'diff' || value === 'full') opts.mode = value;
-        else errors.push('--mode は diff か full です');
+        if (value === 'live' || value === 'diff' || value === 'full') opts.mode = value;
+        else errors.push('--mode は live か full か diff です');
       }
       else if (arg === '--out') opts.out = value;
       else if (arg === '--me') {

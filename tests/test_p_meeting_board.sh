@@ -28,7 +28,7 @@ P_SKILL="$REPO_ROOT/$P_REL"
 # ── P1. shape: what a stranger receives ────────────────────────────────────
 for p_f in SKILL.md README.md start.cmd start.sh .gitattributes data/.gitignore \
            extension/manifest.json extension/captions-core.js extension/content.js extension/background.js \
-           helper/server.js helper/board.html helper/board-core.js helper/prompt.md helper/prompt_patch.md \
+           helper/server.js helper/board.html helper/board-core.js helper/prompt.md helper/prompt_patch.md helper/prompt_live.md \
            helper/messages/no-node.txt helper/messages/old-node.txt helper/messages/failed.txt \
            helper/lib/app.js helper/lib/args.js helper/lib/claude.js helper/lib/diag.js \
            helper/lib/extract.js helper/lib/httpserver.js helper/lib/prompt.js helper/lib/replay.js \

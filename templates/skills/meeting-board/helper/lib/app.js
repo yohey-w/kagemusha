@@ -40,13 +40,18 @@ class MeetingBoardApp {
     this.warn = o.warn || (() => {});
     this.env = o.env || process.env;
     this.promptMd = fs.readFileSync(o.promptPath, 'utf8');
-    // 差分の整理（2 回目から「変わったところだけ」を返してもらう）。'full' なら毎回全体
-    this.mode = o.mode === 'diff' ? 'diff' : 'full';
-    const patchPath = o.patchPromptPath || require('path').join(require('path').dirname(o.promptPath), 'prompt_patch.md');
-    this.patchMd = this.mode === 'diff' ? fs.readFileSync(patchPath, 'utf8') : '';
-    this.fullEvery = o.fullEvery || 8; // 差分をこの回数続けたら、1 回は全体でまとめ直す
-    this.fullEveryMs = o.fullEveryMs || 600000; // または前の全体から 10 分たったら
-    this.minGapMs = this.mode === 'diff' ? o.minGapMs || 8000 : 0; // 前倒しの整理の最短の間
+    // 整理の仕方。'full' … 毎回全体／'diff' … 2 回目から「変わったところだけ」／
+    // 'live' … 2 回目から会議中の画面の分だけ（話題は書かせない）。話題は数分おきと、字幕が止まったときに全体でまとめ直す。
+    // 毎回全体を書き直させると、返事が長くなるほど 1 回が遅くなる（2026-10-23 の会議で 8 秒 → 20〜40 秒）
+    this.mode = o.mode === 'diff' || o.mode === 'live' ? o.mode : 'full';
+    const dir = require('path').dirname(o.promptPath);
+    const patchPath = o.patchPromptPath || require('path').join(dir, 'prompt_patch.md');
+    const livePath = o.livePromptPath || require('path').join(dir, 'prompt_live.md');
+    this.patchMd = this.mode === 'diff' ? fs.readFileSync(patchPath, 'utf8') : this.mode === 'live' ? fs.readFileSync(livePath, 'utf8') : '';
+    this.fullEvery = o.fullEvery || (this.mode === 'live' ? 1000 : 8); // 差分をこの回数続けたら、1 回は全体でまとめ直す
+    this.fullEveryMs = o.fullEveryMs || (this.mode === 'live' ? 300000 : 600000); // または前の全体から 10 分（live は 5 分）たったら
+    this.liveIdleMs = o.liveIdleMs || 45000; // live: 字幕がこれだけ止まったら、話題を全体でまとめ直す（会議の終わり）
+    this.minGapMs = this.mode !== 'full' ? o.minGapMs || 8000 : 0; // 前倒しの整理の最短の間
     this.boardHtmlPath = o.boardHtmlPath;
     this.boardCorePath = o.boardCorePath || null;
     // 台本（--script）。claude には渡さない。いまの位置は字幕から規則で当てる
@@ -270,6 +275,19 @@ class MeetingBoardApp {
         speakerTurns: this.transcript.speakerTurnsSince(this.lastEntryCount),
         minGapMs: this.board ? this.minGapMs : 0,
       });
+      // live: 字幕が止まったら（会議の終わり）、短い版のままの話題を全体でまとめ直す
+      if (
+        !reason &&
+        this.mode === 'live' &&
+        this.lastMode === 'live' &&
+        !this.inFlight &&
+        now >= this.blockedUntil &&
+        now - this.lastEndAt >= 5000 &&
+        this.transcript.lastCaptionAt > 0 &&
+        now - this.transcript.lastCaptionAt >= this.liveIdleMs
+      ) {
+        reason = 'flush';
+      }
       // --replay が流し終わったあとは、間隔を待たずに最後の整理を行う
       if (
         !reason &&
@@ -318,7 +336,7 @@ class MeetingBoardApp {
     let snapshotEntries = this.lastEntryCount;
     // 差分にするか: 2 回目から。全体に戻すのは、まとめ直しの時期・再生の終わり・--once・事前メモが変わった・前の差分がおかしかったとき
     const useDiff =
-      this.mode === 'diff' &&
+      this.mode !== 'full' &&
       !!this.board &&
       !this.forceFull &&
       ['once', 'flush', 'notes'].indexOf(reason) < 0 &&
@@ -342,7 +360,11 @@ class MeetingBoardApp {
       const win = useDiff ? buildWindowDiff(lines, this.lastLineCount) : buildWindow(lines, this.lastLineCount);
       let prevBoard = null;
       if (this.board) {
-        if (useDiff) {
+        if (useDiff && this.mode === 'live') {
+          // 短い版: 話題は見出しだけ渡し、中身は返させない（ヘルパーが前回のまま残す）
+          for (const t of this.board.topics) compactIds.add(t.id);
+          prevBoard = toPromptBoard(this.board, { detailIds: new Set() });
+        } else if (useDiff) {
           const detail = detailTopicIds(this.board);
           for (const t of this.board.topics) if (!detail.has(t.id)) compactIds.add(t.id);
           prevBoard = toPromptBoard(this.board, { detailIds: detail });
@@ -401,7 +423,7 @@ class MeetingBoardApp {
           range,
           inChars,
           outChars,
-          mode: useDiff ? 'diff' : 'full',
+          mode: useDiff ? this.mode : 'full',
           ms: this.lastDurationMs,
           claudeMs,
           costUsd,
@@ -435,7 +457,7 @@ class MeetingBoardApp {
     this.lastTotalChars = snapshotChars;
     this.lastTextRevision = snapshotTextRev;
     this.lastEntryCount = snapshotEntries;
-    this.lastMode = useDiff ? 'diff' : 'full';
+    this.lastMode = useDiff ? this.mode : 'full';
     if (useDiff) this.diffsSinceFull += 1;
     else {
       this.diffsSinceFull = 0;
