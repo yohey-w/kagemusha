@@ -28,7 +28,7 @@ const MAX_NOTES_LEN = 100000;
 class MeetingBoardApp {
   constructor(options) {
     const o = options;
-    this.version = o.version || '0.2.0';
+    this.version = o.version || '0.3.0';
     this.port = o.port || 0;
     this.model = o.model || 'sonnet';
     this.intervalMs = (o.intervalSec || 60) * 1000;

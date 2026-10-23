@@ -26,7 +26,7 @@ const { toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/repl
 const { importTranscript } = require('./lib/importers');
 const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const HELPER_DIR = __dirname;
 
 // 会議の最中に落ちないように、想定外のエラーは表示だけして続ける
