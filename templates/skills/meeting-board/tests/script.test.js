@@ -129,3 +129,11 @@ test('--script の確かめる文: 【最後に確かめる文】の節で穴あ
     await h.close();
   }
 });
+
+test('台本: 見出しのあとに注記が続く行も節として読む', () => {
+  const r = parseScript('**【0:00〜 はじめ】**\n\n山田「よろしくお願いします」\n\n**【14:00〜 ゴールを聞く】**（流れの途中でも、ここで切り替える）\n\n山田「いちばん解決したいのは何ですか」\n');
+  const secs = r.sections || r;
+  assert.equal(secs.length, 2);
+  assert.equal(secs[1].title, 'ゴールを聞く');
+  assert.equal(secs[1].startSec, 840);
+});

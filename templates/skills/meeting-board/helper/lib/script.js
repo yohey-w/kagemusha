@@ -27,8 +27,9 @@ function parseTime(t) {
 }
 
 function headingOf(line) {
-  const t = line.replace(/^\*\*|\*\*$/g, '').replace(/^#{1,6}\s*(?=【)/, '').trim();
-  let m = /^【\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[〜~ー-]?\s*([^】]*)】$/.exec(t);
+  // 見出しのあとに注記が続く行（「**【14:00〜 題】**（流れの途中でも…）」）も節にする
+  const t = line.replace(/^\*\*/, '').replace(/^#{1,6}\s*(?=【)/, '').trim();
+  let m = /^【\s*(\d{1,2}:\d{2}(?::\d{2})?)\s*[〜~ー-]?\s*([^】]*)】(?:\*\*)?/.exec(t);
   if (m) return { title: clean(m[2]) || m[1], startSec: parseTime(m[1]) };
   m = /^#{2,6}\s+(.+)$/.exec(line); // 「# 」1 つは台本の題名なので節にしない
   if (m) {
