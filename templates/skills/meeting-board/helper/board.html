@@ -169,11 +169,11 @@ main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
 #zScript { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
 #zScript .zhead .btn { margin-left: auto; }
 #scriptTitle { font-weight: 700; margin-top: 4px; }
-#scriptBox { height: 240px; overflow-y: auto; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; overscroll-behavior: contain; }
+#scriptBox { height: 420px; overflow-y: auto; margin-top: 6px; border-top: 1px solid var(--line); padding-top: 4px; overscroll-behavior: contain; }
 #scriptBox ol { list-style: none; margin: 0; padding: 0; }
-#scriptBox li { padding: 3px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+#scriptBox li { padding: 6px 10px; font-size: 1.35em; line-height: 1.6; border-radius: 6px; overflow-wrap: anywhere; }
 #scriptBox li.say { font-weight: 600; }
-#scriptBox li.note { color: var(--muted); font-size: 0.9em; padding-left: 1.6em; }
+#scriptBox li.note { color: var(--muted); font-size: 1.2em; padding-left: 1.6em; }
 #scriptBox li.past { opacity: 0.45; }
 #scriptBox li.current { background: var(--accent); color: #fff; }
 @media (prefers-color-scheme: dark) { #scriptBox li.current { color: #0b1020; } }
@@ -639,7 +639,7 @@ dialog textarea { min-height: 220px; resize: vertical; }
       }).catch(function () { toast('台本の位置を変えられませんでした'); });
     }
     function lineLi(l, i) {
-      var li = el('li', l.kind + ' ' + l.status, l.kind === 'say' ? (l.who ? l.who + '「' : '「') + l.text + '」' : l.text);
+      var li = el('li', l.kind + ' ' + l.status, l.text);
       li.title = '押すと、ここをいまの位置にします';
       li.style.cursor = 'pointer';
       li.addEventListener('click', function () { pick(v.sectionIndex, i); });
