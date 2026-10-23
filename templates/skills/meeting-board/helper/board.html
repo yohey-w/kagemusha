@@ -198,6 +198,22 @@ main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
 
 #meeting.stale .zone { opacity: 0.45; }
 #meeting.stale #staleNote { opacity: 1; }
+/* 台本があるときは左右に分ける: 左＝台本・最後に確かめる文・いまの字幕／右＝次の一手・順調か警告・伝え済み */
+@media (min-width: 900px) {
+  main#meeting:has(#zScript:not([hidden])) {
+    max-width: 1500px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto 1fr; /* 右の 3 つは詰めて上に置き、台本の高さの余りは最後の行が受ける */
+    column-gap: 16px;
+    align-items: start;
+  }
+  main#meeting:has(#zScript:not([hidden])) > #staleNote { grid-column: 1 / -1; }
+  main#meeting:has(#zScript:not([hidden])) > #zScript { grid-column: 1; grid-row: 2 / span 4; }
+  main#meeting:has(#zScript:not([hidden])) > #zNext { grid-column: 2; grid-row: 2; }
+  main#meeting:has(#zScript:not([hidden])) > #zSignal { grid-column: 2; grid-row: 3; }
+  main#meeting:has(#zScript:not([hidden])) > #zList { grid-column: 2; grid-row: 4; }
+}
 #staleNote {
   display: block;
   text-align: center;
