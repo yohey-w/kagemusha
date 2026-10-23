@@ -208,7 +208,11 @@ P_OUT="$TEST_TMP/p_node_test.log"
 ) > "$P_OUT" 2>&1
 p_rc=$?
 assert_eq "P7: node --test (stub claude) exits 0" "0" "$p_rc"
-[[ $p_rc -eq 0 ]] || tail -n 40 "$P_OUT" | sed 's/^/       | /'
+if [[ $p_rc -ne 0 ]]; then
+  # どの試験が落ちたかを先に出す（末尾 40 行だけでは、CI でたまに落ちる試験の名前が見えなかった）
+  grep -n -A 25 '^not ok' "$P_OUT" | head -n 80 | sed 's/^/       | /'
+  tail -n 40 "$P_OUT" | sed 's/^/       | /'
+fi
 p_pass="$(sed -n 's/^# pass //p' "$P_OUT" | tail -n 1)"
 p_fail="$(sed -n 's/^# fail //p' "$P_OUT" | tail -n 1)"
 p_skip="$(sed -n 's/^# skipped //p' "$P_OUT" | tail -n 1)"
