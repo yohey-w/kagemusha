@@ -285,6 +285,20 @@
       all: sc.sections.map(function (s, i) {
         return { index: i, title: str(s.title), start: mmss(s.startSec), current: i === si };
       }),
+      // 最後に確かめる文（台本に穴あきの確かめの文があるときだけ）。候補が無ければ穴あきのまま
+      closing: sc.closing
+        ? {
+            template: str(sc.closing.text),
+            candidates: arr(st.board && st.board.closing_candidates)
+              .filter(function (c) {
+                return c && str(c.text);
+              })
+              .slice(0, 3)
+              .map(function (c) {
+                return { text: str(c.text), why: str(c.why) };
+              }),
+          }
+        : null,
       captions: arr(st.recent)
         .slice(-6)
         .map(function (r) {

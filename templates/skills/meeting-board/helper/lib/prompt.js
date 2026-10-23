@@ -78,7 +78,7 @@ function buildWindowDiff(lines, lastLineCount) {
  * （0.1 からある 4 つ —— 事前メモ・前回までの整理・字幕の範囲・字幕 —— の順番は変えない）
  *   users: 使う人の説明の 1 行（無ければ「なし」）/ spec: parseNotes() の結果（無ければ「なし」）
  */
-function buildPrompt({ promptMd, notes, prevBoard, range, lines, users, spec }) {
+function buildPrompt({ promptMd, notes, prevBoard, range, lines, users, spec, closing }) {
   const memo = (notes || '').trim();
   const memoText = memo ? (memo.length > NOTES_CAP_CHARS ? memo.slice(0, NOTES_CAP_CHARS) : memo) : 'なし';
   const sp = spec || {};
@@ -97,6 +97,8 @@ function buildPrompt({ promptMd, notes, prevBoard, range, lines, users, spec }) 
     '【こちらの理解】',
     specLines(sp.beliefs),
     '',
+    // 台本（--script）に穴のある確かめの文があるときだけ（台本の全体は渡さない）
+    ...(closing ? ['【最後に確かめる文】', String(closing), ''] : []),
     '【前回までの整理】',
     prevBoard ? JSON.stringify(prevBoard) : 'なし',
     '',

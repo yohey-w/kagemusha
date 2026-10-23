@@ -16,7 +16,7 @@ const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./p
 const { extractJsonObject } = require('./extract');
 const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
 const { parseNotes } = require('./notes');
-const { parseScript, locate } = require('./script');
+const { parseScript, locate, findClosingLine } = require('./script');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
 const { errMsg, clip, shortenHome } = require('./util');
@@ -52,6 +52,7 @@ class MeetingBoardApp {
     // 台本（--script）。claude には渡さない。いまの位置は字幕から規則で当てる
     this.scriptSections = o.script ? parseScript(o.script) : null;
     this.scriptPos = null;
+    this.closingLine = this.scriptSections ? findClosingLine(this.scriptSections) : null; // 最後に確かめる文（穴あき）
     this.me = o.me ? String(o.me).replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN) : ''; // --me（字幕に出る自分の名前）
 
     this.store = new Store(o.dataDir);
@@ -354,6 +355,7 @@ class MeetingBoardApp {
         lines: win.lines,
         users: this.usersLine(),
         spec: hasNotes ? this.notesSpec() : null,
+        closing: this.closingLine ? this.closingLine.text : null,
       });
       inChars = prompt.length;
       range = win.range;
@@ -471,7 +473,7 @@ class MeetingBoardApp {
         };
       }
     }
-    const norm = normalizeBoardV2(raw, { hasNotes, spec: this.notesSpec(), prev: this.board, users: this.userNames(), now: this.now() });
+    const norm = normalizeBoardV2(raw, { hasNotes, spec: this.notesSpec(), prev: this.board, users: this.userNames(), now: this.now(), closing: !!this.closingLine });
     if (!norm.ok) {
       return {
         ok: false,
@@ -565,7 +567,7 @@ class MeetingBoardApp {
       selfName: this.settings.selfName || '',
     };
     // 台本は --script のときだけ（診断には入れない）
-    if (this.scriptSections) out.script = { sections: this.scriptSections, pos: this.scriptPos || this.updateScriptPos() };
+    if (this.scriptSections) out.script = { sections: this.scriptSections, pos: this.scriptPos || this.updateScriptPos(), closing: this.closingLine };
     return out;
   }
 

@@ -271,6 +271,21 @@ function mergeConflicts(prevList, rawConflicts, warnings, beliefs, now) {
 }
 
 /**
+ * 台本の「最後に確かめる文」の埋め方の候補（よい順に多くても 3 つ）。形の崩れた候補は捨てる。
+ * 返ってこなかった・全部崩れていたときは前回のまま。台本に確かめる文が無ければ []
+ */
+function normClosing(rawList, prev, hasClosing) {
+  if (!hasClosing) return [];
+  const list = arr(rawList)
+    .filter(isObj)
+    .map((x) => ({ text: clip(str(x.text), 200), why: clip(str(x.why), 30) }))
+    .filter((x) => x.text)
+    .slice(0, 3);
+  if (list.length) return list;
+  return prev && Array.isArray(prev.closing_candidates) ? prev.closing_candidates : [];
+}
+
+/**
  * claude の返事（オブジェクト）→ schema 2 のボード。
  *   ctx = { hasNotes, spec（parseNotes の結果）, prev（前のボード。無ければ null）, users（使う人の名前）, now }
  * topics が配列でなければ失敗（呼び出し側は前のボードを残す）。それ以外は何が来ても例外を出さない。
@@ -297,6 +312,7 @@ function normalizeBoardV2(raw, ctx) {
     status: clip(str(raw.status), LINE_MAX),
     premise_conflicts: c.hasNotes ? mergeConflicts(prev ? prev.premise_conflicts : [], raw.conflicts, warnings, beliefs, c.now) : [],
     users: arr(c.users).map(str).filter(Boolean),
+    closing_candidates: normClosing(raw.closing_candidates, prev, !!c.closing),
     schema: 2,
   };
   return { ok: true, board };
@@ -374,6 +390,7 @@ function toPromptBoard(board, opts) {
     out.conflicts = board.premise_conflicts.map((k) => ({ ref: k.ref, what: k.heard, speaker: k.speaker, settled: !!k.settled }));
   }
   out.cards = arr(board.cards);
+  if (arr(board.closing_candidates).length) out.closing_candidates = board.closing_candidates;
   return out;
 }
 
@@ -454,6 +471,7 @@ function mergePatch(prev, patch, opts) {
     status: pick('status'),
     conflicts: arr(patch.conflicts),
     cards: pick('cards'),
+    closing_candidates: patch.closing_candidates,
   };
 }
 
@@ -462,6 +480,7 @@ module.exports = {
   detailTopicIds,
   normalizeBoardV2,
   applyOverrides,
+  normClosing,
   toPromptBoard,
   buildChecklist,
   buildTopics,

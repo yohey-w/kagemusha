@@ -180,6 +180,10 @@ main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
 #scriptBox li.next { border-left: 4px solid var(--accent); background: var(--accent-soft); }
 #scriptBox li.sec { font-weight: 700; color: var(--muted); padding-top: 6px; }
 #scriptBox li.sec.cur { color: var(--accent); }
+#closingBox { margin-top: 8px; border: 2px solid var(--accent); border-radius: 10px; padding: 6px 10px; background: var(--accent-soft); min-height: 112px; }
+#closing1 { font-size: 1.12em; font-weight: 700; overflow-wrap: anywhere; }
+#closingRest div { font-size: 0.88em; color: var(--muted); overflow-wrap: anywhere; margin-top: 2px; }
+#closingRest b { margin-right: 4px; }
 #capNow { height: 150px; overflow-y: auto; margin-top: 8px; border: 1px dashed var(--line); border-radius: 8px; padding: 4px 8px; font-size: 0.9em; }
 #capNow div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #capNow b { color: var(--muted); margin-right: 6px; }
@@ -373,6 +377,11 @@ dialog textarea { min-height: 220px; resize: vertical; }
     <p class="help">いまの台詞が青、次に言う台詞に線。言った字幕から位置を当てます（当たらないときは経過時間で節を選びます）。</p>
     <div id="scriptTitle"></div>
     <div id="scriptBox"><ol id="scriptList"></ol></div>
+    <div id="closingBox" hidden>
+      <div class="zhead"><span class="zlabel">最後に確かめる文</span><span class="aside" id="closingWhy"></span></div>
+      <div id="closing1"></div>
+      <div id="closingRest"></div>
+    </div>
     <div class="zlabel" style="margin-top:8px">いまの字幕</div>
     <div id="capNow"></div>
   </section>
@@ -623,6 +632,21 @@ dialog textarea { min-height: 220px; resize: vertical; }
       var target = ol.querySelector('li.current') || ol.querySelector('li.next') || ol.querySelector('li.sec.cur');
       if (target) box.scrollTop = Math.max(0, target.offsetTop - ol.offsetTop - box.clientHeight / 3);
       else box.scrollTop = 0;
+    }
+    var cb = $('closingBox');
+    cb.hidden = !v.closing;
+    if (v.closing) {
+      var c1 = v.closing.candidates[0];
+      setText($('closing1'), c1 ? '第1：' + c1.text : v.closing.template);
+      setText($('closingWhy'), c1 ? (c1.why ? '（' + c1.why + '）' : '') : '（まだ埋まっていません）');
+      var rest = $('closingRest');
+      clear(rest);
+      v.closing.candidates.slice(1).forEach(function (c, i) {
+        var d = el('div');
+        d.appendChild(el('b', null, i === 0 ? '第2' : '第3'));
+        d.appendChild(document.createTextNode(c.text + (c.why ? '（' + c.why + '）' : '')));
+        rest.appendChild(d);
+      });
     }
     var cap = $('capNow');
     clear(cap);

@@ -126,4 +126,24 @@ function locate(sections, recent, elapsedSec, prev, opts) {
   return p || { sectionIndex: 0, lineIndex: -1, by: 'none', score: 0 };
 }
 
-module.exports = { parseScript, locate, bigrams, overlap, THRESHOLD, STRONG };
+const PLACEHOLDER = /(〇〇|○○|◯◯|△△|□□|××|＿＿|__)/;
+
+/**
+ * 台本の「最後に確かめる文」: 〇〇・△△・□□ などの穴のある台詞。いくつもあれば、穴のある台詞を含む
+ * いちばん後ろの節で、問いの形（か。／か？）のもの（無ければその節の最後の穴あき台詞）。無ければ null
+ */
+function findClosingLine(sections) {
+  const list = Array.isArray(sections) ? sections : [];
+  for (let si = list.length - 1; si >= 0; si--) {
+    const cands = [];
+    list[si].lines.forEach((l, li) => {
+      if (l.kind === 'say' && PLACEHOLDER.test(l.text)) cands.push({ sectionIndex: si, lineIndex: li, text: l.text, who: l.who });
+    });
+    if (!cands.length) continue;
+    const q = cands.filter((c) => /か[。？?]?$/.test(c.text));
+    return (q.length ? q[q.length - 1] : cands[cands.length - 1]);
+  }
+  return null;
+}
+
+module.exports = { parseScript, locate, findClosingLine, PLACEHOLDER, bigrams, overlap, THRESHOLD, STRONG };

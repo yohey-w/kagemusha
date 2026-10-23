@@ -71,3 +71,61 @@ test('--script: /state に台本と位置が出る（--script が無ければ欄
     S.rmDir(dir);
   }
 });
+
+// ── 最後に確かめる文（穴あきの台詞の埋め方の候補） ─────────────────
+const { findClosingLine } = require(path.join(S.HELPER_DIR, 'lib', 'script.js'));
+const { normalizeBoardV2 } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+
+test('findClosingLine: 穴（〇〇・△△・□□）のある台詞のうち、後ろの節の問いの形のもの。無ければ null', () => {
+  const c = findClosingLine(parseScript(SCRIPT));
+  assert.deepEqual([c.sectionIndex, c.lineIndex], [3, 0]);
+  assert.match(c.text, /〇〇を、△△に、□□までに返せれば成功、ということで合っていますか。$/);
+  const two = parseScript('## 前半\n殿「〇〇でよろしいですか」\n## 終わり\n殿「〇〇をお送りします」\n殿「〇〇を△△までに、で合っていますか。」\n殿「ありがとうございました」');
+  assert.match(findClosingLine(two).text, /合っていますか/);
+  assert.equal(findClosingLine(parseScript('## 前半\n殿「穴のない台詞です」')), null);
+});
+
+test('closing_candidates: 形の崩れた候補は捨て、多くても 3 つ。返ってこない・全部崩れていたら前回のまま。確かめる文が無ければ []', () => {
+  const ctx = (prev) => ({ hasNotes: false, prev, closing: true });
+  const a = normalizeBoardV2({ topics: [], closing_candidates: [null, { why: 'text が無い' }, { text: '見積もりを、山田に、来週水曜までに返せれば成功、ということで合っていますか。', why: '見積もりの話が出た' }, { text: '二' }, { text: '三' }, { text: '四' }] }, ctx(null)).board;
+  assert.deepEqual(a.closing_candidates.map((c) => c.text.slice(0, 3)), ['見積も', '二', '三']);
+  assert.equal(a.closing_candidates[0].why, '見積もりの話が出た');
+  const b = normalizeBoardV2({ topics: [] }, ctx(a)).board;
+  assert.deepEqual(b.closing_candidates, a.closing_candidates, '返ってこなければ前回のまま');
+  const c = normalizeBoardV2({ topics: [], closing_candidates: 'ただの文字列' }, ctx(a)).board;
+  assert.deepEqual(c.closing_candidates, a.closing_candidates, '崩れていたら前回のまま');
+  const none = normalizeBoardV2({ topics: [], closing_candidates: [{ text: 'x' }] }, { hasNotes: false, prev: null, closing: false }).board;
+  assert.deepEqual(none.closing_candidates, []);
+});
+
+test('--script の確かめる文: 【最後に確かめる文】の節で穴あきの 1 文だけを claude に渡し（台本の全体は渡さない）、候補がボードに出る', async () => {
+  const { MeetingBoardApp } = require(path.join(S.HELPER_DIR, 'lib', 'app.js'));
+  const dir = S.tmpDir();
+  const log = path.join(dir, 'stub.log');
+  const board = path.join(dir, 'b.json');
+  fs.writeFileSync(board, JSON.stringify({ topics: [{ title: '見積もり', current: true, points: [] }], closing_candidates: [{ text: '正式見積もりを、山田に、来週水曜までに返せれば成功、ということで合っていますか。', why: '見積もり依頼が出た' }, { bad: 1 }] }));
+  try {
+    const app = new MeetingBoardApp({ version: 't', dataDir: dir, promptPath: path.join(S.HELPER_DIR, 'prompt.md'), boardHtmlPath: path.join(S.HELPER_DIR, 'board.html'), env: S.stubEnv({ STUB_LOG: log, STUB_BOARD: board }), script: SCRIPT });
+    app.ingestCaptions([{ id: 'a', speaker: '佐々木', text: '正式な見積もりを来週水曜までにお願いします', firstSeen: Date.now(), lastUpdate: Date.now() }]);
+    const r = await app.runUpdate('test');
+    assert.equal(r.ok, true, r.message);
+    const stdin = JSON.parse(fs.readFileSync(log, 'utf8').trim()).stdin;
+    assert.match(stdin, /\n【最後に確かめる文】\n最後に、今日伺ったことをまとめさせてください。〇〇を、△△に、□□までに返せれば成功、ということで合っていますか。\n/);
+    assert.ok(!stdin.includes('候補はA社とB社の2つに絞っています'), '台本の全体は渡さない');
+    const st = app.stateJson();
+    assert.equal(st.board.closing_candidates.length, 1);
+    assert.equal(st.script.closing.lineIndex, 0);
+    app.shutdown();
+  } finally {
+    S.rmDir(dir);
+  }
+  // --script が無ければ節ごと渡さない
+  const h = await S.startApp({ fakeClock: true });
+  try {
+    await S.request(h.port, 'POST', '/captions', { headers: S.API, body: { entries: [{ id: 'x', speaker: '佐々木', text: 'はい', firstSeen: Date.now(), lastUpdate: Date.now() }] } });
+    await h.app.runUpdate('test');
+    assert.ok(!h.calls()[0].stdin.includes('\n【最後に確かめる文】\n'), '節は渡さない（prompt.md の説明の中の語は除く）');
+  } finally {
+    await h.close();
+  }
+});

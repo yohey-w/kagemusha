@@ -177,3 +177,15 @@ test('台本: いまの節の台詞を、済んだ・いま・次・この先に
   const t = V.scriptView(state(BOARD, { script: { sections, pos: { sectionIndex: 2, lineIndex: -1, by: 'time' } } }));
   assert.deepEqual(t.lines.map((l) => l.status), ['next', 'later', 'later'], '時間で選んだ節は、最初の台詞が「次」');
 });
+
+test('台本: 最後に確かめる文は、候補があれば第1〜第3、無ければ穴あきのまま', () => {
+  const { parseScript, findClosingLine } = require(path.join(S.HELPER_DIR, 'lib', 'script.js'));
+  const sections = parseScript(fs.readFileSync(path.join(__dirname, 'fixtures', 'sample_script.md'), 'utf8'));
+  const closing = findClosingLine(sections);
+  const empty = V.scriptView(state(BOARD, { script: { sections, pos: { sectionIndex: 0, lineIndex: 0 }, closing } }));
+  assert.deepEqual(empty.closing.candidates, []);
+  assert.match(empty.closing.template, /〇〇を、△△に/);
+  const b = Object.assign({}, BOARD, { closing_candidates: [{ text: '一', why: 'a' }, { text: '二', why: 'b' }, { text: '三', why: '' }, { text: '四' }] });
+  assert.deepEqual(V.scriptView(state(b, { script: { sections, pos: { sectionIndex: 0, lineIndex: 0 }, closing } })).closing.candidates.map((c) => c.text), ['一', '二', '三']);
+  assert.equal(V.scriptView(state(b, { script: { sections, pos: { sectionIndex: 0, lineIndex: 0 }, closing: null } })).closing, null);
+});

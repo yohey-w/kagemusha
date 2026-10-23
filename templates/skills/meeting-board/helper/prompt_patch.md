@@ -25,5 +25,5 @@
 - current_id は、いま話している話題の id（新しい話題なら ""。その話題の current を true にする）
 - checklist は、状態・担当・根拠が変わった項目だけ。変わっていない項目は書かない
 - conflicts は、新しく出たもの・変わったものだけ
-- open_questions・next_action・warnings・status・cards は、いつも「いまの全部」を書く（無ければ [] や ""）
-- それ以外の決まり（1〜18）は上と同じ
+- open_questions・next_action・warnings・status・cards・closing_candidates は、いつも「いまの全部」を書く（無ければ [] や ""）
+- それ以外の決まり（1〜19）は上と同じ
