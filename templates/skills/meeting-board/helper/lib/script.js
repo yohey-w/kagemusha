@@ -45,6 +45,7 @@ function headingOf(line) {
 function parseScript(text) {
   const sections = [];
   let cur = null;
+  let openWho = null; // 閉じかっこがまだ来ていない台詞の話し手
   for (const raw of String(text == null ? '' : text).replace(/^﻿/, '').split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
@@ -53,14 +54,22 @@ function parseScript(text) {
       if (sections.length >= MAX_SECTIONS) break;
       cur = { title: h.title.slice(0, 80), startSec: h.startSec, lines: [] };
       sections.push(cur);
+      openWho = null;
       continue;
     }
     if (!cur) continue; // 最初の見出しより前（題名・前書き）は読まない
     if (cur.lines.length >= MAX_LINES) continue;
     const body = line.replace(/^(?:[-*・]\s+|\d{1,2}[.)]\s+|>\s*)/, '');
-    const say = /^([^「」\s]{1,12})「(.+?)」?$/.exec(body);
-    if (say) cur.lines.push({ kind: 'say', who: say[1], text: clean(say[2]).slice(0, MAX_LEN) });
-    else cur.lines.push({ kind: 'note', text: clean(body.replace(/\*\*/g, '')).slice(0, MAX_LEN) });
+    // 「（先生「どうぞ」）」のような括弧書きは相手の返事の想定なので、台詞にしない
+    const say = /^[（(]/.test(body) ? null : /^([^「」\s]{1,12})「(.+?)」?$/.exec(body);
+    if (say) {
+      cur.lines.push({ kind: 'say', who: say[1], text: clean(say[2]).slice(0, MAX_LEN) });
+      openWho = /」$/.test(body) ? null : say[1]; // 閉じていなければ、次の行も同じ台詞の続き
+    } else if (openWho) {
+      // 改行で分かれた台詞の続き（閉じかっこの行まで）
+      cur.lines.push({ kind: 'say', who: openWho, text: clean(body.replace(/」$/, '')).slice(0, MAX_LEN) });
+      if (/」$/.test(body)) openWho = null;
+    } else cur.lines.push({ kind: 'note', text: clean(body.replace(/\*\*/g, '')).slice(0, MAX_LEN) });
   }
   return sections;
 }
