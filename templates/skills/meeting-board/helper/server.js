@@ -240,6 +240,34 @@ async function main() {
   app.port = server.address().port;
   const url = 'http://127.0.0.1:' + app.port + '/';
 
+  // 止める合図は、URL を知らせる前から受ける。知らせたあとで受け始めると、その間に届いた SIGTERM は
+  // ハンドラが無いまま強制終了になる（CI の遅い機械で、試験がこの隙間に当たってたまに落ちた）
+  let replayHandle = null;
+  let finish = null;
+  const stopped = new Promise(function (resolve) {
+    finish = resolve;
+  });
+  let closing = false;
+  const stop = function () {
+    if (closing) return;
+    closing = true;
+    if (replayHandle) replayHandle.stop();
+    app.shutdown();
+    server.close(function () { finish(); });
+    setTimeout(finish, 1500).unref();
+  };
+  process.on('SIGINT', stop);
+  process.on('SIGTERM', stop);
+  if (process.platform === 'win32') process.on('SIGBREAK', stop); // Ctrl+Break
+  // 試験などで IPC つきで起動されたときは {type:'stop'} の合図でも同じ道で終わる。
+  // Windows の Node は子への SIGTERM を強制終了にする（ハンドラが走らない）ため、どの OS でも
+  // 同じ「きれいな終了」を通せるようにしてある。通常の起動（start.cmd）では IPC が無いので何も起きない
+  if (typeof process.send === 'function') {
+    process.on('message', function (m) {
+      if (m && m.type === 'stop') stop();
+    });
+  }
+
   await app.runSelfCheck({
     listenInfo: { name: 'ポート', ok: true, detail: app.port + ' 番で待ち受け中（この PC の中だけ）' },
     withVersion: false,
@@ -271,7 +299,6 @@ async function main() {
 
   app.startLoop();
 
-  let replayHandle = null;
   if (replayLines) {
     const entries = toEntries(replayLines, Date.now());
     app.replay = { active: true, index: 0, total: entries.length };
@@ -296,29 +323,8 @@ async function main() {
     });
   }
 
-  // 終了処理
-  await new Promise(function (resolve) {
-    let closing = false;
-    const stop = function () {
-      if (closing) return;
-      closing = true;
-      if (replayHandle) replayHandle.stop();
-      app.shutdown();
-      server.close(function () { resolve(); });
-      setTimeout(resolve, 1500).unref();
-    };
-    process.on('SIGINT', stop);
-    process.on('SIGTERM', stop);
-    if (process.platform === 'win32') process.on('SIGBREAK', stop); // Ctrl+Break
-    // 試験などで IPC つきで起動されたときは {type:'stop'} の合図でも同じ道で終わる。
-    // Windows の Node は子への SIGTERM を強制終了にする（ハンドラが走らない）ため、どの OS でも
-    // 同じ「きれいな終了」を通せるようにしてある。通常の起動（start.cmd）では IPC が無いので何も起きない
-    if (typeof process.send === 'function') {
-      process.on('message', function (m) {
-        if (m && m.type === 'stop') stop();
-      });
-    }
-  });
+  // 終了処理（止める合図を待つ）
+  await stopped;
   return 0;
 }
 
