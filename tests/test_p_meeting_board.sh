@@ -36,7 +36,7 @@ for p_f in SKILL.md README.md start.cmd start.sh .gitattributes data/.gitignore 
            helper/lib/board.js helper/lib/minutes.js helper/lib/notes.js helper/lib/importers.js \
            sample/sample_transcript.txt sample/sample_notes.md \
            tests/fixtures/claude_stub.js tests/fixtures/support.js \
-           tests/run.js tests/e2e/meet_fixture.html tests/e2e/run_e2e.js; do
+           tests/run.js tests/e2e/meet_fixture.html tests/e2e/run_e2e.js tests/eval/score_board.js; do
   assert_file "P1: $p_f ships" "$P_SKILL/$p_f"
 done
 p_ntests="$(find "$P_SKILL/tests" -maxdepth 1 -name '*.test.js' | wc -l | tr -d ' ')"
