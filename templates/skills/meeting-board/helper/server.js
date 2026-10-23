@@ -22,7 +22,8 @@ const { spawn } = require('child_process');
 const { parseArgs, USAGE } = require('./lib/args');
 const { MeetingBoardApp } = require('./lib/app');
 const { listen, probeExisting } = require('./lib/httpserver');
-const { parseReplayTimed, toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/replay');
+const { toEntries, startReplay, autoSpeed, replaySeconds } = require('./lib/replay');
+const { importTranscript } = require('./lib/importers');
 const { boardToMarkdown, transcriptInfo } = require('./lib/minutes');
 
 const VERSION = '0.2.0';
@@ -141,16 +142,20 @@ async function main() {
   }
   let replayLines = null;
   if (opts.replay) {
+    let imported;
     try {
-      replayLines = parseReplayTimed(fs.readFileSync(path.resolve(opts.replay), 'utf8'));
+      imported = importTranscript(fs.readFileSync(path.resolve(opts.replay), 'utf8'), opts.replay);
     } catch (e) {
       console.error('--replay のファイルを読めませんでした（' + opts.replay + '）: ' + e.message);
       return 2;
     }
-    if (replayLines.length === 0) {
-      console.error('--replay のファイルに「話者：本文」の行がありません: ' + opts.replay);
+    if (imported.format === 'unknown' || imported.lines.length === 0) {
+      console.error('--replay のファイルを読めませんでした: ' + opts.replay);
+      console.error('  ' + imported.note);
       return 2;
     }
+    replayLines = imported.lines;
+    say('--replay: ' + imported.note);
   }
 
   const app = new MeetingBoardApp({
