@@ -125,6 +125,14 @@ class Transcript {
     return n;
   }
 
+  /** entries の from 番目から後で、話者が替わった回数（前倒しの整理のきっかけ） */
+  speakerTurnsSince(from) {
+    let n = 0;
+    const start = Math.max(1, from || 0);
+    for (let i = start; i < this.entries.length; i++) if (this.entries[i].speaker !== this.entries[i - 1].speaker) n += 1;
+    return n;
+  }
+
   totalChars() {
     let n = 0;
     for (const e of this.entries) n += e.text.length;

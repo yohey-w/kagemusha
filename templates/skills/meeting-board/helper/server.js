@@ -5,6 +5,7 @@
 //
 //   node helper/server.js [--port 47431] [--interval 60] [--model sonnet] [--open]
 //                         [--notes ファイル] [--replay ファイル [--speed auto]] [--once] [--data-dir フォルダ] [--me 名前]
+//                         [--mode diff|full]
 //   node helper/server.js --minutes <会議フォルダ | board.json> [--out ファイル]   議事録の素（Markdown）を書き出す
 
 // 古い Node でも、ここまでは読めるように古い構文だけで書いてある（18 未満なら理由を出して終わる）
@@ -162,6 +163,7 @@ async function main() {
     boardHtmlPath: path.join(HELPER_DIR, 'board.html'),
     notes: notes,
     me: opts.me,
+    mode: opts.mode,
     log: function (m) {
       if (process.env.MEETING_BOARD_DEBUG) console.error('[debug] ' + m);
     },
@@ -178,9 +180,17 @@ async function main() {
     await app.runSelfCheck({ listenInfo: null, withVersion: false });
     for (const c of app.selfCheck) say(formatCheck(c));
     const base = Date.now();
-    for (const e of toEntries(replayLines, base)) app.transcript.upsert(e, Date.now());
+    const all = toEntries(replayLines, base);
+    // --mode diff: 前 6 割で全体の整理 → 残りで差分の整理（差分の速さと形を 1 回で確かめるため）
+    const split = opts.mode === 'diff' && all.length >= 4 ? Math.ceil(all.length * 0.6) : all.length;
+    for (const e of all.slice(0, split)) app.transcript.upsert(e, Date.now());
     say('字幕 ' + app.transcript.entries.length + ' 行を読み込みました。claude に整理を頼みます（しばらくかかります）...');
-    const r = await app.runUpdate('once');
+    let r = await app.runUpdate('once');
+    if (r.ok && split < all.length) {
+      for (const e of all.slice(split)) app.transcript.upsert(e, Date.now());
+      say('残りの ' + (all.length - split) + ' 行で、差分の整理を頼みます...');
+      r = await app.runUpdate('once-diff');
+    }
     app.shutdown();
     if (!r.ok) {
       console.error('整理に失敗しました: ' + r.message);

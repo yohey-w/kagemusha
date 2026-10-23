@@ -6,7 +6,7 @@ const path = require('node:path');
 
 const HELPER = path.join(__dirname, '..', 'helper');
 const { Transcript, splitLongText } = require(path.join(HELPER, 'lib', 'transcript.js'));
-const { buildWindow, buildPrompt, shouldUpdate, WHOLE_LIMIT, OVERLAP_CHARS } = require(path.join(HELPER, 'lib', 'prompt.js'));
+const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate, WHOLE_LIMIT, OVERLAP_CHARS, DIFF_OVERLAP_CHARS } = require(path.join(HELPER, 'lib', 'prompt.js'));
 const { parseReplayText, parseReplayTimed, toEntries, autoSpeed, replaySeconds, replayDelays } = require(path.join(HELPER, 'lib', 'replay.js'));
 const { parseArgs } = require(path.join(HELPER, 'lib', 'args.js'));
 
@@ -182,6 +182,40 @@ test('shouldUpdate: 120 字以上かつ前回の終わりから 20 秒、また�
   assert.equal(go({ newChars: 0, notesDirty: true, hasTranscript: false, lastEndAt: 0 }), null);
 });
 
+test('shouldUpdate（差分の整理の前倒し）: minGapMs があれば、話者の交代 3 回＋80 字、または 120 字で 8 秒から始める', () => {
+  const base = { inFlight: false, now: 100000, lastEndAt: 100000 - 8000, blockedUntil: 0, newChars: 0, intervalMs: 60000, notesDirty: false, hasTranscript: true, minGapMs: 8000 };
+  const go = (o) => shouldUpdate(Object.assign({}, base, o));
+  assert.equal(go({ newChars: 80, speakerTurns: 3 }), 'turns');
+  assert.equal(go({ newChars: 79, speakerTurns: 5 }), null);
+  assert.equal(go({ newChars: 80, speakerTurns: 2 }), null);
+  assert.equal(go({ newChars: 120 }), 'chars', '120 字なら 8 秒で');
+  assert.equal(go({ newChars: 500, lastEndAt: 100000 - 7999 }), null, '8 秒に満たない');
+  assert.equal(go({ newChars: 500, minGapMs: 0 }), null, 'minGapMs が無ければ今までどおり 20 秒待つ');
+  assert.equal(go({ newChars: 500, speakerTurns: 9, inFlight: true }), null);
+});
+
+test('buildWindowDiff: 前回より後の行だけ＋手前に約 800 字。前回が無ければ全体', () => {
+  const tr = new Transcript();
+  for (let i = 0; i < 60; i++) tr.upsert(entry(i, '山田', String(i).padStart(3, '0') + 'あ'.repeat(97)), T0);
+  const lines = tr.lines('');
+  const w = buildWindowDiff(lines, 50);
+  assert.equal(w.range, '前回より後だけ');
+  assert.equal(w.lines[w.lines.length - 1].text, lines[59].text);
+  const idx = lines.findIndex((l) => l.text === w.lines[0].text);
+  const overlap = lines.slice(idx, 49).reduce((n, l) => n + l.text.length + 1, 0);
+  assert.ok(overlap >= DIFF_OVERLAP_CHARS && overlap < DIFF_OVERLAP_CHARS + 120, '重なり ' + overlap);
+  assert.equal(buildWindowDiff(lines, 0).range, '全部');
+  assert.equal(buildWindowDiff(lines, 999).lines[buildWindowDiff(lines, 999).lines.length - 1].text, lines[59].text, '行が減っても越えない');
+});
+
+test('Transcript.speakerTurnsSince: 話者が替わった回数', () => {
+  const tr = new Transcript();
+  ['山田', '山田', '佐々木', '山田', '佐々木'].forEach((sp, i) => tr.upsert(entry(i, sp, '発言' + i), T0));
+  assert.equal(tr.speakerTurnsSince(0), 3);
+  assert.equal(tr.speakerTurnsSince(3), 2);
+  assert.equal(tr.speakerTurnsSince(5), 0);
+});
+
 test('parseReplayText: 「話者：本文」「話者: 本文」と先頭の [HH:MM] を読み、それ以外の行は読み飛ばす', () => {
   const text = [
     '# コメント',
@@ -257,6 +291,9 @@ test('parseArgs: 既定値・値つきオプション・誤り', () => {
   assert.equal(parseArgs([]).opts.me, null);
   assert.equal(parseArgs([]).opts.speed, 'auto', '再生の速さの既定は auto');
   assert.equal(parseArgs(['--speed', 'auto']).opts.speed, 'auto');
+  assert.equal(parseArgs(['--mode', 'full']).opts.mode, 'full');
+  assert.equal(parseArgs([]).opts.mode, null);
+  assert.ok(parseArgs(['--mode', 'fast']).errors.length > 0);
   assert.ok(parseArgs(['--speed', 'abc']).errors.length > 0);
   assert.ok(parseArgs(['--me', '  ']).errors.length > 0);
 });

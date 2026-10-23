@@ -230,3 +230,75 @@ test('人が直した状態: claude より勝つ。次の一手と言い忘れ�
   assert.equal(back.checklist[1].state, 'open');
   assert.deepEqual(toPromptBoard(o).checklist[0], { id: 'q1', state: 'done', owner: '', evidence: '', by_user: true }, '直した印は claude にも渡す');
 });
+
+// ── 差分の整理（f） ──────────────────────────────────────────
+const { mergePatch, detailTopicIds } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+
+function base3() {
+  return v2({
+    topics: [
+      topic('現状の確認', { points: [{ speaker: '佐々木', text: '締めに3日' }], numbers: ['150人'] }),
+      topic('候補2社の費用', { points: [{ speaker: '佐々木', text: 'A社は400円' }] }),
+      topic('切り替えの時期', { current: true, points: [{ speaker: '佐々木', text: '4月は手一杯' }] }),
+    ],
+    checklist: [{ id: 'q2', state: 'done', evidence: '400円' }],
+    next_action: { text: '解約の期限を聞く', ref: 'q3' },
+  });
+}
+
+test('差分: 中身まで渡すのは「いま」とうしろ 2 つ。ほかは題名・id・見出しだけ', () => {
+  const b = v2({ topics: [topic('一'), topic('二', { current: true }), topic('三'), topic('四'), topic('五')] });
+  assert.deepEqual([...detailTopicIds(b)].sort(), ['t2', 't4', 't5']);
+  const p = toPromptBoard(b, { detailIds: detailTopicIds(b) });
+  assert.deepEqual(Object.keys(p.topics[0]), ['title', 'id', 'headline', 'current']);
+  assert.ok('points' in p.topics[1]);
+});
+
+test('差分: 書かれた話題は id で置き換え、新しい話題は後ろ、書かれない話題・項目は前回のまま', () => {
+  const prev = base3();
+  const raw = mergePatch(prev, {
+    mode: 'patch',
+    topics: [
+      { title: '別名にしても', id: 't3', current: true, points: [{ speaker: '佐々木', text: '4月は手一杯' }, { speaker: '佐々木', text: '5月の連休明けが安全' }] },
+      { title: 'スマホ打刻', id: '', points: [{ speaker: '佐々木', text: '規程を確認します' }], todos: [{ who: '佐々木', what: '規程の確認', ref: 'q4' }] },
+    ],
+    current_id: '',
+    checklist: [{ id: 'q3', state: 'done', evidence: '2か月前（佐々木）' }],
+    open_questions: ['延長は割増か'],
+    next_action: { text: '延長の費用を聞く', ref: '' },
+    warnings: [],
+    status: '順調',
+  });
+  const b = normalizeBoardV2(raw, { hasNotes: true, spec: SPEC, prev }).board;
+  assert.deepEqual(b.topics.map((t) => [t.id, t.title, t.current]), [
+    ['t1', '現状の確認', false],
+    ['t2', '候補2社の費用', false],
+    ['t3', '切り替えの時期', true],
+    ['t4', 'スマホ打刻', false],
+  ]);
+  assert.equal(b.topics[0].numbers[0], '150人', '書かれなかった話題は前回のまま');
+  assert.equal(b.topics[2].points.length, 2);
+  assert.deepEqual(b.checklist.map((c) => c.state), ['open', 'done', 'done', 'deferred'], 'q2 は前回の済のまま・q3 は差分で済・q4 は宿題で持ち帰り');
+  assert.deepEqual(b.open_questions, ['延長は割増か']);
+  assert.equal(b.next_action.text, '延長の費用を聞く');
+});
+
+test('差分: 中身を省いて渡した話題に続きが来たら、要点を足す（消さない）。いまの話題は current_id', () => {
+  const prev = base3();
+  const raw = mergePatch(prev, { mode: 'patch', topics: [{ id: 't1', headline: '締めは3日→1日へ', points: [{ speaker: '佐々木', text: '打刻漏れも多い' }] }], current_id: 't1' }, { compactIds: new Set(['t1']) });
+  const b = normalizeBoardV2(raw, { hasNotes: true, spec: SPEC, prev }).board;
+  assert.deepEqual(b.topics[0].points.map((p) => p.text), ['締めに3日', '打刻漏れも多い']);
+  assert.deepEqual(b.topics[0].numbers, ['150人']);
+  assert.equal(b.topics[0].headline, '締めは3日→1日へ');
+  assert.deepEqual(b.topics.map((t) => t.current), [true, false, false]);
+  assert.equal(b.next_action.text, '解約の期限を聞く', '次の一手が来なければ、claude の前回の一手を残す');
+});
+
+test('差分: 形がおかしければ null（全体の整理に戻す）', () => {
+  const prev = base3();
+  assert.equal(mergePatch(prev, null), null);
+  assert.equal(mergePatch(prev, { mode: 'patch', topics: 'x' }), null);
+  assert.equal(mergePatch(prev, { mode: 'patch', checklist: {} }), null);
+  assert.equal(mergePatch(null, { mode: 'patch' }), null);
+  assert.ok(mergePatch(prev, { mode: 'patch' }), '何も変わらない差分はよい');
+});

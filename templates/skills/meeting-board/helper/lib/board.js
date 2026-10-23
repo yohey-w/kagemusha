@@ -341,19 +341,24 @@ function applyOverrides(board, overrides, ctx) {
  * 【前回までの整理】として claude に渡す形。ヘルパーだけが使う欄（by・users・schema など）は渡さない。
  * topics を先頭、各話題は title を先頭にする（JSON の並びは入れた順）
  */
-function toPromptBoard(board) {
+function toPromptBoard(board, opts) {
   if (!isObj(board)) return board;
+  const detail = opts && opts.detailIds ? opts.detailIds : null; // 差分のときは、この id の話題だけ中身まで渡す
   const out = {
-    topics: arr(board.topics).map((t) => ({
-      title: t.title,
-      id: t.id,
-      headline: t.headline,
-      current: t.current,
-      points: t.points,
-      decisions: t.decisions,
-      todos: t.todos,
-      numbers: t.numbers,
-    })),
+    topics: arr(board.topics).map((t) =>
+      detail && !detail.has(t.id)
+        ? { title: t.title, id: t.id, headline: t.headline, current: t.current }
+        : {
+            title: t.title,
+            id: t.id,
+            headline: t.headline,
+            current: t.current,
+            points: t.points,
+            decisions: t.decisions,
+            todos: t.todos,
+            numbers: t.numbers,
+          }
+    ),
     open_questions: arr(board.open_questions),
     checklist: arr(board.checklist).map((x) => {
       if (!x.kind) return x;
@@ -372,7 +377,89 @@ function toPromptBoard(board) {
   return out;
 }
 
+/** 差分の整理で中身まで渡す話題: いまの話題と、うしろ 2 つ */
+function detailTopicIds(board) {
+  const topics = arr(board && board.topics);
+  const ids = new Set(topics.slice(-2).map((t) => t.id));
+  const cur = topics.find((t) => t.current);
+  if (cur) ids.add(cur.id);
+  return ids;
+}
+
+function sameText(a, b) {
+  return normText(isObj(a) ? a.text || a.what : a) === normText(isObj(b) ? b.text || b.what : b);
+}
+function appendNew(list, more) {
+  const out = arr(list).slice();
+  for (const x of arr(more)) if (!out.some((y) => sameText(x, y))) out.push(x);
+  return out;
+}
+
+/**
+ * 差分の返事（mode: "patch"）を、前回のボードに重ねて「全体を返したときと同じ形」にする（このあと normalizeBoardV2 に通す）。
+ *   ・書かれた話題は id で置き換える（中身を省いて渡した話題は、要点・決定・宿題・数字を足す）。id が無い・知らない話題は後ろに足す
+ *   ・書かれなかった話題・聞くことの項目は前回のまま
+ *   ・open_questions・warnings・cards・next_action・status は、返ってきたものが「いまの全部」
+ * 形がおかしければ null（呼び出し側は全体の整理に戻す）
+ */
+function mergePatch(prev, patch, opts) {
+  if (!isObj(prev) || !isObj(patch)) return null;
+  if (patch.topics !== undefined && !Array.isArray(patch.topics)) return null;
+  if (patch.checklist !== undefined && !Array.isArray(patch.checklist)) return null;
+  const compact = opts && opts.compactIds ? opts.compactIds : new Set();
+  const topics = arr(prev.topics).map((t) => Object.assign({}, t));
+  for (const t of arr(patch.topics).filter(isObj)) {
+    const id = str(t.id);
+    const i = id ? topics.findIndex((x) => x.id === id) : -1;
+    if (i < 0) {
+      topics.push(Object.assign({}, t, { id: '' }));
+      continue;
+    }
+    const old = topics[i];
+    if (compact.has(id)) {
+      topics[i] = Object.assign({}, old, {
+        headline: str(t.headline) || old.headline,
+        current: t.current === true,
+        points: appendNew(old.points, t.points),
+        decisions: appendNew(old.decisions, t.decisions),
+        todos: appendNew(old.todos, t.todos),
+        numbers: appendNew(old.numbers, t.numbers),
+      });
+    } else {
+      // 書かれなかった欄は前回のまま（中身はその話題の分を全部書く約束だが、落としても消さない）
+      const fields = {};
+      for (const k of Object.keys(t)) if (t[k] !== undefined && t[k] !== null) fields[k] = t[k];
+      topics[i] = Object.assign({}, old, fields, { id, title: old.title });
+    }
+  }
+  // いまの話題: current_id があればそれ。無ければ書かれた話題の current。どれも無ければ前回のまま
+  const curId = str(patch.current_id);
+  const marked = arr(patch.topics).filter(isObj).some((t) => t.current === true);
+  if (curId && topics.some((t) => t.id === curId)) topics.forEach((t) => (t.current = t.id === curId));
+  else if (marked) {
+    const last = topics.map((t, i) => (t.current === true ? i : -1)).filter((i) => i >= 0).pop();
+    topics.forEach((t, i) => (t.current = i === last));
+  }
+  const checklist = arr(prev.checklist).map((c) => {
+    const u = arr(patch.checklist).filter(isObj).find((x) => str(x.id) === c.id);
+    return u ? Object.assign({ id: c.id, item: c.item }, u) : { id: c.id, item: c.item, state: c.state, owner: c.owner, evidence: c.evidence };
+  });
+  const pick = (k) => (patch[k] !== undefined ? patch[k] : prev[k]);
+  return {
+    topics,
+    open_questions: pick('open_questions'),
+    checklist,
+    next_action: patch.next_action !== undefined ? patch.next_action : prev.next_action && prev.next_action.by === 'llm' ? prev.next_action : null,
+    warnings: arr(patch.warnings),
+    status: pick('status'),
+    conflicts: arr(patch.conflicts),
+    cards: pick('cards'),
+  };
+}
+
 module.exports = {
+  mergePatch,
+  detailTopicIds,
   normalizeBoardV2,
   applyOverrides,
   toPromptBoard,

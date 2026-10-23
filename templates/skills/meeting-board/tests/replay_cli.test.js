@@ -69,6 +69,27 @@ test('--once --me: 使う人の名前と、事前メモの表・こちらの理�
   }
 });
 
+test('--once --mode diff: 前 6 割で全体 → 残りで差分の 2 回。--mode なしの --once は全体 1 回のまま', () => {
+  const dir = S.tmpDir();
+  const log = path.join(dir, 'calls.jsonl');
+  try {
+    const r = runCli(['--replay', SAMPLE_TX, '--notes', SAMPLE_NOTES, '--mode', 'diff', '--once', '--data-dir', dir, '--port', '0'], { STUB_LOG: log });
+    assert.equal(r.status, 0, r.stderr);
+    JSON.parse(r.stdout);
+    const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].stdin.split('【字幕】\n')[1].trim().split('\n').length, 35, '58 行の 6 割');
+    assert.ok(calls[1].stdin.includes('## 出力（差分）'));
+    assert.match(calls[1].stdin, /佐々木：お疲れさまでした。/);
+    assert.match(r.stderr, /残りの 23 行で、差分の整理を頼みます/);
+    const sessions = fs.readdirSync(dir).filter((d) => /^\d{4}-/.test(d));
+    const rows = fs.readFileSync(path.join(dir, sessions[0], 'updates.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(rows.map((x) => x.mode), ['full', 'diff']);
+  } finally {
+    S.rmDir(dir);
+  }
+});
+
 test('--once: 整理に失敗したら標準出力は空、終了コード 1、理由は標準エラーに日本語で', () => {
   const dir = S.tmpDir();
   try {

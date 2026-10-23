@@ -12,9 +12,9 @@ const os = require('os');
 
 const { Store } = require('./store');
 const { Transcript } = require('./transcript');
-const { buildWindow, buildPrompt, shouldUpdate } = require('./prompt');
+const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./prompt');
 const { extractJsonObject } = require('./extract');
-const { normalizeBoardV2, toPromptBoard, applyOverrides } = require('./board');
+const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
 const { parseNotes } = require('./notes');
 const { resolveClaude, callClaude, claudeVersion } = require('./claude');
 const { buildDiagText } = require('./diag');
@@ -39,6 +39,13 @@ class MeetingBoardApp {
     this.warn = o.warn || (() => {});
     this.env = o.env || process.env;
     this.promptMd = fs.readFileSync(o.promptPath, 'utf8');
+    // 差分の整理（2 回目から「変わったところだけ」を返してもらう）。'full' なら毎回全体
+    this.mode = o.mode === 'full' ? 'full' : 'diff';
+    const patchPath = o.patchPromptPath || require('path').join(require('path').dirname(o.promptPath), 'prompt_patch.md');
+    this.patchMd = this.mode === 'diff' ? fs.readFileSync(patchPath, 'utf8') : '';
+    this.fullEvery = o.fullEvery || 8; // 差分をこの回数続けたら、1 回は全体でまとめ直す
+    this.fullEveryMs = o.fullEveryMs || 600000; // または前の全体から 10 分たったら
+    this.minGapMs = this.mode === 'diff' ? o.minGapMs || 8000 : 0; // 前倒しの整理の最短の間
     this.boardHtmlPath = o.boardHtmlPath;
     this.boardCorePath = o.boardCorePath || null;
     this.me = o.me ? String(o.me).replace(/\s+/g, ' ').trim().slice(0, MAX_NAME_LEN) : ''; // --me（字幕に出る自分の名前）
@@ -88,6 +95,11 @@ class MeetingBoardApp {
     this.lastLineCount = 0;
     this.lastTotalChars = 0;
     this.lastTextRevision = 0;
+    this.lastEntryCount = 0;
+    this.diffsSinceFull = 0;
+    this.lastFullAt = now;
+    this.forceFull = false;
+    this.lastMode = null;
     // 帯の「最終更新・更新 N 回」と診断の件数は、会議ごとに数え直す
     this.updateCount = 0;
     this.failCount = 0;
@@ -248,6 +260,8 @@ class MeetingBoardApp {
         intervalMs: this.intervalMs,
         notesDirty: this.notesDirty,
         hasTranscript: this.transcript.entries.length > 0,
+        speakerTurns: this.transcript.speakerTurnsSince(this.lastEntryCount),
+        minGapMs: this.board ? this.minGapMs : 0,
       });
       // --replay が流し終わったあとは、間隔を待たずに最後の整理を行う
       if (
@@ -294,6 +308,16 @@ class MeetingBoardApp {
     let snapshotLines = this.lastLineCount;
     let snapshotChars = this.lastTotalChars;
     let snapshotTextRev = this.lastTextRevision;
+    let snapshotEntries = this.lastEntryCount;
+    // 差分にするか: 2 回目から。全体に戻すのは、まとめ直しの時期・再生の終わり・--once・事前メモが変わった・前の差分がおかしかったとき
+    const useDiff =
+      this.mode === 'diff' &&
+      !!this.board &&
+      !this.forceFull &&
+      ['once', 'flush', 'notes'].indexOf(reason) < 0 &&
+      this.diffsSinceFull < this.fullEvery &&
+      startedAt - this.lastFullAt < this.fullEveryMs;
+    const compactIds = new Set();
 
     // ここから先で何が起きても inFlight は必ず戻す（0.1 では窓の切り出しの例外で戻らず、
     // 以後ずっと整理が止まった）。例外は「内部エラー」として扱い、間をあけて次の回にやり直す
@@ -307,11 +331,20 @@ class MeetingBoardApp {
       snapshotLines = lines.length;
       snapshotChars = this.transcript.totalChars();
       snapshotTextRev = this.transcript.textRevision;
-      const win = buildWindow(lines, this.lastLineCount);
+      snapshotEntries = this.transcript.entries.length;
+      const win = useDiff ? buildWindowDiff(lines, this.lastLineCount) : buildWindow(lines, this.lastLineCount);
+      let prevBoard = null;
+      if (this.board) {
+        if (useDiff) {
+          const detail = detailTopicIds(this.board);
+          for (const t of this.board.topics) if (!detail.has(t.id)) compactIds.add(t.id);
+          prevBoard = toPromptBoard(this.board, { detailIds: detail });
+        } else prevBoard = toPromptBoard(this.board);
+      }
       const prompt = buildPrompt({
-        promptMd: this.promptMd,
+        promptMd: useDiff ? this.promptMd.replace(/\s+$/, '') + '\n\n' + this.patchMd : this.promptMd,
         notes: this.notes,
-        prevBoard: this.board ? toPromptBoard(this.board) : null,
+        prevBoard,
         range: win.range,
         lines: win.lines,
         users: this.usersLine(),
@@ -332,7 +365,7 @@ class MeetingBoardApp {
         meta = r.meta || null;
         outChars = typeof r.text === 'string' ? r.text.length : 0;
       }
-      outcome = this.digest(r, hasNotes);
+      outcome = this.digest(r, hasNotes, useDiff ? { compactIds } : null);
     } catch (e) {
       outcome = { ok: false, kind: 'internal', message: '内部エラー: ' + clip(errMsg(e), 160), detail: clip(errMsg(e), 160) };
     } finally {
@@ -360,6 +393,7 @@ class MeetingBoardApp {
           range,
           inChars,
           outChars,
+          mode: useDiff ? 'diff' : 'full',
           ms: this.lastDurationMs,
           claudeMs,
           costUsd,
@@ -373,6 +407,7 @@ class MeetingBoardApp {
     }
 
     if (!outcome.ok) {
+      if (useDiff && (outcome.kind === 'bad-json' || outcome.kind === 'bad-shape')) this.forceFull = true; // 次は全体で
       this.failCount += 1;
       this.consecutiveFails += 1;
       const backoff =
@@ -391,6 +426,14 @@ class MeetingBoardApp {
     this.lastLineCount = snapshotLines;
     this.lastTotalChars = snapshotChars;
     this.lastTextRevision = snapshotTextRev;
+    this.lastEntryCount = snapshotEntries;
+    this.lastMode = useDiff ? 'diff' : 'full';
+    if (useDiff) this.diffsSinceFull += 1;
+    else {
+      this.diffsSinceFull = 0;
+      this.lastFullAt = endedAt;
+      this.forceFull = false;
+    }
     if (this.notesVersion === notesVersion) this.notesDirty = false;
     this.safe(() => this.store.saveBoard(this.board));
     this.persist(true);
@@ -399,7 +442,7 @@ class MeetingBoardApp {
   }
 
   /** claude の返事 → ボード or エラー */
-  digest(r, hasNotes) {
+  digest(r, hasNotes, diff) {
     if (!r.ok) return r;
     const obj = extractJsonObject(r.text);
     if (!obj) {
@@ -410,7 +453,20 @@ class MeetingBoardApp {
         detail: 'JSON が見つからない返事（' + r.text.length + ' 文字）',
       };
     }
-    const norm = normalizeBoardV2(obj, { hasNotes, spec: this.notesSpec(), prev: this.board, users: this.userNames(), now: this.now() });
+    let raw = obj;
+    if (diff) {
+      // 差分の返事を前回のボードに重ねる（全体の形で返ってきても同じく重ねる。省いて渡した話題の中身を消さないため）
+      raw = mergePatch(this.board, obj, diff);
+      if (!raw) {
+        return {
+          ok: false,
+          kind: 'bad-shape',
+          message: 'claude の差分の返事の形が想定と違いました。前のボードを残し、次は全体で整理し直します。',
+          detail: 'patch の形が違う',
+        };
+      }
+    }
+    const norm = normalizeBoardV2(raw, { hasNotes, spec: this.notesSpec(), prev: this.board, users: this.userNames(), now: this.now() });
     if (!norm.ok) {
       return {
         ok: false,
@@ -484,6 +540,8 @@ class MeetingBoardApp {
           lastClaudeMs: this.lastClaudeMs,
           lastCostUsd: this.lastCostUsd,
           totalCostUsd: Math.round(this.totalCostUsd * 1e6) / 1e6,
+          mode: this.mode,
+          lastMode: this.lastMode,
           failures: this.failCount,
         },
         claude: {
