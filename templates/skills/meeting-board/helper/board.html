@@ -355,6 +355,19 @@ dialog textarea { min-height: 220px; resize: vertical; }
 
 <main id="meeting">
   <span id="staleNote" aria-live="polite"></span>
+  <section class="zone" id="zScript" hidden aria-labelledby="lbScript">
+    <div class="zhead"><span class="zlabel" id="lbScript">台本</span><span class="aside" id="scriptBy"></span><button class="btn" id="btnScriptAll" type="button">全体</button></div>
+    <p class="help">いまの台詞が青、次に言う台詞に線。言った字幕から位置を当てます（当たらないときは経過時間で節を選びます）。</p>
+    <div id="scriptTitle"></div>
+    <div id="scriptBox"><ol id="scriptList"></ol></div>
+    <div id="closingBox" hidden>
+      <div class="zhead"><span class="zlabel">最後に確かめる文</span><span class="aside" id="closingWhy"></span></div>
+      <div id="closing1"></div>
+      <div id="closingRest"></div>
+    </div>
+    <div class="zlabel" style="margin-top:8px">いまの字幕</div>
+    <div id="capNow"></div>
+  </section>
   <section class="zone" id="zNext" aria-labelledby="lbNext">
     <div class="zhead"><span class="zlabel" id="lbNext">次の一手</span></div>
     <p class="help" id="hpNext"></p>
@@ -371,19 +384,6 @@ dialog textarea { min-height: 220px; resize: vertical; }
     <div class="zhead"><span class="zlabel" id="lbList">伝え済み／まだ</span></div>
     <p class="help" id="hpList"></p>
     <ul id="itemList"></ul>
-  </section>
-  <section class="zone" id="zScript" hidden aria-labelledby="lbScript">
-    <div class="zhead"><span class="zlabel" id="lbScript">台本</span><span class="aside" id="scriptBy"></span><button class="btn" id="btnScriptAll" type="button">全体</button></div>
-    <p class="help">いまの台詞が青、次に言う台詞に線。言った字幕から位置を当てます（当たらないときは経過時間で節を選びます）。</p>
-    <div id="scriptTitle"></div>
-    <div id="scriptBox"><ol id="scriptList"></ol></div>
-    <div id="closingBox" hidden>
-      <div class="zhead"><span class="zlabel">最後に確かめる文</span><span class="aside" id="closingWhy"></span></div>
-      <div id="closing1"></div>
-      <div id="closingRest"></div>
-    </div>
-    <div class="zlabel" style="margin-top:8px">いまの字幕</div>
-    <div id="capNow"></div>
   </section>
 </main>
 
