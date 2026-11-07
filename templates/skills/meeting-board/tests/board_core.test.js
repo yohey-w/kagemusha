@@ -222,3 +222,28 @@ test('会議を終えたあとの案内: 押すまでは出さない。最中・
   assert.match(failedSave.lines.join('\n'), /議事録の素を保存できませんでした（EACCES）/);
   assert.match(failedSave.lines.join('\n'), /--minutes/);
 });
+
+// ── 一部（partial）: 0.5 までは「まだ」に見えていた（2026-11-07 の本番） ──
+test('一部: 会議中は「一部」の札で出し、あと○つに数える。順調の 1 行にも出る。押すと済。会議の前と後でも「一部」', () => {
+  const b = {
+    topics: [],
+    checklist: [
+      { id: 'q1', kind: 'ask', item: '月額は', state: 'done' },
+      { id: 'q2', kind: 'ask', item: '初期費用と保守費は', state: 'partial', evidence: '初期費用は出た／保守費は残り' },
+      { id: 'q3', kind: 'ask', item: '納期は', state: 'deferred', owner: '佐々木' },
+    ],
+  };
+  const m = V.meetingView(state(b));
+  assert.deepEqual(m.items.map((x) => [x.state, x.label]), [
+    ['done', '済'],
+    ['partial', '一部'],
+    ['deferred', '持ち帰り（佐々木）'],
+  ]);
+  assert.equal(m.left, 'あと1つ');
+  assert.equal(V.progressLine(b), '済 1・一部 1・持ち帰り 1・まだ 0');
+  assert.equal(V.nextState('partial'), 'done');
+  const a = V.afterView(state(b));
+  const p = a.checkOpen.find((c) => c.id === 'q2');
+  assert.deepEqual([p.state, p.label, p.evidence], ['partial', '一部', '初期費用は出た／保守費は残り']);
+  assert.equal(V.stateOf({ state: 'partial' }), 'partial');
+});

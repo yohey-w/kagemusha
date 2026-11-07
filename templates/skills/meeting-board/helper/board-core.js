@@ -47,13 +47,14 @@
 
   /** 聞くことの表の状態（0.1 の形 { done } も読む） */
   function stateOf(c) {
-    if (c && (c.state === 'done' || c.state === 'deferred' || c.state === 'open')) return c.state;
+    if (c && (c.state === 'done' || c.state === 'partial' || c.state === 'deferred' || c.state === 'open')) return c.state;
     return c && c.done === true ? 'done' : 'open';
   }
 
   function stateLabel(c) {
     var st = stateOf(c);
     if (st === 'done') return c.kind === 'tell' ? '伝え済み' : '済';
+    if (st === 'partial') return '一部'; // 答えの一部だけが出た（残りがある）
     if (st === 'deferred') return '持ち帰り' + (c.owner ? '（' + c.owner + '）' : '');
     return 'まだ';
   }
@@ -83,16 +84,16 @@
     if (s) return s;
     var list = arr(board && board.checklist);
     if (!list.length) return '';
-    var n = { done: 0, deferred: 0, open: 0 };
+    var n = { done: 0, partial: 0, deferred: 0, open: 0 };
     list.forEach(function (c) {
       n[stateOf(c)] += 1;
     });
-    return '済 ' + n.done + '・持ち帰り ' + n.deferred + '・まだ ' + n.open;
+    return '済 ' + n.done + (n.partial ? '・一部 ' + n.partial : '') + '・持ち帰り ' + n.deferred + '・まだ ' + n.open;
   }
 
-  /** 会議中の一覧の項目を押したときの次の状態（まだ → 済 → 持ち帰り → まだ） */
+  /** 会議中の一覧の項目を押したときの次の状態（まだ → 済 → 持ち帰り → まだ。一部は押すと済） */
   function nextState(state) {
-    return state === 'open' ? 'done' : state === 'done' ? 'deferred' : 'open';
+    return state === 'open' || state === 'partial' ? 'done' : state === 'done' ? 'deferred' : 'open';
   }
 
   var WARN_LABEL = { drift: '話がずれています', premise: '前提と違います', missing: '言い忘れそうです' };
@@ -149,7 +150,7 @@
       return { id: str(c.id), text: clip(stripEnd(c.item), ITEM_MAX), state: stt, label: stateLabel(c), next: !!(na && na.ref && na.ref === c.id), byUser: !!c.byUser };
     });
     var openCount = items.filter(function (x) {
-      return x.state === 'open';
+      return x.state === 'open' || x.state === 'partial'; // 一部も、まだ残りがある
     }).length;
     var deferredCount = items.filter(function (x) {
       return x.state === 'deferred';

@@ -302,3 +302,115 @@ test('差分: 形がおかしければ null（全体の整理に戻す）', () =
   assert.equal(mergePatch(null, { mode: 'patch' }), null);
   assert.ok(mergePatch(prev, { mode: 'patch' }), '何も変わらない差分はよい');
 });
+
+// ── 一部（partial）: 0.5 までは open に丸めて、画面ではずっと「まだ」だった（2026-11-07 の本番） ──
+test('一部（partial）: まだ・済とは別の状態として残る。言い方の揺れも寄せる', () => {
+  const { stateOf: so } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+  assert.equal(so({ state: 'partial' }), 'partial');
+  assert.equal(so({ state: 'Partial' }), 'partial');
+  assert.equal(so({ state: '一部' }), 'partial');
+  assert.equal(so({ state: '一部回答' }), 'partial');
+  const b = v2({ topics: [], checklist: [{ id: 'q2', state: 'partial', evidence: '月額は出た／初期費用は残り（佐々木）' }] });
+  const q2 = b.checklist.find((c) => c.id === 'q2');
+  assert.deepEqual([q2.state, q2.done, q2.evidence], ['partial', false, '月額は出た／初期費用は残り（佐々木）']);
+});
+
+test('一部（partial）: 一部は claude の気まぐれで「まだ」に戻さない。一部から済・持ち帰りへは進む。宿題に結びつけば持ち帰り', () => {
+  const first = v2({ topics: [], checklist: [{ id: 'q2', state: 'partial', evidence: '月額だけ' }, { id: 'q3', state: 'partial' }] });
+  const back = v2({ topics: [], checklist: [{ id: 'q2', state: 'open' }] }, first);
+  assert.equal(back.checklist.find((c) => c.id === 'q2').state, 'partial');
+  const fwd = v2(
+    { topics: [topic('解約', { todos: [{ who: '佐々木', what: '契約書を確認', when: '', ref: 'q3' }] })], checklist: [{ id: 'q2', state: 'done', evidence: '全部出た' }] },
+    first
+  );
+  assert.equal(fwd.checklist.find((c) => c.id === 'q2').state, 'done');
+  const q3 = fwd.checklist.find((c) => c.id === 'q3');
+  assert.deepEqual([q3.state, q3.owner], ['deferred', '佐々木']);
+});
+
+test('一部（partial）: 次の一手は、まだ・一部の項目から事前メモの順に選ぶ。一部を指す claude の提案は使う。一部の言い忘れの警告は残す', () => {
+  const b = v2({
+    topics: [],
+    checklist: [
+      { id: 'q1', state: 'done' },
+      { id: 'q2', state: 'partial', evidence: '月額だけ出た' },
+    ],
+  });
+  assert.equal(b.next_action.ref, 'q2');
+  assert.equal(b.next_action.by, 'rule');
+  assert.match(b.next_action.reason, /一部/);
+  const llm = v2({
+    topics: [],
+    checklist: [{ id: 'q2', state: 'partial' }],
+    next_action: { text: '初期費用も聞く', reason: '月額しか出ていない', ref: 'q2' },
+    warnings: [{ kind: 'missing', what: '初期費用がまだ', reply: '初期費用はいくらですか', ref: 'q2' }],
+  });
+  assert.equal(llm.next_action.by, 'llm');
+  assert.equal(llm.next_action.ref, 'q2');
+  assert.equal(llm.warnings.length, 1);
+});
+
+test('一部（partial）: 人が手で「一部」にもできる（POST /override の state）', () => {
+  const { applyOverrides } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+  const b = v2({ topics: [], checklist: [] });
+  const o = applyOverrides(b, { q3: { state: 'partial', owner: '' } }, { spec: SPEC });
+  const q3 = o.checklist.find((c) => c.id === 'q3');
+  assert.deepEqual([q3.state, q3.byUser, q3.done], ['partial', true, false]);
+});
+
+// ── 事前メモの貼り直し: 0.5 までは q1, q2… の位置で引き継ぎ、q8 に q7 の根拠が付いたまま出た（2026-11-07 の本番） ──
+test('貼り直し（remapToSpec）: 本文が同じ項目は状態・根拠・手で直した状態を引き継ぎ、対応の無い古い判定は捨てる。参照も付け替える', () => {
+  const { remapToSpec, applyOverrides } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+  const prev = v2({
+    topics: [topic('解約', { todos: [{ who: '佐々木', what: '契約書を確認', when: '', ref: 'q3' }] })],
+    checklist: [
+      { id: 'q2', state: 'done', evidence: '1人月350円（佐々木）' },
+      { id: 'q4', state: 'partial', evidence: '端末は出た／規程は残り' },
+    ],
+    next_action: { text: 'スマホ打刻の規程を聞く', ref: 'q4' },
+    warnings: [{ kind: 'premise', what: '5月に延期したい', reply: '4月1日の前提でした', ref: 'a1', speaker: '佐々木' }],
+  });
+  const board = applyOverrides(prev, { q1: { state: 'done', owner: '' } }, { spec: SPEC });
+  // 先頭に 1 つ足し、「解約の連絡は…」を消し、伝えることを聞くことの後ろへ
+  const NEW = parseNotes('自分：山田\n## 前回の決定\n- 前回の議事録を共有済み\n- 切り替えは4月1日\n## 今日聞くこと\n1. 担当者は誰か\n2. 月額はいくらか\n3. スマホ打刻のルールは\n## 今日伝えること\n- 予算の上限は150万円');
+  const r = remapToSpec(board, { q1: { state: 'done', owner: '' } }, SPEC, NEW);
+  assert.deepEqual(r.overrides, { q4: { state: 'done', owner: '' } }, '手で直した「予算の上限」は q1 → q4 へ');
+  const out = applyOverrides(r.board, r.overrides, { spec: NEW });
+  assert.deepEqual(out.checklist.map((c) => [c.id, c.item, c.state, c.evidence]), [
+    ['q1', '担当者は誰か', 'open', ''],
+    ['q2', '月額はいくらか', 'done', '1人月350円（佐々木）'],
+    ['q3', 'スマホ打刻のルールは', 'partial', '端末は出た／規程は残り'],
+    ['q4', '予算の上限は150万円', 'done', ''],
+  ]);
+  assert.equal(out.checklist[3].byUser, true);
+  assert.equal(out.topics[0].todos[0].ref, '', '消した項目（解約の連絡）を指す宿題の参照は外す');
+  assert.equal(out.next_action.ref, 'q3', '次の一手の参照も本文の同じ項目へ');
+  assert.equal(out.warnings[0].ref, 'a2', '前提の参照も付け替える（切り替えは4月1日: a1 → a2）');
+  assert.equal(board.checklist[0].id, 'q1', '元のボードは変えない');
+});
+
+test('貼り直し（remapToSpec）: 次の一手が消した項目を指していたら捨てて規則で作り直す。項目が読めなくなったら表は空。ボードが無くても落ちない', () => {
+  const { remapToSpec, applyOverrides } = require(path.join(S.HELPER_DIR, 'lib', 'board.js'));
+  const prev = v2({ topics: [], checklist: [], next_action: { text: '解約の連絡を聞く', ref: 'q3' }, warnings: [{ kind: 'missing', what: '解約', reply: '解約の連絡は？', ref: 'q3' }] });
+  const NEW = parseNotes('## 今日聞くこと\n- 月額はいくらか');
+  const r = remapToSpec(prev, {}, SPEC, NEW);
+  const out = applyOverrides(r.board, r.overrides, { spec: NEW });
+  assert.deepEqual(out.next_action && [out.next_action.ref, out.next_action.by], ['q1', 'rule']);
+  assert.deepEqual(out.warnings, []);
+  const empty = remapToSpec(prev, { q2: { state: 'done' } }, SPEC, parseNotes(''));
+  assert.deepEqual(empty.board.checklist, []);
+  assert.deepEqual(empty.overrides, {});
+  assert.deepEqual(remapToSpec(null, { q1: { state: 'done' } }, SPEC, SPEC), { board: null, overrides: { q1: { state: 'done' } } });
+});
+
+test('前回の判定は id と本文がそろったときだけ引き継ぐ（id が同じでも本文が違えば「まだ」から）', () => {
+  const prev = v2({ topics: [], checklist: [{ id: 'q3', state: 'done', evidence: '終了の2か月前（佐々木）' }] });
+  const NEW = parseNotes('自分：山田\n## 前回の決定\n- 切り替えは4月1日\n## 今日伝えること\n- 予算の上限は150万円\n## 今日聞くこと\n1. 月額はいくらか\n2. 初期費用はいくらか\n3. 解約の連絡はいつまでか');
+  const r = normalizeBoardV2({ topics: [], checklist: [] }, { hasNotes: true, spec: NEW, prev });
+  assert.deepEqual(r.board.checklist.map((c) => [c.id, c.state, c.evidence]), [
+    ['q1', 'open', ''],
+    ['q2', 'open', ''],
+    ['q3', 'open', ''],
+    ['q4', 'open', ''],
+  ]);
+});

@@ -16,7 +16,7 @@ const { Store } = require('./store');
 const { Transcript, SELF_TOKEN } = require('./transcript');
 const { buildWindow, buildWindowDiff, buildPrompt, shouldUpdate } = require('./prompt');
 const { extractJsonObject } = require('./extract');
-const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds } = require('./board');
+const { normalizeBoardV2, toPromptBoard, applyOverrides, mergePatch, detailTopicIds, remapToSpec } = require('./board');
 const { parseNotes } = require('./notes');
 const { boardToMarkdown, transcriptInfo } = require('./minutes');
 const { parseScript, locate, findClosingLine } = require('./script');
@@ -33,7 +33,7 @@ const BLOCKED_FOR_GOOD = Number.MAX_SAFE_INTEGER; // 古い claude: このプロ
 class MeetingBoardApp {
   constructor(options) {
     const o = options;
-    this.version = o.version || '0.5.0';
+    this.version = o.version || '0.6.0';
     this.port = o.port || 0;
     this.model = o.model || 'sonnet';
     this.intervalMs = (o.intervalSec || 60) * 1000;
@@ -67,6 +67,9 @@ class MeetingBoardApp {
 
     this.store = new Store(o.dataDir);
     this.settings = this.store.loadSettings();
+    // --me は、この起動のあいだの表示名にする（ボードの「表示名」にも出る）。保存はしない。
+    // ボードで名前を変えれば（POST /settings）そちらが勝ち、保存される。0.5 までは --me が GET /state の selfName に出なかった
+    if (this.me) this.settings.selfName = this.me;
     this.resolved = resolveClaude({ env: this.env });
     this.claudeState = {}; // callClaude が持ち回る（返事が来たら confirmed = true）
     this.claudeUnusable = ''; // 古くて安全のためのオプションを知らない claude のとき、その案内文（空なら問題なし）
@@ -197,10 +200,21 @@ class MeetingBoardApp {
   setNotes(text) {
     const t = String(text == null ? '' : text).slice(0, MAX_NOTES_LEN);
     if (t === this.notes) return;
+    const oldSpec = this.notesSpec();
     this.notes = t;
     this.notesVersion += 1;
     this.notesDirty = true;
     this.safe(() => this.store.saveNotes(t));
+    // 項目の id（q1, q2…）は事前メモの位置で振り直される。前の判定・根拠・手で直した状態は、本文が同じ項目へ付け替え、
+    // 対応の取れないものは捨てる（0.5 までは位置で引き継いで、q8 に q7 の根拠が付いたまま出た。2026-11-07 の本番）
+    const newSpec = this.notesSpec();
+    const moved = remapToSpec(this.board, this.overrides, oldSpec, newSpec);
+    this.overrides = moved.overrides;
+    this.safe(() => this.store.saveOverrides(this.overrides));
+    if (this.board) {
+      this.board = applyOverrides(moved.board, this.overrides, { spec: newSpec });
+      this.safe(() => this.store.saveBoard(this.board));
+    }
   }
 
   setSelfName(name) {
@@ -455,6 +469,10 @@ class MeetingBoardApp {
       // 呼び出しの最中に「新しい会議」が押された → 結果は捨てる
       return { ok: false, kind: 'stale', message: '新しい会議に切り替わったため捨てました' };
     }
+    if (outcome.ok && this.notesVersion !== notesVersion) {
+      // 呼び出しの最中に事前メモが貼り直された → 返事は古い項目の id で書かれているので捨てる（次は新しいメモで全体を整理し直す）
+      return { ok: false, kind: 'stale', message: '事前メモが変わったため捨てました' };
+    }
 
     if (!outcome.ok) {
       if (useDiff && (outcome.kind === 'bad-json' || outcome.kind === 'bad-shape')) this.forceFull = true; // 次は全体で
@@ -535,7 +553,7 @@ class MeetingBoardApp {
   }
 
   /**
-   * 人が聞くことの状態を直す（済／持ち帰り／まだ。'auto' で claude の判断に戻す）。
+   * 人が聞くことの状態を直す（済／一部／持ち帰り／まだ。'auto' で claude の判断に戻す）。
    * 戻り値: { ok:true, board } | { ok:false, status, error }
    */
   setOverride(id, state, owner) {
@@ -544,9 +562,9 @@ class MeetingBoardApp {
     if (this.board) for (const c of this.board.checklist || []) known.add(c.id);
     if (!known.has(key)) return { ok: false, status: 404, error: 'その項目は聞くことの表にありません' };
     if (state === 'auto') delete this.overrides[key];
-    else if (['done', 'deferred', 'open'].indexOf(state) >= 0) {
+    else if (['done', 'partial', 'deferred', 'open'].indexOf(state) >= 0) {
       this.overrides[key] = { state, owner: String(owner == null ? '' : owner).replace(/\s+/g, ' ').trim().slice(0, 40), at: this.now() };
-    } else return { ok: false, status: 400, error: 'state は done / deferred / open / auto のどれかです' };
+    } else return { ok: false, status: 400, error: 'state は done / partial / deferred / open / auto のどれかです' };
     this.safe(() => this.store.saveOverrides(this.overrides));
     if (this.board) {
       this.board = applyOverrides(this.board, this.overrides, { spec: this.notesSpec() });
@@ -613,7 +631,7 @@ class MeetingBoardApp {
       board: this.board,
       recent: this.transcript.recent(30, this.selfName()),
       notesPresent: !!this.notes.trim(),
-      selfName: this.settings.selfName || '',
+      selfName: this.settings.selfName || this.me || '',
     };
     // 台本は --script のときだけ（診断には入れない）
     if (this.scriptSections) out.script = { sections: this.scriptSections, pos: this.scriptPos || this.updateScriptPos(), closing: this.closingLine };
