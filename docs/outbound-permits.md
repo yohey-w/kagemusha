@@ -157,6 +157,12 @@ Measured 2026-11-13 on 2.1.323: with the guard file removed, a connector call we
 It does not close everything: a hook that exits 0 with output the host cannot parse still passes, and this kit sets no such key in its Codex configuration, so that half still fails open (whether Codex itself offers an equivalent was not checked).
 The guard itself denies malformed inputs and missing permit dependencies, but it cannot protect a call if the host never runs it.
 Therefore changes to a guard, the helper, setup, or a hook schema must pass [the complete test suite](../scripts/test.sh) before use.
+
+Where the CLI is started matters too.
+Claude Code reads `.claude/settings.json` from the directory it was started in: started in a subfolder of the repository, it finds none there and the guard is simply not registered.
+Measured 2026-11-14 on 2.1.323: from the repository root the guard ran before a connector call; from a subfolder it did not run and the call went through.
+Start the CLI at the repository root, or link the root's `.claude` into the subfolder (`ln -s ../../.claude projects/<name>/.claude`); the guard finds the project root from its own location, so it works through the link.
+Codex read the root's config from a subfolder in the same test (its date stamp arrived; the guard itself was not measured there).
 The implementation sources are [the Codex guard](../templates/codex/hooks/outbound_guard.sh), [the Claude Code guard](../templates/claude/hooks/outbound_guard.sh), and [the shared outbound_permit.py](../templates/hooks/outbound_permit.py).
 
 The Claude Code guard never answers `permissionDecision: "allow"`.
