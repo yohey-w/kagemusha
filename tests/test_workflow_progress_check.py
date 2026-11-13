@@ -136,6 +136,23 @@ class WorkflowProgressCliTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(result["error"], "JSON nesting exceeds parser capacity")
 
+    def test_nesting_limit_does_not_depend_on_the_parser(self):
+        # 64 levels in total pass; 65 are refused with the same message on every Python.
+        for lists, expected in ((63, 0), (64, 2)):
+            with self.subTest(lists=lists):
+                raw = (b'{"action":"review","review_key":"p:v:d:c","extra":'
+                       + b"[" * lists + b"0" + b"]" * lists + b"}")
+                code, result = self.run_cli(raw)
+                self.assertEqual(code, expected)
+                if expected:
+                    self.assertEqual(result["error"], "JSON nesting exceeds parser capacity")
+
+    def test_brackets_inside_strings_do_not_count_as_nesting(self):
+        raw = (b'{"action":"review","review_key":"p:v:d:c","extra":"'
+               + b"[{" * 500 + b'\\\"' + b'"}')
+        code, _ = self.run_cli(raw)
+        self.assertEqual(code, 0)
+
     def test_size_boundary(self):
         base = b'{"action":"review","review_key":"p:v:d:c","extra":""}'
         for count, expected in ((65536, 0), (65537, 2)):

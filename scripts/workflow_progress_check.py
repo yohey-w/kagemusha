@@ -10,6 +10,34 @@ import sys
 from pathlib import Path
 
 MAX_INPUT_BYTES = 65536
+# Depth is checked on the raw bytes before parsing, so the answer does not depend on
+# which Python runs it: older parsers raise RecursionError on deep nesting, newer ones
+# parse it. A small current-state record never needs more than a few levels.
+MAX_NESTING = 64
+
+
+def nesting_exceeds(raw, limit=MAX_NESTING):
+    """True if brackets/braces outside JSON strings nest deeper than `limit`."""
+    depth = 0
+    in_string = False
+    escaped = False
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:      # backslash
+                escaped = True
+            elif byte == 0x22:      # closing quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x5B, 0x7B):  # [ {
+            depth += 1
+            if depth > limit:
+                return True
+        elif byte in (0x5D, 0x7D):  # ] }
+            depth -= 1
+    return False
 
 
 def integer(data, key, default=0):
@@ -97,6 +125,8 @@ def main(argv=None):
             raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         if len(raw) > MAX_INPUT_BYTES:
             raise ValueError("input exceeds 64KiB; use a small current-state record")
+        if nesting_exceeds(raw):
+            raise RecursionError
         result = assess(json.loads(raw))
     except RecursionError:
         print(json.dumps({"error": "JSON nesting exceeds parser capacity",
