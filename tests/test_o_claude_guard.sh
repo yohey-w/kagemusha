@@ -728,6 +728,12 @@ assert_eq "O11: the guard's handler refuses when the guard itself fails" \
   "onFailure=block" "$O_ONFAIL"
 assert_grep "O11: …and the template says what that key does not close" \
   "WHAT IT DOES NOT CLOSE" "$O_SETTINGS"
+# Started in a subfolder, Claude Code reads <subfolder>/.claude/settings.json,
+# finds none, and the guard is not registered at all (measured 2026-11-14).
+# No key in this file can fix that — the file is not read — so the template
+# has to SAY it, where the person arming the guard will read it.
+assert_grep "O11: the template warns that a session started in a subfolder has no guard" \
+  "READS THIS FILE FROM THE DIRECTORY IT WAS STARTED IN" "$O_SETTINGS"
 
 # ─── O12. the guard reaches a worktree, or it does not exist there ─────────
 # A git worktree receives only TRACKED files, and the two files that ARM the
