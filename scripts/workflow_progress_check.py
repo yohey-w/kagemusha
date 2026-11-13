@@ -16,28 +16,44 @@ MAX_INPUT_BYTES = 65536
 MAX_NESTING = 64
 
 
-def nesting_exceeds(raw, limit=MAX_NESTING):
-    """True if brackets/braces outside JSON strings nest deeper than `limit`."""
+def nesting_exceeds(text, limit=MAX_NESTING):
+    """True if brackets/braces outside JSON strings nest deeper than `limit`.
+
+    Takes the decoded text (the same characters the parser will see), so the
+    count cannot disagree with the parse over the input's encoding.
+    """
     depth = 0
     in_string = False
     escaped = False
-    for byte in raw:
+    for char in text:
         if in_string:
             if escaped:
                 escaped = False
-            elif byte == 0x5C:      # backslash
+            elif char == "\\":
                 escaped = True
-            elif byte == 0x22:      # closing quote
+            elif char == '"':
                 in_string = False
-        elif byte == 0x22:
+        elif char == '"':
             in_string = True
-        elif byte in (0x5B, 0x7B):  # [ {
+        elif char in "[{":
             depth += 1
             if depth > limit:
                 return True
-        elif byte in (0x5D, 0x7D):  # ] }
+        elif char in "]}":
             depth -= 1
     return False
+
+
+def decode_input(raw):
+    """Accept UTF-8 only (a leading BOM is tolerated); refuse anything else.
+
+    json.loads() on bytes would also guess UTF-16/32, which the nesting check
+    above would then read differently from the parser.
+    """
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise ValueError("input must be UTF-8 JSON") from None
 
 
 def integer(data, key, default=0):
@@ -125,9 +141,10 @@ def main(argv=None):
             raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         if len(raw) > MAX_INPUT_BYTES:
             raise ValueError("input exceeds 64KiB; use a small current-state record")
-        if nesting_exceeds(raw):
+        text = decode_input(raw)
+        if nesting_exceeds(text):
             raise RecursionError
-        result = assess(json.loads(raw))
+        result = assess(json.loads(text))
     except RecursionError:
         print(json.dumps({"error": "JSON nesting exceeds parser capacity",
                           "permission_granted": False}))

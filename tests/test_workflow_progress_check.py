@@ -153,6 +153,28 @@ class WorkflowProgressCliTest(unittest.TestCase):
         code, _ = self.run_cli(raw)
         self.assertEqual(code, 0)
 
+    def test_only_utf8_is_accepted_so_the_nesting_check_reads_what_the_parser_reads(self):
+        # json.loads() on bytes also guesses UTF-16/32; the nesting check must not be bypassable that way.
+        deep = ('{"action":"review","review_key":"p:v:d:c","marker":"\u2200","deep":'
+                + "[" * 100 + "0" + "]" * 100 + "}")
+        shallow = '{"action":"review","review_key":"p:v:d:c","marker":"\u2200 [[[{{{"}'
+        for encoding in ("utf-16", "utf-16-le", "utf-32", "utf-32-be"):
+            for text in (deep, shallow):
+                with self.subTest(encoding=encoding, deep=text is deep):
+                    code, result = self.run_cli(text.encode(encoding))
+                    self.assertEqual(code, 2)
+                    if encoding in ("utf-16", "utf-32"):  # these start with a BOM, which is not valid UTF-8
+                        self.assertEqual(result["error"], "input must be UTF-8 JSON")
+                    self.assertFalse(result["permission_granted"])
+        code, result = self.run_cli(deep.encode("utf-8"))
+        self.assertEqual(code, 2)
+        self.assertEqual(result["error"], "JSON nesting exceeds parser capacity")
+        for raw in (shallow.encode("utf-8"), b"\xef\xbb\xbf" + shallow.encode("utf-8")):
+            with self.subTest(bom=raw.startswith(b"\xef")):
+                code, result = self.run_cli(raw)
+                self.assertEqual(code, 0)
+                self.assertFalse(result["permission_granted"])
+
     def test_size_boundary(self):
         base = b'{"action":"review","review_key":"p:v:d:c","extra":""}'
         for count, expected in ((65536, 0), (65537, 2)):
