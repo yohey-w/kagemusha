@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-# F. discipline scanner — scripts/discipline_scan.py + the shipped catalog.
+# F. discipline scanner + read-only workflow advice.
 #
 # The scanner exists to tell you whether a discipline you adopted is doing
 # anything. Two failure modes would make it worse than nothing, so both are
@@ -12,11 +12,13 @@
 #     is unobservable, so zero hits is not a signal).
 # Fixtures are synthetic JSONL written here from fixed strings — no real log
 # is read by the suite.
+# Workflow advice checks the small current-state record supplied by its caller;
+# it never grants permission or changes jobs. Its Python unit tests run here too.
 # ═══════════════════════════════════════════════════════════════════════════
 # shellcheck shell=bash
 # shellcheck disable=SC2154  # globals come from scripts/test.sh
 
-group "F. discipline scanner"
+group "F. discipline scanner & workflow advice"
 
 F_SCAN="$REPO_ROOT/scripts/discipline_scan.py"
 # The catalog the scan is EXERCISED with is a fixture, not the shipped example:
@@ -139,3 +141,9 @@ f_cat "disciplines:" "  - id: T5" "    type: trace" "    name: bad regex" \
       "    fire: '(unclosed'"
 assert_exit "F: a broken regex is rejected" 2 \
   python3 "$F_SCAN" --catalog "$TEST_TMP/f_cat.yaml" --dir "$F_LOGS"
+
+# Same unittest wiring as the Codex log adapter in group M.
+assert_file "F: the workflow progress check's tests are in the tree" \
+  "$REPO_ROOT/tests/test_workflow_progress_check.py"
+assert_ok "F: the workflow progress check's unit tests pass" \
+  env -C "$REPO_ROOT" python3 -m unittest tests.test_workflow_progress_check

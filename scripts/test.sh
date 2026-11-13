@@ -18,7 +18,7 @@
 #     run red instead of making it faster.
 #
 # Groups: A syntax/lint · B setup.sh · C leak guard · D .gitignore · E cron
-#         F discipline scanner · G distillation courier · H layer boundary
+#         F discipline scanner & workflow advice · G distillation courier · H layer boundary
 #         I community lane · J the first-ten-minutes demo · K README contract
 #         L meeting-copilot (the skill that gets edited during a live meeting)
 #         M two CLIs, one loop (Claude Code / Codex: scaffold, dispatch, argv)
@@ -42,7 +42,7 @@ TESTS_DIR="$REPO_ROOT/tests"
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
             i_community_lane j_demo k_readme l_meeting_copilot m_codex n_difficulty
             o_claude_guard p_meeting_board)
-MIN_ASSERTIONS=1720  # floor for a full run (currently 1776); raise it as you add tests
+MIN_ASSERTIONS=1725  # full-run floor; +5 (2 unit-test gates, 2 py_compile, 1 exec-bit check)
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }
