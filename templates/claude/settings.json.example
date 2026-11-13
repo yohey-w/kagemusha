@@ -40,10 +40,19 @@
     "    resolves against the directory the CLI was STARTED in, which under",
     "    cron is your home directory, and a hook that cannot be executed is a",
     "    hook that silently is not there.",
-    "  · THE HOST FAILS OPEN. A missing or unexecutable hook lets the call",
-    "    proceed with a non-blocking notice; unparseable stdout does the same.",
-    "    A broken guard and an absent guard look identical from outside, which",
-    "    is why tests/test_o_claude_guard.sh runs the script against synthetic",
+    "  · THE HOST FAILS OPEN BY DEFAULT, SO THIS ENTRY SAYS OTHERWISE. Without",
+    "    'onFailure', a hook that is missing, not executable, exits with a",
+    "    code other than 0 or 2, or times out lets the call proceed with a",
+    "    non-blocking notice. 'onFailure': 'block' turns each of those into a",
+    "    refusal; the documentation gives Claude Code 2.1.295 as the first",
+    "    version that has it. Measured 2026-11-13 on 2.1.323 with the guard",
+    "    file removed: without the key a connector call went through, with it",
+    "    the call was blocked and the reason named the missing script.",
+    "    WHAT IT DOES NOT CLOSE: a hook that exits 0 and prints something the",
+    "    host cannot parse still passes (measured the same day), and a CLI",
+    "    older than that version was not measured. A broken guard and an",
+    "    absent guard can still look identical from outside, which is why",
+    "    tests/test_o_claude_guard.sh runs the script against synthetic",
     "    payloads instead of reading it. Run ./scripts/test.sh after any edit.",
     "  · THE GUARD NEVER ANSWERS permissionDecision 'allow'. Claude Code",
     "    accepts it, and it is an ELEVATION: it approves the call and skips the",
@@ -77,7 +86,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/outbound_guard.sh"
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/outbound_guard.sh",
+            "onFailure": "block"
           }
         ]
       }

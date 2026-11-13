@@ -150,8 +150,11 @@ Codex needs no twin: its `slack_send_message` already carries `thread_ts` inside
 Gmail loses nothing by the same rule, because `send_message` threads by itself through `replyThreadId`.
 The installed Slack connector's read-only get/list/read/search operations remain available through an exact enumerated allowlist; all other operations in the Slack wire namespace fail closed.
 
-Both hook hosts fail open if the hook is missing, unreadable, or emits output the host rejects.
+Both hook hosts fail open by default if the hook is missing, unreadable, or emits output the host rejects.
 Claude Code's documentation is explicit about it: when the script path does not exist or is not executable, "the shell exits with a code like 127 … For most hook events, the action proceeds."
+On Claude Code the template now sets `"onFailure": "block"` on the guard's handler (the documentation gives 2.1.295 as the first version with the key).
+Measured 2026-11-13 on 2.1.323: with the guard file removed, a connector call went through without the key and was refused with it; a non-executable script, an exit code other than 0 or 2, and a timeout were refused too.
+It does not close everything: a hook that exits 0 with output the host cannot parse still passes, and the Codex half has no such key in this kit — it still fails open.
 The guard itself denies malformed inputs and missing permit dependencies, but it cannot protect a call if the host never runs it.
 Therefore changes to a guard, the helper, setup, or a hook schema must pass [the complete test suite](../scripts/test.sh) before use.
 The implementation sources are [the Codex guard](../templates/codex/hooks/outbound_guard.sh), [the Claude Code guard](../templates/claude/hooks/outbound_guard.sh), and [the shared outbound_permit.py](../templates/hooks/outbound_permit.py).
