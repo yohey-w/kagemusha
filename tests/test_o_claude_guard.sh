@@ -711,6 +711,23 @@ assert_grep_str "O11: …by the documented project-dir placeholder, not a relati
   'CLAUDE_PROJECT_DIR' "$O_HOOKS"
 assert_grep "O11: the template says the pass is never \"allow\"" \
   "permissionDecision" "$O_SETTINGS"
+# The host fails open by default: with the guard file missing, a connector call
+# went through (measured 2026-11-13, Claude Code 2.1.323). `onFailure: "block"`
+# on the guard's own handler is what turns a missing, crashed or timed-out
+# guard into a refusal, so the template must carry it on THAT handler.
+O_ONFAIL="$(O_S="$O_SETTINGS" python3 -c '
+import json, os
+d = json.load(open(os.environ["O_S"]))
+for group in d.get("hooks", {}).get("PreToolUse", []):
+    if group.get("matcher") != "mcp__.*":
+        continue
+    for handler in group.get("hooks", []):
+        if "outbound_guard.sh" in handler.get("command", ""):
+            print("onFailure=" + str(handler.get("onFailure")))')"
+assert_eq "O11: the guard's handler refuses when the guard itself fails" \
+  "onFailure=block" "$O_ONFAIL"
+assert_grep "O11: …and the template says what that key does not close" \
+  "WHAT IT DOES NOT CLOSE" "$O_SETTINGS"
 
 # ─── O12. the guard reaches a worktree, or it does not exist there ─────────
 # A git worktree receives only TRACKED files, and the two files that ARM the
