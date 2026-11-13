@@ -160,8 +160,9 @@ Therefore changes to a guard, the helper, setup, or a hook schema must pass [the
 
 Where the CLI is started matters too.
 Claude Code reads `.claude/settings.json` from the directory it was started in: started in a subfolder of the repository, it finds none there and the guard is simply not registered.
-Measured 2026-11-14 on 2.1.323: from the repository root the guard ran before a connector call; from a subfolder it did not run and the call went through.
-Start the CLI at the repository root, or link the root's `.claude` into the subfolder (`ln -s ../../.claude projects/<name>/.claude`); the guard finds the project root from its own location, so it works through the link.
+Measured 2026-11-14 on 2.1.323: from the repository root the guard ran before a read-only connector call; from a subfolder it did not run and that call went through.
+Start the CLI at the repository root, or link the root's `.claude` into the subfolder (from the repository root: `ln -s ../../.claude projects/<name>/.claude`); the guard finds the project root from its own location, so it works through the link.
+Match the `../../` to the subfolder's depth, do not run it where a `.claude` already exists (the link would be created inside it — merge the settings instead), and remember the link shares `settings.local.json` as well, so check that it is git-ignored where you put it.
 Codex read the root's config from a subfolder in the same test (its date stamp arrived; the guard itself was not measured there).
 The implementation sources are [the Codex guard](../templates/codex/hooks/outbound_guard.sh), [the Claude Code guard](../templates/claude/hooks/outbound_guard.sh), and [the shared outbound_permit.py](../templates/hooks/outbound_permit.py).
 
