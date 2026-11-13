@@ -205,6 +205,10 @@
 
 **機械化**: 依頼テンプレートを「問題・現物・制約」の3枠に固定し、診断欄を持たせない。検証条件の出所と、前回の受入条件・今回の再開理由を記録欄にする。条件の変更を採るかは機械判定に任せない。
 
+[`workflow_progress_check.py`](../../scripts/workflow_progress_check.py) は、同条件の再レビュー・条件追加・無進捗を小さい非秘密のJSONで確認する読み取り専用の道具。**助言であって許可ではなく、仕事や状態を変更しない。**
+リポジトリのルートで実行する例（キーには目的・対象版・検査器版・依存と設定・採用条件を含める。秘密値・顧客データ本文は入力しない）:
+`printf '%s\n' '{"action":"review","review_key":"lint:source-v1:checker-v1:deps-v1:conditions-v1","accepted_review_keys":["lint:source-v1:checker-v1:deps-v1:conditions-v1"]}' | python3 scripts/workflow_progress_check.py`
+
 ### C3. If you wrote "I'll do X," the next action is X.
 
 **［単体で効く］**
@@ -288,6 +292,10 @@
 ## English summary
 
 The updated B1 distinguishes choices that change what the recipient is promised (requirements, visible design, price) from internal implementation choices within agreed requirements and permissions. B2 delegates a complete piece of work through its checks and in-scope fixes, returning interpretation, scope, or test-harness problems to the parent; a completion slip names the version/diff, commands and outcomes, evidence, unresolved items, and permission compliance. C2 records where each check came from, keeps review suggestions distinct from adopted requirements, and reuses accepted evidence only under the same recorded conditions. Reopen on a new diff, evidence, failure, constraint, or a person's request, with the reason stated. These are examples from the author's operation, not new defaults installed by the kit; required independent reviews and approval for irreversible actions still apply.
+
+[`workflow_progress_check.py`](../../scripts/workflow_progress_check.py) reads a small nonsecret JSON record to flag repeated reviews, added conditions, or stalled work. **Advice only, never permission; it changes no jobs or state.**
+Run from the repository root (the key covers purpose, source version, checker version, dependencies/configuration, and adoption conditions; never include secrets or customer data):
+`printf '%s\n' '{"action":"review","review_key":"lint:source-v1:checker-v1:deps-v1:conditions-v1","accepted_review_keys":["lint:source-v1:checker-v1:deps-v1:conditions-v1"]}' | python3 scripts/workflow_progress_check.py`
 
 A **menu, not a template** — `setup.sh` deliberately does not scaffold this file. It collects disciplines the author burned in a live instance of this loop, stripped of client, profession, and environment until only the proposition was left.
 
