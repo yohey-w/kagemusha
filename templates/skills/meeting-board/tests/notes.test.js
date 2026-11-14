@@ -55,3 +55,48 @@ test('parseNotes: 見出しが無い・知らない見出しだけのメモは�
   assert.equal(many.items.length, 30);
   assert.ok(many.items.every((x) => x.text.length <= 201));
 });
+
+// ── 2026-11-07 の本番: Markdown の確認シートを --notes で渡すと、記号ごと項目になった ──
+test('parseNotes: Markdown の確認シート — チェックボックス・番号・太字の記号を外し、区切り線と太字だけの小見出しは項目にしない', () => {
+  const spec = parseNotes(fs.readFileSync(path.join(__dirname, 'fixtures', 'sample_session_sheet.md'), 'utf8'));
+  assert.deepEqual(
+    spec.items.map((x) => [x.id, x.kind, x.text]),
+    [
+      ['q1', 'ask', 'いまの業者から返事は来ましたか'],
+      ['q2', 'ask', 'いまのシステムは何で作られていますか'],
+      ['q3', 'ask', 'システムを止めてよい時間帯はいつですか'],
+      ['q4', 'ask', 'ドメインは、どなたの名義ですか'],
+      ['q5', 'ask', '試行と測定の順番をどうしますか'],
+      ['q6', 'ask', '台帳はどちらに持ちますか'],
+    ],
+    '「確認したいこと」の節の項目だけ。小見出し（**必ず伺いたいこと** など）で節が切れない。アジェンダ・準備物は今の見出しの規則では項目にしない'
+  );
+  for (const it of spec.items) {
+    assert.doesNotMatch(it.text, /\[[ xX]?\]|\*\*|^-+$|^[①-⑳]/, it.id + ' に記号が残っていない');
+  }
+  assert.deepEqual(spec.beliefs, []);
+});
+
+test('parseNotes: アジェンダの「- [ ] **はじめに（3分）** — …」の形は、本文だけが項目になる。[x] は済とは読まない', () => {
+  const s = parseNotes(
+    '## 今日聞くこと\n- [ ] **はじめに（3分）** — 前回の資料で気になった所\n- [x] 済の印つき\n* [ ] 星の箇条\n[ ] 記号の無い箱\n1. [ ] ①-2 番号の重なり\n- [ ]\n---\n- - -\n***\n**月額**はいくらか'
+  );
+  assert.deepEqual(
+    s.items.map((x) => x.text),
+    ['はじめに（3分） — 前回の資料で気になった所', '済の印つき', '星の箇条', '記号の無い箱', '番号の重なり', '月額はいくらか']
+  );
+  assert.ok(s.items.every((x) => x.kind === 'ask'));
+});
+
+test('parseNotes: 太字だけの小見出しが見出しの言葉なら節が変わる。それ以外は節を変えない。前提の節でも記号を外す', () => {
+  const s = parseNotes('**今日聞くこと**\n- 月額\n**優先度：高**\n- 納期\n**今日伝えること：**\n- [ ] 予算の上限\n## こちらの理解\n- [ ] **解約**は1か月前で足りる\n---');
+  assert.deepEqual(
+    s.items.map((x) => [x.kind, x.text]),
+    [
+      ['ask', '月額'],
+      ['ask', '納期'],
+      ['tell', '予算の上限'],
+    ]
+  );
+  assert.deepEqual(s.beliefs.map((x) => x.text), ['解約は1か月前で足りる']);
+});

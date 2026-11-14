@@ -238,3 +238,41 @@ test('claude が見つからなくても起動でき、画面の帯に理由が�
     S.rmDir(dir);
   }
 });
+
+// 2026-11-07 の本番: --me "渡辺 洋平" で起動しても GET /state の selfName が空のままだった
+test('--me（通常起動）: 起動引数の名前が GET /state の selfName に出る。前の起動で保存した表示名より --me が勝ち、ボードで変えればそちらが勝つ', async () => {
+  const dir = S.tmpDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ selfName: '前の名前' }));
+  const srv = startServer(['--notes', SAMPLE_NOTES, '--me', '渡辺 洋平', '--port', '0', '--data-dir', dir], {});
+  try {
+    const port = await srv.port();
+    const st = await S.request(port, 'GET', '/state', { headers: S.API });
+    assert.equal(st.json.selfName, '渡辺 洋平');
+    const set = await S.request(port, 'POST', '/settings', { headers: S.API, body: { selfName: '画面の名前' } });
+    assert.equal(set.json.selfName, '画面の名前');
+    const st2 = await S.request(port, 'GET', '/state', { headers: S.API });
+    assert.equal(st2.json.selfName, '画面の名前');
+  } finally {
+    const code = await srv.stop();
+    assert.equal(code, 0, srv.err());
+    S.rmDir(dir);
+  }
+});
+
+test('--me は保存しない: 保存してある表示名は書き換えない（次に --me なしで起動すれば、保存した名前のまま）', async () => {
+  const dir = S.tmpDir();
+  fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ selfName: '保存の名前' }));
+  const srv = startServer(['--me', '一時の名前', '--port', '0', '--data-dir', dir], {});
+  try {
+    const port = await srv.port();
+    const st = await S.request(port, 'GET', '/state', { headers: S.API });
+    assert.equal(st.json.selfName, '一時の名前');
+  } finally {
+    await srv.stop();
+  }
+  try {
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).selfName, '保存の名前');
+  } finally {
+    S.rmDir(dir);
+  }
+});
