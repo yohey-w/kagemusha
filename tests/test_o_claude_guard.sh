@@ -734,6 +734,32 @@ assert_grep "O11: …and the template says what that key does not close" \
 # has to SAY it, where the person arming the guard will read it.
 assert_grep "O11: the template warns that a session started in a subfolder has no guard" \
   "READS THIS FILE FROM THE DIRECTORY IT WAS STARTED IN" "$O_SETTINGS"
+# Naming a tool in --allowedTools ADDS a permission; it does not restrict the
+# run. Measured 2026-11-14 (Claude Code 2.1.325): beside the bypass flag, a tool
+# that was NOT named (Bash) ran. Until that day docs/inbound-loop.md showed the
+# pair as the way to launch an unattended sweep — a run that reads text other
+# people wrote. The documents must not show the pair as a command again.
+o_pair_count() {  # o_pair_count doc|config <file> — how many COMMANDS / SETTINGS carry both flags
+  O_MODE="$1" O_F="$2" python3 -c '
+import os, re
+text = open(os.environ["O_F"], encoding="utf-8").read()
+both = lambda t: "--dangerously-skip-permissions" in t and "--allowedTools" in t
+join = lambda t: re.sub(r"\\[ \t]*\n[ \t]*(#[ \t]*)?", " ", t)   # a continued line is one command
+if os.environ["O_MODE"] == "doc":
+    # one unit per command line inside a fenced block (a table or a comment in a fence is not a command)
+    units = [l for blk in re.findall(r"```[^\n]*\n(.*?)```", text, re.S)
+             for l in join(blk).splitlines() if l.strip() and not l.lstrip().startswith(("|", "#"))]
+else:
+    # one unit per AGENT_FLAGS assignment, commented out or not
+    units = [l for l in join(text).splitlines() if "AGENT_FLAGS=" in l]
+print(sum(1 for u in units if both(u)))'
+}
+assert_eq "O11: no command example in the inbound doc pairs the bypass flag with an allow-list" \
+  "0" "$(o_pair_count doc "$REPO_ROOT/docs/inbound-loop.md")"
+assert_eq "O11: …and config.env.example does not offer the pair as an AGENT_FLAGS value" \
+  "0" "$(o_pair_count config "$REPO_ROOT/config.env.example")"
+assert_grep "O11: …and the doc says in words that naming a tool is not a restriction" \
+  "絞り込みではない" "$REPO_ROOT/docs/inbound-loop.md"
 
 # ─── O12. the guard reaches a worktree, or it does not exist there ─────────
 # A git worktree receives only TRACKED files, and the two files that ARM the

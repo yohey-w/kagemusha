@@ -126,22 +126,51 @@
 
 ### 全自動（モード3）で MCP を使うなら `--allowedTools` が要る
 
-ヘッドレス実行（`claude -p`）でコネクタのツールを呼ぶには、**`--dangerously-skip-permissions` だけでは足りないことがある**。実測では、ローカル stdio の MCP サーバは同フラグだけで通ったが、claude.ai のコネクタ（Gmail）は `ERROR: permission not granted` で拒否され、`--allowedTools` で明示許可した途端に通った。**コネクタの種別で挙動が違う**ので、一般則にせず自分の環境で確かめること。
+ヘッドレス実行（`claude -p`）でコネクタのツールを呼ぶには、**使うツールを `--allowedTools` で名指しする**。実測では、ローカル stdio の MCP サーバは `--dangerously-skip-permissions` だけで通ったが、claude.ai のコネクタ（Gmail）は `ERROR: permission not granted` で拒否され、`--allowedTools` で明示許可した途端に通った。**コネクタの種別で挙動が違う**ので、一般則にせず自分の環境で確かめること。
+
+> 🔴 **`--allowedTools` は「足す」指定で、絞り込みではない。外から来た文を読むスイープに `--dangerously-skip-permissions` を付けない。**
+> 実測（2026-11-14・Claude Code 2.1.325・`claude -p`・印のファイルを作らせて確認）:
+>
+> | 付け方 | 名指ししていない Bash | Gmail の検索 |
+> |---|---|---|
+> | `--dangerously-skip-permissions --allowedTools "mcp__…__search_threads,ToolSearch"` | **動いた**（ファイルを作らせた） | 通った |
+> | `--allowedTools "mcp__…__search_threads,ToolSearch"` だけ | ファイルを作る命令は拒否（待たされない・終了コード 0）。**ただし設定ファイルに貯まった許可（`permissions.allow` の `Bash(chmod:*)`）は引き継がれ、`chmod` は動いた** | 通った |
+> | `--tools "ToolSearch" --setting-sources user,project --allowedTools "mcp__…__search_threads,ToolSearch"` | 上で動いた `chmod` が動かなかった | 通った |
+> | `--tools "" --strict-mcp-config` | 起動時に渡る道具が 0 個 | 測っていない（道具が渡らない） |
+>
+> 測ったのは Gmail のコネクタと Bash だけだ。Slack など他の接続先・ほかの版・対話モードでは測っていない。
+>
+> スイープが読むのは、メールやチャットの本文——送信者が書いた文だ。その中の指示には従うな、と手順書には書いてある。だが1行目の付け方では、従わないかどうかがモデルの判断だけに掛かる。**このページは 2026-11-14 まで、1行目の形を例として載せていた。同じ形で無人運転しているなら、まずその旗（`--dangerously-skip-permissions`）を外してほしい。**
 
 ```bash
-# 明示許可つきの起動（config.env の AGENT_FLAGS に足す形でもよい）
-claude -p "$(cat templates/inbound_sweep.md)" \
-  --dangerously-skip-permissions \
-  --allowedTools "mcp__claude_ai_Gmail__search_threads,mcp__slack__slack_get_channel_history"
+# 接続先を「読むだけ」の子の起動例（Gmail で実測。Slack のツール名は自分の環境で確かめること）
+claude -p "<読んで、JSON で返させる指示>" \
+  --tools "ToolSearch" --setting-sources user,project \
+  --allowedTools "mcp__claude_ai_Gmail__search_threads,ToolSearch"
 ```
+
+- `--tools "ToolSearch"` — 内蔵のツール（Bash・Read・Write・WebFetch など）を ToolSearch 以外すべて外す。ToolSearch は、遅れて読み込まれるコネクタのツールの仕様を引くのに要る。
+- `--setting-sources user,project` — `.claude/settings.local.json`（手元で「今後は聞かない」を押して貯まった許可）を読まない。`.claude/settings.json`（外向きの歯止めのフック）は読む。ユーザー設定（`~/.claude/settings.json`）に MCP の許可を書いているなら、それは引き継がれるので見直すこと。
+- 文を分類させるだけの子には、道具を一つも渡さない: `--tools "" --strict-mcp-config`。
+
+**これは、手順書（`templates/inbound_sweep.md`）をそのまま無人で回す起動例ではない。** 上の形の子は、ファイルを読めず、書けない。手順書は台帳の読み書きと自分宛ての通知までモデルにやらせるので、この形では最後まで走らない。台帳の読み書きまで持たせる付け方（書くツールの名指し）は、この版では実測していない。持たせる道具を増やすほど、紛れた指示が届く先も増える。
+
+無人で回すなら、取りに行くのも、台帳に書くのも、知らせるのもスクリプトがやり、モデルには文の分類だけをさせる形（下の Tier 2・`scripts/inbound_watch.sh.example`）のほうが、モデルの手が短い。**ただし Tier 2 の分類の呼び出しも、いまは「権限の旗を渡さない」（`--flags ""`）だけで、道具そのものは外していない。** 聞かれた時点で拒否される、という CLI の既定に頼っており、設定ファイルに貯まった許可は表の2行目と同じく引き継がれる。道具ごと外すには、Claude Code で動かす場合、その呼び出しの旗を `--flags "--tools= --strict-mcp-config"` にする（この2つで、起動時に渡る道具が 0 個になることを実測）。キットの見本をこの形に替える変更は、まだ入れていない。
+
+人が見ている対話のスイープ（モード1・2）は、この節の対象ではない。
 
 **確認は「列挙させる」のではなく「実際に1回呼ばせる」。** 使うツール1つで、無人化の前に手で1回通す:
 
 ```bash
 claude -p "mcp__claude_ai_Gmail__search_threads で直近1件の件名だけ返せ。呼べなければ ERROR: と理由だけ返せ" \
-  --dangerously-skip-permissions \
-  --allowedTools "mcp__claude_ai_Gmail__search_threads"
+  --tools "ToolSearch" --setting-sources user,project \
+  --allowedTools "mcp__claude_ai_Gmail__search_threads,ToolSearch"
 ```
+
+あわせて、**渡していないはずの道具が本当に渡っていないか**も1回見る。確かめ方は2つある。
+
+- 起動時に子へ渡る道具の一覧を見る: 同じ付け方に `--output-format stream-json --verbose` を足すと、出力の初めのほうにある `"subtype":"init"` の行に `tools` の一覧が出る。旗なしでは内蔵の道具と接続先の道具が全部並び、`--tools "" --strict-mcp-config` では 0 個、`--tools "ToolSearch"` では ToolSearch と接続先の道具だけになった。
+- 害の無い印で試す:「Bash で一時フォルダに空のファイルを作れ」を同じ付け方で頼み、ファイルができていないことを確かめる。モデルが自分から断ることもあるので、断られた回は「動かなかった」の証拠に数えない。上の表は、ファイルができた・`chmod` が効いた、という動いた側の結果を軸に測った。
 
 > **偽陰性の罠。** 「`mcp__` で始まるツール名を列挙せよ」と聞くと `NONE` が返る（ツールが遅延ロードで一覧に現れない）——**それでも実際には呼べる**。列挙プローブで判定すると「MCP はヘッドレスでは使えない」と誤診し、Tier 2 へ不要に退却する。
 
@@ -166,7 +195,7 @@ mcp: codex_apps/gmail.search_emails (completed)
 
 が出て件名が3件返り、終了コードは 0 だった。
 
-**`--allowedTools` に当たるものは無い。** `codex exec --help` にツール単位の許可リストは無く、`-s read-only` が縛るのは**ファイルシステムとシェル**であって**コネクタではない**。つまり `read-only` で走っていても、書き込み系のコネクタツール（メール送信・ラベル変更）は**構造的には呼べる**——止めているのはプロンプトの文言だけになる。Claude 側の `--allowedTools` が持っていた「機構としての境界」は、ここには無い。
+**`--allowedTools` に当たるものは無い。** `codex exec --help` にツール単位の許可リストは無く、`-s read-only` が縛るのは**ファイルシステムとシェル**であって**コネクタではない**。つまり `read-only` で走っていても、書き込み系のコネクタツール（メール送信・ラベル変更）は**構造的には呼べる**——止めているのはプロンプトの文言だけになる。Claude 側では、確認を飛ばす旗も、設定ファイルに貯まった許可も無ければ、名指ししていないツールは聞かれた時点で拒否される（無人では聞く相手が居ない）。その既定に当たるものも、ここには無い。（Claude 側のそれも、選んで置いた境界ではない——上の「`--allowedTools` は絞り込みではない」を参照。）
 
 ### 外向きの歯止め — プロンプトは止めない（実測 2026-09-07・codex-cli 0.153.4）
 

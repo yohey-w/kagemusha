@@ -42,7 +42,7 @@ TESTS_DIR="$REPO_ROOT/tests"
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
             i_community_lane j_demo k_readme l_meeting_copilot m_codex n_difficulty
             o_claude_guard p_meeting_board)
-MIN_ASSERTIONS=1728  # full-run floor; +1 (O11: the template warns that a session started in a subfolder has no guard)
+MIN_ASSERTIONS=1731  # full-run floor; +3 (O11: the docs do not show the bypass flag paired with an allow-list as a command)
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }
