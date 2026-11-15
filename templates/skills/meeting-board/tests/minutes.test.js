@@ -94,3 +94,11 @@ test('--minutes: 会議フォルダから標準出力へ（Markdown だけ）。
     S.rmDir(dir);
   }
 });
+
+test('議事録の素: 一部（partial）の項目は「一部」と根拠で出す（済の印は付けない）', () => {
+  const md = boardToMarkdown(
+    { topics: [], checklist: [{ id: 'q1', kind: 'ask', item: '初期費用と保守費は', state: 'partial', evidence: '初期費用は出た／保守費は残り' }] },
+    {}
+  );
+  assert.match(md, /- \[ \] 1\. 聞く：初期費用と保守費は — 一部: 初期費用は出た／保守費は残り/);
+});

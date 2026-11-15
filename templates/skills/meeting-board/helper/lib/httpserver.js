@@ -154,7 +154,7 @@ function createHandler(app) {
           return;
         }
         case 'POST /override': {
-          // 人が聞くことの状態を直す: { target: 'checklist', id: 'q1', state: 'done' | 'deferred' | 'open' | 'auto', owner }
+          // 人が聞くことの状態を直す: { target: 'checklist', id: 'q1', state: 'done' | 'partial' | 'deferred' | 'open' | 'auto', owner }
           const body = await readJson(req);
           if (body.target !== undefined && body.target !== 'checklist') {
             sendJson(res, 400, { error: 'target は checklist だけです' });

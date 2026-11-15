@@ -1,7 +1,7 @@
 ---
 name: meeting-board
 description: |
-  A one-machine live meeting board. A small browser extension reads Google Meet's own live captions together with the speaker names, hands them to a tiny helper that listens on 127.0.0.1 only, and the helper periodically asks the local Claude Code (`claude -p`) to keep a structured, speaker-attributed "story so far". During the meeting the board shows only what can be read while talking — the next thing to say or ask, a red warning only when the talk drifts, contradicts a premise from the pre-meeting memo or is about to skip something, a one-line progress note, and the memo's "to ask / to tell" items as done / taken away / not yet. A second tab holds the full record (decisions, to-dos, open questions, premise conflicts, topics with who said what), which can be exported as a Markdown minutes draft. No audio is captured; nothing leaves the PC except what the local Claude Code itself sends. Use it to set it up on a work PC, to run it in a meeting, to export the minutes draft afterwards, or to fix the caption selectors when Meet changes its page.
+  A one-machine live meeting board. A small browser extension reads Google Meet's own live captions together with the speaker names, hands them to a tiny helper that listens on 127.0.0.1 only, and the helper periodically asks the local Claude Code (`claude -p`) to keep a structured, speaker-attributed "story so far". During the meeting the board shows only what can be read while talking — the next thing to say or ask, a red warning only when the talk drifts, contradicts a premise from the pre-meeting memo or is about to skip something, a one-line progress note, and the memo's "to ask / to tell" items as done / partly answered / taken away / not yet. A second tab holds the full record (decisions, to-dos, open questions, premise conflicts, topics with who said what), which can be exported as a Markdown minutes draft. No audio is captured; nothing leaves the PC except what the local Claude Code itself sends. Use it to set it up on a work PC, to run it in a meeting, to export the minutes draft afterwards, or to fix the caption selectors when Meet changes its page.
   Meet の字幕（話者の名前つき）をブラウザ拡張が読み、127.0.0.1 だけで待ち受ける小さなヘルパーに渡し、手元の Claude Code（claude -p）に整理させて別窓に出す。会議中の画面は「次の一手」「警告（ずれ・前提と違う・言い忘れのときだけ）」「順調」「伝え済み／まだ」の 4 つだけ。全体の記録は「会議の前と後」タブにあり、議事録の素（Markdown）に書き出せる。音声は扱わない。会議用 PC への導入・会議中の運用・会議後の書き出し・Meet の画面が変わって字幕が読めなくなったときの直しに使う。
 ---
 
@@ -23,7 +23,7 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 **完了の形**:
 
 1. `node templates/skills/meeting-board/tests/run.js` が全部通る（Node 18 以上のどれでも同じ。外部ライブラリなし・本物の `claude` は呼ばない）
-2. 動作確認は `node helper/server.js --replay sample/sample_transcript.txt --notes sample/sample_notes.md --once` が、`next_action`（次の一手）・`checklist`（`state` が `done`／`deferred`／`open`）・`topics` のある JSON だけを標準出力に出して終了コード 0（これは手元の `claude` を 1 回呼ぶ。架空の会議なので送ってよい）
+2. 動作確認は `node helper/server.js --replay sample/sample_transcript.txt --notes sample/sample_notes.md --once` が、`next_action`（次の一手）・`checklist`（`state` が `done`／`partial`／`deferred`／`open`）・`topics` のある JSON だけを標準出力に出して終了コード 0（これは手元の `claude` を 1 回呼ぶ。架空の会議なので送ってよい）
    画面は、偽 claude（`CLAUDE_BIN=tests/fixtures/claude_stub.js`・`STUB_BOARD=tests/fixtures/board_v2_sample.json`）で `--replay` を立て、`http://127.0.0.1:<port>/`（会議中）と `/?view=after`（会議の前と後）を見る
 3. 拡張機能は人が `chrome://extensions` で読み込む。**エージェントは「拡張機能が動いた」と書かない**——Meet のページを実機で見たのは人だけ
 
@@ -46,8 +46,8 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 | `extension/captions-core.js` | 結合規則（同じブロックの書き換えは最新の文面で置き換え・頭の切り詰めだけ積み上げる）・話者の読み取り・ブロックの追跡。DOM に触らない純粋な関数（拡張機能と Node の試験の両方から読む） |
 | `extension/content.js` / `background.js` | 画面の読み取りと診断 / ヘルパーへの送信・バッジ |
 | `helper/server.js` + `helper/lib/*.js` | 起動・HTTP・claude の呼び出し・整理の間隔・保存。`prompt.md` はそのまま使う |
-| `helper/lib/notes.js` | 事前メモから「今日聞くこと・伝えること」「こちらの理解・前回の決定」「自分：名前」を読む（表の文言と順番を固定する） |
-| `helper/lib/board.js` | claude の返事を schema 2 のボードに整える（話題の id・聞くことの 3 状態・次の一手の規則の補い・警告の検証・前提と食い違ったことの記録・差分の重ね合わせ・人が直した状態）。何が来ても例外を出さない |
+| `helper/lib/notes.js` | 事前メモから「今日聞くこと・伝えること」「こちらの理解・前回の決定」「自分：名前」を読む（表の文言と順番を固定する。Markdown の確認シートの `- [ ]`・番号・`**太字**` は外し、`---` と太字だけの小見出しは項目にしない） |
+| `helper/lib/board.js` | claude の返事を schema 2 のボードに整える（話題の id・聞くことの 4 状態（済・一部・持ち帰り・まだ）・次の一手の規則の補い・警告の検証・前提と食い違ったことの記録・差分の重ね合わせ・人が直した状態・事前メモを貼り直したときの判定の付け替え）。何が来ても例外を出さない |
 | `helper/lib/script.js` | 台本（`--script`）を節と台詞に分け、直近の字幕から「いま台本のどこか」を規則で当てる（claude は使わない） |
 | `helper/lib/importers.js` | `--replay` の文字起こしの形を見分ける（「話者：本文」・WebVTT・「名前 時刻」＋本文。Teams・Zoom の形は推定で、実物では未確認） |
 | `helper/prompt_patch.md` | 差分の整理（2 回目から）のときだけ `prompt.md` のあとに足す、出力の決まり。`board.js` の `mergePatch()` が前回のボードに重ねる |
@@ -61,6 +61,6 @@ Meet のタブ ── 拡張機能（content.js）── background.js ──▶
 
 画面は 3 つの場面で使い分ける: 会議の前（事前メモを貼り、「会議の前と後」タブで読めたか確かめる）／会議中（次の一手・警告／順調・伝え済み／まだ だけ。項目を押すと状態を直せる）／会議の後（上の帯の「会議を終える」＝`POST /finish` で、整理の最中なら待ち、全体の整理を 1 回（reason `final`。字幕が増えていない・claude が使えないときは整理せず今あるものを保存）してから、会議フォルダに `minutes.md` を書き、以後その会議では自動の整理をしない。二度押しでも整理は 1 回。進み具合は `GET /state` の `status.finish`。「新しい会議」で戻る。`--minutes` も従来どおり使える）。人が直した状態は `POST /override` で会議フォルダの `overrides.json` に残り、整理より優先する。
 
-主なオプション: `--notes` 事前メモ・`--script 台本.md`（会議中の画面に台本の位置と直近の字幕）・`--me 名前` 字幕に出る自分の名前・`--mode live|full|diff`（既定 live＝2 回目から会議中の画面の分だけ・話題は 5 分おきと会議の終わりに全体。full＝毎回全体。diff＝2 回目から差分の整理・試験中）・`--replay ファイル`（`--speed auto` が既定。行に `[時:分:秒]` があればその間隔）・`--once`・`--minutes 会議フォルダ [--out ファイル]`・`--data-dir`。
+主なオプション: `--notes` 事前メモ・`--script 台本.md`（会議中の画面に台本の位置と直近の字幕）・`--me 名前` 字幕に出る自分の名前（ボードの表示名にも入る。保存はしない）・`--mode live|full|diff`（既定 live＝2 回目から会議中の画面の分だけ・話題は 5 分おきと会議の終わりに全体。full＝毎回全体。diff＝2 回目から差分の整理・試験中）・`--replay ファイル`（`--speed auto` が既定。行に `[時:分:秒]` があればその間隔）・`--once`・`--minutes 会議フォルダ [--out ファイル]`・`--data-dir`。
 
 守る線: ヘルパーは `127.0.0.1` だけ・`X-Meeting-Board: 1` の札と Host の確認が無ければ断る（`POST /finish` を含む書き込み全部）・`claude` には安全のための設定（`--tools ""`・`--safe-mode`・`--no-session-persistence`）をいつも付け、知らない古い版では外して呼び直さず止めて `claude update` を案内する・診断に字幕の本文と名前を入れない・音声は扱わない。

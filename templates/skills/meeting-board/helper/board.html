@@ -171,6 +171,8 @@ main { max-width: 980px; margin: 0 auto; padding: 12px 16px; }
 #itemList li.done .mark { color: var(--ok); }
 #itemList li.done .st { background: var(--ok-soft); color: var(--ok); }
 #itemList li.deferred .st { background: var(--accent-soft); color: var(--accent-ink); }
+#itemList li.partial .mark { color: var(--ok); }
+#itemList li.partial .st { background: transparent; color: var(--ok); border: 1px dashed var(--ok); }
 #itemList li.open .mark { color: var(--warn); }
 #itemList li.open .st { background: var(--warn-soft); color: var(--warn); }
 #itemList .nx { flex: none; font-size: 0.78em; font-weight: 700; color: var(--accent); }
@@ -260,6 +262,7 @@ ul.plain li { padding: 3px 0; overflow-wrap: anywhere; }
 .tag { display: inline-block; font-size: 0.78em; font-weight: 700; border-radius: 6px; padding: 0 7px; margin-right: 6px; }
 .tag.done { background: var(--ok-soft); color: var(--ok); }
 .tag.deferred { background: var(--accent-soft); color: var(--accent-ink); }
+.tag.partial { background: transparent; color: var(--ok); border: 1px dashed var(--ok); }
 .tag.open { background: var(--warn-soft); color: var(--warn); }
 .evidence { display: block; font-size: 0.88em; color: var(--muted); }
 ul.conflicts li { border-left: 4px solid var(--bad); padding-left: 10px; margin-bottom: 6px; }
@@ -752,8 +755,8 @@ dialog textarea { min-height: 220px; resize: vertical; }
         var li = el('li', it.state);
         li.dataset.id = it.id;
         li.dataset.state = it.state;
-        li.title = '押すと状態を直せます（まだ → 済 → 持ち帰り）';
-        li.appendChild(el('span', 'mark', it.state === 'done' ? '✓' : it.state === 'deferred' ? '↩' : '・'));
+        li.title = '押すと状態を直せます（まだ → 済 → 持ち帰り。一部は押すと済）';
+        li.appendChild(el('span', 'mark', it.state === 'done' ? '✓' : it.state === 'deferred' ? '↩' : it.state === 'partial' ? '◐' : '・'));
         var tx = el('span', 'txt', it.text);
         tx.title = it.text;
         li.appendChild(tx);
@@ -806,7 +809,7 @@ dialog textarea { min-height: 220px; resize: vertical; }
       li.appendChild(el('span', 'tag ' + c.state, c.label));
       li.appendChild(document.createTextNode((c.kind === 'tell' ? '伝える：' : '聞く：') + c.item));
       var fix = el('span', 'fix');
-      [['done', c.kind === 'tell' ? '伝え済み' : '済'], ['deferred', '持ち帰り'], ['open', 'まだ']].forEach(function (p) {
+      [['done', c.kind === 'tell' ? '伝え済み' : '済'], ['partial', '一部'], ['deferred', '持ち帰り'], ['open', 'まだ']].forEach(function (p) {
         var b = el('button', null, p[1]);
         b.type = 'button';
         b.setAttribute('aria-pressed', String(c.state === p[0] && c.byUser));

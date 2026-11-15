@@ -30,7 +30,7 @@ function hm(ms) {
   return pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 function stateOf(c) {
-  if (c && (c.state === 'done' || c.state === 'deferred' || c.state === 'open')) return c.state;
+  if (c && (c.state === 'done' || c.state === 'partial' || c.state === 'deferred' || c.state === 'open')) return c.state;
   return c && c.done === true ? 'done' : 'open';
 }
 
@@ -83,7 +83,7 @@ function boardToMarkdown(board, info) {
       .map((c, i) => {
         const st = stateOf(c);
         const verb = c.kind === 'tell' ? '伝える' : '聞く';
-        const label = st === 'done' ? (c.kind === 'tell' ? '伝え済み' : '済') : st === 'deferred' ? '持ち帰り' + (str(c.owner) ? '（' + str(c.owner) + '）' : '') : 'まだ';
+        const label = st === 'done' ? (c.kind === 'tell' ? '伝え済み' : '済') : st === 'partial' ? '一部' : st === 'deferred' ? '持ち帰り' + (str(c.owner) ? '（' + str(c.owner) + '）' : '') : 'まだ';
         return '- [' + (st === 'done' ? 'x' : ' ') + '] ' + (i + 1) + '. ' + verb + '：' + str(c.item) + ' — ' + label + (str(c.evidence) ? ': ' + str(c.evidence) : '');
       })
   );
