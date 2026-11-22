@@ -33,6 +33,8 @@ No new file for it. `ssot/tasks.md` is already the single source of truth for *w
 
 And when the next outbound message is being drafted, the outstanding promises are inventoried *first*. If a promise lives only inside the sent mail, nobody is holding it but the person waiting on it. A worked example of this as a verifier is on the sample shelf: the outbound-document DoD in [`../cookbook/author/reference-instance/verifiers.md`](../cookbook/author/reference-instance/verifiers.md).
 
+**If more than one agent session reads the same table, mark a row before starting it.** Every session sees the same open rows, so two of them can pick up the same one. Observed once (anonymized): one session spent about fifteen minutes researching a task from the shared list; a second session had already branched, committed and merged the same change. The first only noticed when creating its branch failed with "already exists". Nothing was overwritten, but nothing in the table had said "taken" — and a status column saying "in progress" would not have said by whom. The fix used there: before starting, append an in-progress mark to the row's text (session name and time) and leave rows that carry someone else's mark alone; split the rows by owner session for standing duties. One gap stayed open: sessions that edit a row by reading the whole file and writing it back can still lose each other's edits.
+
 ## Running multiple projects — charters, the system map, and living in the clone
 
 Run the loop on more than one client or project and two structures earn their keep (both scaffolded by `setup.sh`):
@@ -114,6 +116,8 @@ One rule keeps the count honest: **S, V, I, and R do not count as D (disposal / 
 3. **期限は、聞かれる前に出す。** 期日の接近は、次の区切りで差分として先回りで報告する（人間が気にし始めるまで持たない）。朝の便はこの表から締切レーダーを作っている（毎日の2.）——**表が空ならレーダーも空**で、遅れた当日まで盤面は静かなままだ。
 
 そして次の対外便を組むときは、**未履行の約束を先に棚卸ししてから書き出す**。約束が送信済みメールの中にしか無いなら、それを持っているのは待っている相手だけだ。これを検証器の形にした実例は標本棚にある——[`../cookbook/author/reference-instance/verifiers.md`](../cookbook/author/reference-instance/verifiers.md) の対外文書 DoD。
+
+**同じ表を複数の会話（エージェントのセッション）が読むなら、着手する前に行へ印を付ける。** どの会話にも同じ未着手の行が見えるので、2つの会話が同じ行を拾いうる。1回あった(匿名化): ある会話が、共有の表の1行の下調べに約15分を使った。そのあいだに別の会話が、同じ変更の枝を切り・コミットし・マージまで済ませていた。最初の会話が気づいたのは、自分の枝を作ろうとして「already exists」が出たときだった。上書きは無かったが、表のどこにも「着手済み」が書かれていなかった——状態の列を「進行中」にしても、どの会話が持っているかまでは分からない。そこで入れた直し: 着手の前に、行の本文の末尾へ着手中の印(会話の名前と日時)を足す。他の会話の印がある行には触らない。持ち場が決まっている種類の行は、会話ごとに分けておく。残った穴が1つある——行の書き換えをファイル全体の読み書きでやる会話どうしは、同時に書くと片方の変更が消えうる。
 
 ## 複数案件を回す — 憲章・システム地図・clone に住む
 

@@ -63,6 +63,14 @@ Case data lives under `projects/`, which the allowlist `.gitignore` makes struct
 
 **JA.** 次の一手は必ずこの順で探す——**①同じツールの別メソッド・別パラメータ(ツール一覧の棚卸し) ②別のツール ③自作**。①を飛ばして③へ行かない。「このメソッドはできない」を「この目的はツールでできない」へ圧縮しない(制約はメソッド単位で記録する)。実例(匿名化): 平文読取でスプレッドシートのタブ名が潰れた——同じ接続にxlsxダウンロードが最初から存在していたが、ツール自身のメソッド一覧を先に棚卸ししなかったため未使用のままだった。
 
+**EN.** The same rule applies when the "not found" is about **the system you are describing** — "the current screen cannot do X," "that option does not exist." Before writing it, open the actual screen and walk **every choice it offers**, and read your own earlier test records for that screen. Observed twice on the same day, same shape (the second came to light three days later; anonymized): asked mid-meeting, an agent told its owner that a setup screen could only copy items from one existing group, and the owner passed that on to the customer as the answer. It had answered from a partial read of the code without opening the screen; the same screen had a third choice, "pick from all registered items," which the agent itself had walked through in a rehearsal six days earlier. That evening it wrote into the spec, as a must-build feature, a screen for adding items to an existing group — although that day's hand-test record already said items outside the group's list are still imported and reported. A sub-agent caught it three days later, when it stopped before building the feature. Both times the answer was already in the screen or in the agent's own record, and both times the claim had reached the customer or the spec.
+
+**JA.** 「見つからない」が**自分の説明している仕組みについての否定**——「今の画面では X はできない」「その選び方は無い」——のときも同じ。書く前に、実物の画面を開いて**選べる道を全部**たどり、その画面について自分が過去に通した試験の記録を読む。同じ日に、同じ型で2回あった(2件目が分かったのは3日後・匿名化): エージェントが会議中に「団体を作る画面は、既存の1団体の項目から選ぶだけ」と伝え、そのまま客への回答になった。画面を開かず、コードの一部の読みで答えていた——同じ画面に「登録済みのすべての項目から選ぶ」という3つ目の道があり、エージェント自身が6日前のリハーサルでその道を通していた。その日の夜には、作り終えた団体へ項目を足す画面を「必須の機能」として仕様に立てた——その日の手作業の検証記録に「団体の項目に入れなくても取り込まれ、成績表に出る」と出ていたのに。3日後、実装を受けたサブエージェントが手を止めて気づいた。2回とも答えは画面か自分の記録にあり、2回とも主張は客への回答か仕様にまで届いていた。
+
+**EN.** When the search term is an **abbreviation or nickname** and it comes back empty, search again from the **full name** before recording "unknown." Example (anonymized): a vendor was referred to only by a three-letter abbreviation; the agent grepped the project folder for those three letters and reported "unconfirmed" three times. The vendor's full legal name — with the abbreviation spelled out — was in the project's own saved chat log; one search on a fragment of the full name found it.
+
+**JA.** 検索語が**略称・呼び名**で0件のときは、「未確認」と書く前に**元の名前の側から**引き直す。実例(匿名化): 取引先がアルファベット3文字の略称でだけ呼ばれていた。エージェントはその3文字で案件フォルダを grep し、「未確認」と3回報告した。正式名称(略称の元の綴りつき)は、案件の手元に保存したチャットの記録にあった——正式名の一部で1回引けば出た。
+
 **forks**
 
 | field | meaning |
