@@ -46,6 +46,22 @@ Codex 側で吸収している落とし穴が3つある。どれも**壊れ方�
 2. **ハーネスがユーザの声で喋る。** `<environment_context>` は8件に1件くらいの頻度でユーザメッセージに紛れ、しかも**多くは「人間の実プロンプト＋注入文」が1メッセージ2パート**という形で来る。だから**パート単位で捨てる**——メッセージ単位で捨てると人間のプロンプトごと消える。`developer` ロール（基礎指示）は丸ごと捨てる。
 3. **サブエージェントは別ファイル。** ヘッダの `source` が、通常セッションでは文字列なのに**サブエージェントではオブジェクト**になる。ここを文字列前提で読むと落ちる。
 
+### Claude Code の作業中入力
+
+作業中に打った入力は、通常の `user` 行の代わりに `queue-operation` だけで残ることがある。同じファイル内の同一 `content` について、`enqueue` と後続の `remove`（`reason: "absorbed_mid_turn"`）を1件ずつ対応させ、人の入力として読む。`dequeue`・`delivered_to_agent`・孤立した remove は採らない。
+
+remove の `deliveryId` に一致する `queued_command` attachment があれば、`commandMode: "prompt"`・同じ `prompt`・`origin.kind: "human"` が必要。`humanTurn: false` でも書き手は human と判定する。矛盾する・不完全な attachment は採らない。ファイルのどこにも `queued_command` attachment が無い（古い版の）ログと、remove に `deliveryId` が無い行では、人の入力に使う source とフラグを確かめ、先頭の `<`（`<pasted_content` を除く）、`Another Claude session sent a message`、既知のコマンド・通知の印を除外する。ファイルに attachment があるのに、その `deliveryId` に一致するものだけが無い入力は採らない（その形は通知などの機械の文に多く、人の入力には必ず attachment が付くため）。画像つきの入力は `prompt` が部品の配列になるので、文字の部品だけを照合する。sub-agent の assistant 行は、下の「次の assistant 行」に数えない。通常の user 行の origin 判定は今回の変更対象に含めない。
+
+同じ読み取りを使う `scripts/mine_conversations.py` にも、作業中の入力が人の発話として入るようになる。読み取りはファイルを1本ずつメモリに載せるので、使うメモリはいちばん大きいログの大きさにほぼ比例する。
+
+同じ文の人の `user` 行が **enqueue より後、次の assistant 行より前**にあれば、その user 行を優先する。enqueue の順に最も近い後続 user を1回ずつ対応させるので、前の通常 user や別の assistant 区間の同じ言葉が、後の入力を消すことはない。採取の出典は **enqueue の物理行番号と時刻**で、`--show-event` も同じファイル内の証拠を照合して原行を開き直す。Codex の読み取り方法は変わらない。
+
+> **In English — mid-turn input.** An enqueue is a user turn only when a later same-file, exact-content remove confirms `reason: "absorbed_mid_turn"`, one enqueue per terminal operation. Dequeue, `delivered_to_agent`, and orphan removes do not qualify. When a queued_command attachment matches the remove's `deliveryId`, its mode must be `prompt`, its prompt must match, and `origin.kind` must be `human`; `humanTurn: false` does not change authorship. Conflicting or incomplete attachment evidence is rejected. Files with no queued_command attachment at all (older CLIs), and removes with no `deliveryId`, use conservative source/flag and nonhuman-text filters: leading `<` except `<pasted_content`, the other-session message marker, and known command/notification markers. When the file does have such attachments but none for this `deliveryId`, the input is dropped: that shape is mostly machine text, and human input always gets an attachment. Input sent with an image has a list-of-parts `prompt`; only its text parts are compared. A sub-agent's assistant row does not count as "the next assistant". Ordinary user origin handling is unchanged. `scripts/mine_conversations.py` shares this reader, so mid-turn input now reaches it too. The reader holds one file in memory at a time, so peak memory is roughly the size of the largest log. In enqueue order, each enqueue can defer once to the nearest unused, identical human user row after it and before the next assistant. Earlier identical user rows and rows beyond that assistant cannot cancel it. Provenance and `--show-event` use the enqueue's original physical line and timestamp, rechecking file-local evidence. Codex reading is unchanged.
+
+採取後に同文の user 行が追記されても、確認済みの enqueue 原行は過去の出典として開き直せる。
+
+> An identical user row appended after harvesting does not invalidate an already verified enqueue as the source of an older event.
+
 ### sqlite 移行後の扱い
 
 **2026-09-06 に codex-cli 0.149.0 で実測**した範囲では、rollout JSONL は**現役**だ。`codex exec` を1回走らせたところ、`~/.codex/sessions/2026/09/06/rollout-*.jsonl` が新規に書かれ、本文（ユーザ発話・アシスタント発話）がそのまま入っていた。同時に `~/.codex/thread_history_*.sqlite` も更新され、セッションヘッダの `history_mode` は `"paginated"`（古いログでは `"legacy"` か欠落）になっている。移行コマンド `codex migrate-rollouts` も在る（`--apply` を付けない限り報告のみ）。

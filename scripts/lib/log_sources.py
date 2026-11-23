@@ -19,7 +19,7 @@ The record
 fields a CLI does not have are empty, never missing:
 
     source        "claude" | "codex" — which CLI wrote this line
-    kind          "user" | "assistant" — the transcript's own record type
+    kind          "user" | "assistant" — normalized conversational role
     role          alias of kind (what the scanners match `role` against)
     msg_role      the role inside the message envelope, when there is one
     ts            ISO-8601 timestamp string, as the log wrote it
@@ -47,8 +47,15 @@ The two shapes
 **Claude Code** — one `<session-uuid>.jsonl` per session under a per-project
 directory (`~/.claude/projects/<slug>/`). One JSON object per line; the ones
 worth reading have `type` of "user" or "assistant" and the text under
-`message.content`. Sub-agent traffic is flagged inline (`isSidechain`) inside
-the same file as its parent.
+`message.content`. Mid-turn input can instead be an `enqueue` paired one-to-one
+with a later `remove` whose reason is `absorbed_mid_turn`. The enqueue becomes
+a user record at its own physical line. A matching queued_command attachment's
+`origin.kind` must be `human` (humanTurn is not an authorship flag). A file
+with no such attachments at all (older CLIs) falls back to conservative
+text/source filters; a file that has them but none for this delivery id does
+not — that input is dropped. A subsequent
+human user record before the next assistant wins over the matching enqueue,
+once per user record. Sub-agent traffic is flagged inline (`isSidechain`).
 
 **Codex CLI** — one `rollout-<ISO>-<uuid>.jsonl` per session under a
 date-partitioned tree (`~/.codex/sessions/YYYY/MM/DD/`). The first line is a
@@ -97,6 +104,7 @@ import glob
 import json
 import os
 import re
+from collections import defaultdict, deque
 
 __all__ = [
     "CLAUDE", "CODEX", "SOURCE_CHOICES",
@@ -210,6 +218,152 @@ def _claude_record(obj, path, lineno, session_id):
     )
 
 
+def _claude_human_candidate(rec):
+    """Conservative fallback for queued input and its possible user duplicate.
+
+    This does not change how ordinary user records are emitted. In particular,
+    ordinary user origin.kind support is a separate concern.
+    """
+    txt = rec["text"].strip()
+    return (bool(txt) and not rec["is_sidechain"] and not rec["is_meta"]
+            and not rec["is_tool_result"]
+            and rec["prompt_source"] in ("", "typed", "queued")
+            and not (txt.startswith("<") and not txt.startswith("<pasted_content"))
+            and not txt.startswith(("Caveat: The messages below", "[Request interrupted"))
+            and "Another Claude session sent a message" not in txt
+            and not any(s in txt[:300] for s in
+                        ("<command-message>", "session_start_hook", "SessionStart:"))
+            and not re.match(r"^(You have \d+ unread|\d+ new messages?)\b", txt, re.I))
+
+
+def _queued_prompt_text(prompt):
+    """The typed text of a queued_command prompt.
+
+    Usually a bare string. Input sent with an image is a list of parts (text
+    plus image); the queue line keeps only the text, so compare against that.
+    Any other shape returns None and the evidence counts as ambiguous.
+    """
+    if isinstance(prompt, str):
+        return prompt
+    if isinstance(prompt, list):
+        texts = [part.get("text") for part in prompt
+                 if isinstance(part, dict) and part.get("type") == "text"]
+        if texts and all(isinstance(t, str) for t in texts):
+            return "\n".join(texts)
+    return None
+
+
+def _claude_records(fh, path):
+    """Resolve Claude's file-local queue evidence, then emit in physical order.
+
+    Each terminal queue operation consumes the oldest pending enqueue with the
+    same exact content. Only absorbed_mid_turn removals qualify. Delivery ids
+    join attachments to removals, never by text alone. Assistant boundaries are
+    physical rows, even when their text would not be useful to a scanner.
+    Returns (deduplicated records, validated enqueue provenance). The latter
+    retains source rows when a duplicate user is appended after harvesting.
+    """
+    session_id = _claude_session_id(path)
+    records, absorbed = [], []
+    pending, attachments = defaultdict(deque), defaultdict(list)
+    users = defaultdict(deque)
+    segment = 0
+    for lineno, line in enumerate(fh, 1):
+        # Queue and attachment rows often contain neither conversational role.
+        if not any(word in line for word in
+                   ('"user"', '"assistant"', '"queue-operation"', '"attachment"')):
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        kind = obj.get("type")
+        if kind == "attachment":
+            att = obj.get("attachment")
+            if isinstance(att, dict) and att.get("type") == "queued_command":
+                delivery = att.get("delivery_id")
+                if isinstance(delivery, str) and delivery:
+                    attachments[delivery].append((obj, att))
+            continue
+        if kind == "queue-operation":
+            content = obj.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            operation = obj.get("operation")
+            if operation == "enqueue":
+                # Reuse normal Claude flags; the queue owns its line and time.
+                turn = dict(obj, type="user", promptSource=obj.get("promptSource", "queued"),
+                            message={"role": "user", "content": content})
+                rec = _claude_record(turn, path, lineno, session_id)
+                pending[content].append((rec, segment))
+            elif operation in ("remove", "dequeue") and pending[content]:
+                rec, queued_segment = pending[content].popleft()
+                if operation == "remove" and obj.get("reason") == "absorbed_mid_turn":
+                    absorbed.append((rec, queued_segment, obj))
+            continue
+        rec = _claude_record(obj, path, lineno, session_id)
+        if rec is None:
+            continue
+        records.append(rec)
+        if kind == "assistant":
+            # A sub-agent's assistant row is not the reply that closes the
+            # window in which a typed duplicate of the queued input can land.
+            if not rec["is_sidechain"]:
+                segment += 1
+        elif _claude_human_candidate(rec):
+            users[(segment, rec["text"])].append(lineno)
+
+    queued, provenance = {}, {}
+    for rec, segment, removal in sorted(absorbed, key=lambda item: item[0]["line"]):
+        delivery = removal.get("deliveryId")
+        if delivery is not None and not isinstance(delivery, str):
+            continue
+        evidence = attachments.get(delivery, [])
+        if evidence:
+            # Conflicting, incomplete or non-prompt evidence is ambiguous.
+            if not all(isinstance(att.get("origin"), dict)
+                       and att["origin"].get("kind") == "human"
+                       and att.get("commandMode") == "prompt"
+                       and _queued_prompt_text(att.get("prompt")) == rec["text"]
+                       and not obj.get("isSidechain") and not obj.get("isMeta")
+                       and not obj.get("isCompactSummary")
+                       for obj, att in evidence):
+                continue
+            if rec["is_sidechain"] or rec["is_meta"] or rec["is_tool_result"]:
+                continue
+        elif delivery and attachments:
+            # This file's CLI writes queued_command attachments, and a human
+            # input always gets one. A delivery id with none is machine text
+            # more often than not (notifications), so it is not read as human.
+            continue
+        elif not _claude_human_candidate(rec):
+            continue
+        if removal.get("isSidechain") or removal.get("isMeta") or removal.get("isCompactSummary"):
+            continue
+        # Provenance survives a later appended user duplicate. The source row
+        # remains valid evidence even when a fresh harvest now prefers user.
+        provenance[rec["line"]] = rec
+        duplicates = users[(segment, rec["text"])]
+        while duplicates and duplicates[0] <= rec["line"]:
+            duplicates.popleft()        # earlier turns cannot cancel later input
+        if duplicates:
+            duplicates.popleft()        # one following human user owns this turn
+            continue
+        queued[rec["line"]] = rec
+    records.extend(queued.values())
+    return sorted(records, key=lambda rec: rec["line"]), provenance
+
+
+def _claude_queue_header(path):
+    try:
+        with open(path, errors="replace") as fh:
+            return {"queued": _claude_records(fh, path)[1]}
+    except OSError:
+        return {"queued": {}}
+
+
 def _codex_parts(content):
     """Drop the harness's own parts; return [{"type": "text", "text": …}].
 
@@ -278,12 +432,11 @@ def source_of_path(path):
 def header_for(path, source=None):
     """The per-file header a later `record_from_line` on this path will need.
 
-    Claude Code needs none — every line carries its own flags. A Codex rollout
-    keeps cwd and the sub-agent marking in one header line at the top, so
-    reopening a line months later means reading that header again.
+    Claude Code needs file-local queue evidence for an enqueue. A Codex rollout
+    keeps cwd and the sub-agent marking in one header line at the top.
     """
     source = source or source_of_path(path)
-    return _codex_header(path) if source == CODEX else None
+    return _codex_header(path) if source == CODEX else _claude_queue_header(path)
 
 
 def record_from_line(line, path, lineno, source=None, header=None):
@@ -295,6 +448,14 @@ def record_from_line(line, path, lineno, source=None, header=None):
         return None
     if source == CODEX:
         return _codex_record(obj, path, lineno, header or _empty_codex_header(path))
+    if isinstance(obj, dict) and obj.get("type") == "queue-operation":
+        context = header if header is not None else _claude_queue_header(path)
+        rec = context.get("queued", {}).get(lineno)
+        if (rec and obj.get("operation") == "enqueue"
+                and obj.get("content") == rec["text"]
+                and obj.get("timestamp", "") == rec["ts"]):
+            return rec
+        return None
     return _claude_record(obj, path, lineno, _claude_session_id(path))
 
 
@@ -396,22 +557,16 @@ class SessionFile(object):
         except OSError:
             return
         with fh:
+            if self.source == CLAUDE:
+                yield from _claude_records(fh, self.path)[0]
+                return
             lineno = 0
             for line in fh:
                 lineno += 1                      # every physical line, always
-                if self.source == CLAUDE:
-                    # Cheap prefilter: a record whose type is "user" or
-                    # "assistant" always contains that word literally. Keyed on
-                    # the ROLE and never on '"text"', which would drop the
-                    # bare-string user turns.
-                    if '"user"' not in line and '"assistant"' not in line:
-                        continue
-                    rec = record_from_line(line, self.path, lineno, CLAUDE)
-                else:
-                    if '"message"' not in line:
-                        continue
-                    rec = record_from_line(line, self.path, lineno, CODEX,
-                                           self._header)
+                if '"message"' not in line:
+                    continue
+                rec = record_from_line(line, self.path, lineno, CODEX,
+                                       self._header)
                 if rec is not None:
                     yield rec
 

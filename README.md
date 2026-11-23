@@ -91,6 +91,8 @@ What the question implies but this kit does **not** ship yet: grading decisions 
 The file-by-file map of the whole kit is [§10](#10-reference). The mechanism in full: [`docs/judgment-distillation.md`](docs/judgment-distillation.md) · the light daily lane: [`docs/distillation-loop.md`](docs/distillation-loop.md) · what happens after promotion: [`docs/discipline-audit.md`](docs/discipline-audit.md).
 <!-- canon:correction-promotion:end -->
 
+The daily harvester also reads human input absorbed while Claude Code is working. It verifies the queue delivery and keeps an equivalent following user turn only once; [log formats and provenance](docs/distillation-loop.md#claude-code-の作業中入力) describe the checks and how to reopen the original enqueue line.
+
 ### Rejections become assets → judgment distillation
 
 A correction goes back by its **type**: a *mechanical* hole becomes one line in `verifiers.md`; a *judgment* becomes a principle in `judgment_model.md`; *the same edit you keep making on every deliverable* becomes a norm the next first draft is briefed from. Details: [`docs/judgment-distillation.md`](docs/judgment-distillation.md) · [`docs/norms-loop.md`](docs/norms-loop.md).

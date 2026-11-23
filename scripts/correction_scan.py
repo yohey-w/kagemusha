@@ -61,6 +61,14 @@ it looks like it meant. So each candidate records the FULL session id, the byte
 line number, the full timestamp and a SHA-256 of the untruncated text, in a
 sidecar index next to the material file, and `--show-event` reopens it.
 
+Claude Code's mid-turn input is read at its queue enqueue line when the same
+file confirms an absorbed_mid_turn removal and human authorship. A later human
+user row before the next assistant takes precedence, one-to-one. Attachment
+origin.kind governs queued authorship when present; older logs use conservative
+prefix/source filters. Ordinary user origin handling is unchanged. Queue
+evidence and physical-line provenance are shared with `--show-event` in the log
+adapter; Codex keeps its existing response_item-only path.
+
 That same record identity is what dedup keys on. Keying on "session prefix +
 first 120 characters" looks fine until you say "違う" twice in one long-running
 session on different days: the second one hashes identically to the first and is
