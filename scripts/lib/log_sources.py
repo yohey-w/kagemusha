@@ -50,10 +50,11 @@ worth reading have `type` of "user" or "assistant" and the text under
 `message.content`. Mid-turn input can instead be an `enqueue` paired one-to-one
 with a later `remove` whose reason is `absorbed_mid_turn`. The enqueue becomes
 a user record at its own physical line. A matching queued_command attachment's
-`origin.kind` must be `human` (humanTurn is not an authorship flag). A file
-with no such attachments at all (older CLIs) falls back to conservative
-text/source filters; a file that has them but none for this delivery id does
-not — that input is dropped. A subsequent
+`origin.kind` must be `human` (humanTurn is not an authorship flag). Where
+neither side carries a delivery id, the attachment is joined by exact prompt
+text instead. A file with no such attachments at all falls back to
+conservative text/source filters; a file that has them but none for this
+input does not — that input is dropped. A subsequent
 human user record before the next assistant wins over the matching enqueue,
 once per user record. Sub-agent traffic is flagged inline (`isSidechain`).
 
@@ -256,18 +257,29 @@ def _queued_prompt_text(prompt):
 def _claude_records(fh, path):
     """Resolve Claude's file-local queue evidence, then emit in physical order.
 
-    Each terminal queue operation consumes the oldest pending enqueue with the
-    same exact content. Only absorbed_mid_turn removals qualify. Delivery ids
-    join attachments to removals, never by text alone. Assistant boundaries are
+    The queue is modelled in order. Every input goes through it: one typed
+    while idle is enqueued, dequeued by a content-less row, then written as a
+    user row; one typed mid-turn is enqueued and later removed with its
+    content. A content-less dequeue retires the oldest pending enqueue whose
+    text equals the user row that follows it (and nothing if none follows); a
+    remove (or a dequeue that does name its content) takes the NEAREST pending
+    enqueue with that exact content; popAll empties the queue. Only
+    absorbed_mid_turn removals qualify. Authorship comes from the
+    queued_command attachment: joined by delivery id, or — where neither side
+    has one — by exact prompt text, one attachment per input. Where a
+    delivery id exists it is the only join; text never overrides it. Assistant
+    boundaries are
     physical rows, even when their text would not be useful to a scanner.
     Returns (deduplicated records, validated enqueue provenance). The latter
     retains source rows when a duplicate user is appended after harvesting.
     """
     session_id = _claude_session_id(path)
     records, absorbed = [], []
-    pending, attachments = defaultdict(deque), defaultdict(list)
+    pending, attachments = [], defaultdict(list)   # pending: queue order
+    idless = defaultdict(list)     # prompt text -> [[line, obj, att, used]]
     users = defaultdict(deque)
     segment = 0
+    dequeued = False               # a content-less dequeue awaits its user row
     for lineno, line in enumerate(fh, 1):
         # Queue and attachment rows often contain neither conversational role.
         if not any(word in line for word in
@@ -286,22 +298,45 @@ def _claude_records(fh, path):
                 delivery = att.get("delivery_id")
                 if isinstance(delivery, str) and delivery:
                     attachments[delivery].append((obj, att))
+                else:
+                    # Older CLIs: no delivery id on either side. The prompt
+                    # text is then the only join there is.
+                    idless[_queued_prompt_text(att.get("prompt"))].append(
+                        [lineno, obj, att, False])
             continue
         if kind == "queue-operation":
             content = obj.get("content")
             if not isinstance(content, str) or not content.strip():
-                continue
+                content = None
             operation = obj.get("operation")
             if operation == "enqueue":
-                # Reuse normal Claude flags; the queue owns its line and time.
-                turn = dict(obj, type="user", promptSource=obj.get("promptSource", "queued"),
-                            message={"role": "user", "content": content})
-                rec = _claude_record(turn, path, lineno, session_id)
-                pending[content].append((rec, segment))
-            elif operation in ("remove", "dequeue") and pending[content]:
-                rec, queued_segment = pending[content].popleft()
-                if operation == "remove" and obj.get("reason") == "absorbed_mid_turn":
-                    absorbed.append((rec, queued_segment, obj))
+                rec = None
+                if content is not None:
+                    # Reuse normal Claude flags; the queue owns its line and time.
+                    turn = dict(obj, type="user", promptSource=obj.get("promptSource", "queued"),
+                                message={"role": "user", "content": content})
+                    rec = _claude_record(turn, path, lineno, session_id)
+                pending.append((content, rec, segment))
+            elif operation == "popAll":
+                del pending[:]              # taken back into the input box
+            elif operation in ("remove", "dequeue"):
+                if content is None:
+                    # Input typed while idle is ALSO enqueued, then dequeued by
+                    # a row that carries no content, then written as a user
+                    # row. Which entry left the queue is not guessed here (it
+                    # need not be the head): the user row that follows says.
+                    dequeued = operation == "dequeue"
+                    continue
+                # The nearest pending enqueue with this text, not the oldest:
+                # whatever stale entry survives the modelling above must never
+                # outrank the enqueue this row is actually about.
+                for idx in range(len(pending) - 1, -1, -1):
+                    if pending[idx][0] == content:
+                        _, rec, queued_segment = pending.pop(idx)
+                        if (rec is not None and operation == "remove"
+                                and obj.get("reason") == "absorbed_mid_turn"):
+                            absorbed.append((rec, queued_segment, obj, lineno))
+                        break
             continue
         rec = _claude_record(obj, path, lineno, session_id)
         if rec is None:
@@ -312,15 +347,39 @@ def _claude_records(fh, path):
             # window in which a typed duplicate of the queued input can land.
             if not rec["is_sidechain"]:
                 segment += 1
-        elif _claude_human_candidate(rec):
+                dequeued = False
+            continue
+        if (dequeued and not rec["is_sidechain"] and not rec["is_tool_result"]
+                and not rec["is_meta"]):
+            # The row a content-less dequeue produced: retire the enqueue it
+            # came from (the oldest with this text), so that entry cannot be
+            # mistaken for a later identical input. No match, nothing retired.
+            dequeued = False
+            raw = rec["raw_content"] if isinstance(rec["raw_content"], str) else rec["text"]
+            for idx, entry in enumerate(pending):
+                if entry[0] is not None and entry[0] in (raw, rec["text"]):
+                    del pending[idx]
+                    break
+        if _claude_human_candidate(rec):
             users[(segment, rec["text"])].append(lineno)
 
     queued, provenance = {}, {}
-    for rec, segment, removal in sorted(absorbed, key=lambda item: item[0]["line"]):
+    has_attachments = bool(attachments) or bool(idless)
+    for rec, segment, removal, removed_at in sorted(absorbed, key=lambda item: item[0]["line"]):
         delivery = removal.get("deliveryId")
         if delivery is not None and not isinstance(delivery, str):
             continue
-        evidence = attachments.get(delivery, [])
+        if delivery:
+            evidence = attachments.get(delivery, [])
+        else:
+            # No delivery id (older CLIs): the nearest unused id-less
+            # attachment carrying exactly this text, one attachment per input.
+            free = [entry for entry in idless.get(rec["text"], []) if not entry[3]]
+            evidence = []
+            if free:
+                entry = min(free, key=lambda e: abs(e[0] - removed_at))
+                entry[3] = True
+                evidence = [(entry[1], entry[2])]
         if evidence:
             # Conflicting, incomplete or non-prompt evidence is ambiguous.
             if not all(isinstance(att.get("origin"), dict)
@@ -333,10 +392,10 @@ def _claude_records(fh, path):
                 continue
             if rec["is_sidechain"] or rec["is_meta"] or rec["is_tool_result"]:
                 continue
-        elif delivery and attachments:
+        elif has_attachments:
             # This file's CLI writes queued_command attachments, and a human
-            # input always gets one. A delivery id with none is machine text
-            # more often than not (notifications), so it is not read as human.
+            # input always gets one. An input with none is machine text more
+            # often than not (notifications), so it is not read as human.
             continue
         elif not _claude_human_candidate(rec):
             continue
