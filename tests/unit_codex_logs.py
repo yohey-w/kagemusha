@@ -359,8 +359,129 @@ class ClaudeAbsorbedInput(unittest.TestCase):
         self.assertNotEqual(cands[0]["key"], cands[1]["key"])
 
     def test_one_remove_can_only_confirm_one_enqueue(self):
+        # Still exactly one. Which one: the nearest enqueue, not the oldest —
+        # an older identical entry is far more often a leftover than the
+        # input this remove is about (see the stale-enqueue tests below).
         self.assertEqual([r["line"] for r in self.read(
-            self.queue(), self.queue(), self.remove())], [1])
+            self.queue(), self.queue(), self.remove())], [2])
+
+    # Real rows: input typed while idle is enqueued, dequeued by a row that
+    # carries NO content, then written as a user row.
+    DEQUEUE = {"type": "queue-operation", "operation": "dequeue",
+               "timestamp": "2026-11-01T10:15:30.130Z"}
+
+    def test_idle_input_is_read_once_from_its_user_row(self):
+        recs = self.read(self.queue(), self.DEQUEUE, self.user(promptSource="queued"))
+        self.assertEqual([(r["kind"], r["line"]) for r in recs], [("user", 3)])
+
+    def test_a_dequeued_enqueue_cannot_capture_a_later_identical_input(self):
+        # "Ok" typed while idle (rows 1-3), answered, then "Ok" typed again
+        # mid-turn (rows 6-7). Pairing row 7 with row 1 would hand the second
+        # input to the first one's user row and lose it.
+        rows = (self.queue(), self.DEQUEUE, self.user(promptSource="queued"),
+                self.assistant(), self.assistant("working"),
+                self.queue(), self.remove(deliveryId="d1"), self.attachment())
+        recs = self.read(*rows)
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [3, 6])
+        self.assertEqual([c["line"] for c in self.harvest()], [3, 6])
+        # Same without the content-less dequeue being modelled at all (a
+        # stale entry survives): the nearest enqueue still wins.
+        recs = self.read(self.queue(), self.user(promptSource="queued"), self.assistant(),
+                         self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [2, 4])
+
+    def test_content_less_dequeue_retires_what_its_user_row_names(self):
+        # The queue need not hand out its head first. A notification queued
+        # AFTER the human input is dequeued before it; the human input is
+        # still waiting and is absorbed later.
+        note = "<task-notification>done</task-notification>"
+        recs = self.read(self.assistant(), self.queue(), self.queue(text=note), self.DEQUEUE,
+                         self.user(text=note, promptSource="system"), self.assistant(),
+                         self.remove(deliveryId="d1"), self.attachment())
+        self.assertEqual([r["line"] for r in recs if r["text"] == self.TEXT], [2])
+
+    def test_content_less_dequeue_with_nothing_to_name_retires_nothing(self):
+        # Carried over from before this file began, or followed by no user
+        # row at all: the waiting human input is left alone.
+        note = "<task-notification>done</task-notification>"
+        recs = self.read(self.DEQUEUE, self.user(text="from an earlier file"),
+                         self.queue(), self.DEQUEUE, self.user(text=note, promptSource="system"),
+                         self.assistant(), self.remove())
+        self.assertEqual([r["line"] for r in recs if r["text"] == self.TEXT], [3])
+        recs = self.read(self.queue(), self.DEQUEUE, self.assistant(), self.remove())
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [1])
+
+    def test_pop_all_empties_the_queue(self):
+        pop = {"type": "queue-operation", "operation": "popAll",
+               "timestamp": self.TS, "content": self.TEXT}
+        self.assertEqual(self.read(self.queue(), pop, self.remove()), [])
+        recs = self.read(self.queue(), pop, self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs], [3])
+
+    def test_pop_all_then_a_dequeue_does_not_take_the_next_input(self):
+        note = "<task-notification>done</task-notification>"
+        pop = {"type": "queue-operation", "operation": "popAll",
+               "timestamp": self.TS, "content": "a draft"}
+        recs = self.read(self.queue(text=note), self.queue(text="a draft"), pop,
+                         self.queue(), self.DEQUEUE, self.user(text=note, promptSource="system"),
+                         self.assistant(), self.remove())
+        self.assertEqual([r["line"] for r in recs if r["text"] == self.TEXT], [4])
+
+    def test_an_enqueue_without_content_changes_nothing(self):
+        blank = {"type": "queue-operation", "operation": "enqueue", "timestamp": self.TS}
+        recs = self.read(blank, self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs], [2])
+
+    def old_attachment(self, origin="human", text=None, **kw):
+        """An older CLI's queued_command: no delivery id on either side."""
+        att = self.attachment(origin=origin, text=text, **kw)
+        del att["attachment"]["delivery_id"]
+        if origin is None:
+            del att["attachment"]["origin"]
+        return att
+
+    def test_without_delivery_ids_the_prompt_text_joins_the_attachment(self):
+        recs = self.read(self.queue(), self.remove(), self.old_attachment())
+        self.assertEqual([r["line"] for r in recs], [1])
+        for origin in ("peer", "task-notification", None):
+            with self.subTest(origin=origin):
+                self.assertEqual(self.read(self.queue(), self.remove(),
+                                           self.old_attachment(origin=origin)), [])
+        # One attachment vouches for one input, not for every input that
+        # happens to share its words.
+        recs = self.read(self.queue(), self.remove(), self.old_attachment(),
+                         self.assistant(), self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [1])
+
+    def test_one_human_attachment_admits_one_of_two_identical_inputs(self):
+        # The same words queued by a person and by a notification, older CLI.
+        # Exactly as many inputs are read as there are human attachments.
+        recs = self.read(self.queue(), self.remove(), self.old_attachment(),
+                         self.assistant(), self.queue(), self.remove(),
+                         self.old_attachment(origin="task-notification"))
+        self.assertEqual(len([r for r in recs if r["kind"] == "user"]), 1)
+        recs = self.read(self.queue(), self.remove(),
+                         self.old_attachment(origin="task-notification"))
+        self.assertEqual(recs, [])
+
+    def test_a_meta_row_is_not_what_a_dequeue_produced(self):
+        caveat = self.user(text="Caveat: The messages below were generated", isMeta=True)
+        recs = self.read(self.queue(), self.DEQUEUE, caveat, self.user(promptSource="queued"),
+                         self.assistant(), self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs
+                          if r["kind"] == "user" and not r["is_meta"]], [4, 6])
+
+    def test_a_file_with_attachments_requires_one_even_without_a_delivery_id(self):
+        # Nothing in this text looks machine-written. In a file whose CLI
+        # writes attachments, having none is what gives it away.
+        machine = "Run the scheduled health check now."
+        recs = self.read(self.queue(text=machine), self.remove(text=machine),
+                         self.queue(), self.remove(), self.old_attachment())
+        self.assertEqual([(r["line"], r["text"]) for r in recs], [(3, self.TEXT)])
+        # The same row in a file with no attachments at all falls back to the
+        # text filters and is kept: that is the older shape #49 reported.
+        self.assertEqual([r["line"] for r in self.read(
+            self.queue(text=machine), self.remove(text=machine))], [1])
 
     def test_one_enqueue_cannot_be_confirmed_twice(self):
         self.assertEqual([r["line"] for r in self.read(
