@@ -91,6 +91,8 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 キット全体のファイル単位の対応表は [§10](#10-リファレンス)。全機構は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)・軽い日次レーンは [`docs/distillation-loop.md`](docs/distillation-loop.md)・昇格した後の話は [`docs/discipline-audit.md`](docs/discipline-audit.md)。
 <!-- canon:correction-promotion:end -->
 
+日次の採取は、Claude Code の作業中に吸収された人の入力も拾う。キューの配達記録を確かめ、後続の同じ user 発話とは二重に数えない。[ログ形式と出典](docs/distillation-loop.md#claude-code-の作業中入力)に、判定条件と enqueue 原行の開き直し方を記載した。
+
 ### 却下を資産に変える → 判断蒸留
 
 訂正は**型ごとに**戻します——**機械的**な穴は `verifiers.md` の1行へ、**判断**は `judgment_model.md` の原則へ、**どの成果物でも入れている同じ直し**は次の初稿を頼むときの指示文に入る規約へ。詳細は [`docs/judgment-distillation.md`](docs/judgment-distillation.md)・[`docs/norms-loop.md`](docs/norms-loop.md)。

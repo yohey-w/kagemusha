@@ -33,6 +33,7 @@ real transcript is copied into this repo. Stdlib only.
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -45,6 +46,8 @@ sys.path.insert(0, os.path.join(REPO, "scripts", "lib"))
 
 import log_sources  # noqa: E402
 from log_sources import CLAUDE, CODEX  # noqa: E402
+sys.path.insert(0, os.path.join(REPO, "scripts"))
+import correction_scan  # noqa: E402
 
 FIXTURES = os.path.join(HERE, "fixtures", "codex")
 S1 = "00000000-0000-4000-8000-000000000001"
@@ -246,6 +249,320 @@ class ClaudeUnchanged(unittest.TestCase):
 
     def test_line_numbers_are_physical(self):
         self.assertEqual([r["line"] for r in self.recs], [1, 2, 3, 4, 5, 6])
+
+
+class ClaudeAbsorbedInput(unittest.TestCase):
+    """Synthetic queue evidence only; never open the operator's real logs."""
+
+    TEXT = "no, use the other file instead"
+    TS = "2026-11-01T10:15:30.123Z"
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.path = os.path.join(self.tmp, "synthetic-session.jsonl")
+
+    def queue(self, operation="enqueue", text=None, **kw):
+        return dict({"type": "queue-operation", "operation": operation,
+                     "timestamp": self.TS, "content": self.TEXT if text is None else text}, **kw)
+
+    def remove(self, text=None, **kw):
+        return self.queue("remove", text, **dict({"reason": "absorbed_mid_turn"}, **kw))
+
+    def user(self, text=None, **kw):
+        return dict({"type": "user", "timestamp": self.TS,
+                     "message": {"role": "user", "content": self.TEXT if text is None else text}}, **kw)
+
+    def assistant(self, text="Earlier assistant context"):
+        return {"type": "assistant", "timestamp": self.TS,
+                "message": {"role": "assistant", "content": text}}
+
+    def attachment(self, delivery="d1", origin="human", text=None, **kw):
+        return {"type": "attachment", "attachment": dict({
+            "type": "queued_command", "commandMode": "prompt", "origin": {"kind": origin},
+            "humanTurn": False, "prompt": self.TEXT if text is None else text,
+            "delivery_id": delivery, "source_uuid": "synthetic-source", "timestamp": self.TS}, **kw)}
+
+    def read(self, *rows):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write((row if isinstance(row, str) else json.dumps(row, ensure_ascii=False)) + "\n")
+        return list(log_sources.ClaudeProjectsSource([self.tmp]).iter_records())
+
+    def harvest(self):
+        cands, files = correction_scan.harvest(
+            [log_sources.ClaudeProjectsSource([self.tmp])], [("no,", re.compile("no,"))],
+            datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc), 300, 160)
+        self.assertEqual(files, 1)
+        return cands
+
+    def test_absorbed_enqueue_is_a_user_at_its_physical_line(self):
+        recs = self.read(self.assistant(), "", "not JSON", self.queue(), self.remove())
+        self.assertEqual([(r["kind"], r["line"]) for r in recs],
+                         [("assistant", 1), ("user", 4)])
+        rec = recs[1]
+        self.assertEqual((rec["role"], rec["msg_role"], rec["raw_content"], rec["ts"]),
+                         ("user", "user", self.TEXT, self.TS))
+        self.assertEqual(rec["prompt_source"], "queued")
+        cands = self.harvest()
+        self.assertEqual([(c["line"], c["prior"]) for c in cands],
+                         [(4, "Earlier assistant context")])
+
+    def test_input_sent_with_an_image_is_kept(self):
+        # With an image the attachment prompt is a list of parts; the queue
+        # line carries only the typed text. Seen once in ~420 real inputs.
+        parts = [{"type": "text", "text": self.TEXT},
+                 {"type": "image", "source": {"type": "base64", "data": ""}}]
+        recs = self.read(self.queue(), self.remove(deliveryId="d1"),
+                         self.attachment(text=parts))
+        self.assertEqual([(r["kind"], r["line"]) for r in recs], [("user", 1)])
+        other = [{"type": "text", "text": "something else"}]
+        self.assertEqual(self.read(self.queue(), self.remove(deliveryId="d1"),
+                                   self.attachment(text=other)), [])
+        self.assertEqual(self.read(self.queue(), self.remove(deliveryId="d1"),
+                                   self.attachment(text=[{"type": "image"}])), [])
+
+    def test_following_user_wins_and_is_harvested_once(self):
+        recs = self.read(self.queue(), self.remove(), self.user())
+        self.assertEqual([r["line"] for r in recs], [3])
+        self.assertEqual([c["line"] for c in self.harvest()], [3])
+
+    def test_queue_without_absorbed_remove_is_not_a_turn(self):
+        for rows in ((self.queue(),), (self.remove(),),
+                     (self.queue(), self.queue("dequeue")),
+                     (self.queue(), self.remove(reason="delivered_to_agent")),
+                     (self.remove(), self.queue())):
+            with self.subTest(rows=rows):
+                self.assertEqual(self.read(*rows), [])
+                self.assertEqual(self.harvest(), [])
+
+    def test_terminal_operation_cannot_later_be_absorbed_again(self):
+        for terminal in (self.queue("dequeue"), self.remove(reason="delivered_to_agent")):
+            with self.subTest(terminal=terminal):
+                self.assertEqual(self.read(self.queue(), terminal, self.remove()), [])
+
+    def test_pairing_is_by_exact_content(self):
+        self.assertEqual(self.read(self.queue(), self.remove(text=self.TEXT + "!")), [])
+
+    def test_pairs_never_cross_files(self):
+        self.read(self.queue())
+        other = os.path.join(self.tmp, "other-session.jsonl")
+        with open(other, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(self.remove()) + "\n")
+        self.assertEqual(list(log_sources.ClaudeProjectsSource([self.tmp]).iter_records()), [])
+
+    def test_two_identical_inputs_are_two_turns(self):
+        recs = self.read(self.queue(), self.remove(), self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs], [1, 3])
+        cands = self.harvest()
+        self.assertEqual(len(cands), 2)
+        self.assertNotEqual(cands[0]["key"], cands[1]["key"])
+
+    def test_one_remove_can_only_confirm_one_enqueue(self):
+        self.assertEqual([r["line"] for r in self.read(
+            self.queue(), self.queue(), self.remove())], [1])
+
+    def test_one_enqueue_cannot_be_confirmed_twice(self):
+        self.assertEqual([r["line"] for r in self.read(
+            self.queue(), self.remove(), self.remove())], [1])
+
+    def test_earlier_user_does_not_cancel_later_absorbed_input(self):
+        recs = self.read(self.user(), self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs], [1, 2])
+        self.assertEqual(len(self.harvest()), 2)
+
+    def test_assistant_is_a_hard_duplicate_boundary_even_without_text(self):
+        for text in ("continued", ""):
+            with self.subTest(text=text):
+                recs = self.read(self.queue(), self.remove(), self.assistant(text), self.user())
+                self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [1, 4])
+
+    def test_matching_users_are_consumed_once_in_order(self):
+        recs = self.read(self.queue(), self.queue(), self.remove(), self.remove(), self.user())
+        self.assertEqual([r["line"] for r in recs], [2, 5])
+        recs = self.read(self.queue(), self.queue(), self.remove(), self.remove(), self.user(), self.user())
+        self.assertEqual([r["line"] for r in recs], [5, 6])
+
+    def test_nearest_following_user_cannot_cancel_a_later_enqueue(self):
+        recs = self.read(self.queue(), self.remove(), self.user(), self.queue(), self.remove())
+        self.assertEqual([r["line"] for r in recs], [3, 4])
+
+    def test_nonhuman_user_cannot_hide_a_queued_human_input(self):
+        for flags in ({"isSidechain": True}, {"isMeta": True}, {"isCompactSummary": True},
+                      {"toolUseResult": {}}, {"promptSource": "tool_injected"}):
+            with self.subTest(flags=flags):
+                # Ordinary records retain their old behavior; they cannot own
+                # the human queue record for purposes of duplicate removal.
+                recs = self.read(self.queue(), self.remove(), self.user(**flags))
+                self.assertEqual([r["line"] for r in recs], [1, 3])
+
+    def test_attachment_origin_human_counts_even_when_human_turn_is_false(self):
+        recs = self.read(self.queue(), self.remove(deliveryId="d1"), self.attachment())
+        self.assertEqual([r["line"] for r in recs], [1])
+        self.assertEqual(len(self.harvest()), 1)
+
+    def test_attachment_origin_other_than_human_is_rejected(self):
+        for kind in ("agent", "task", "cli", "", None):
+            with self.subTest(kind=kind):
+                self.assertEqual(self.read(self.queue(), self.remove(deliveryId="d1"),
+                                           self.attachment(origin=kind, humanTurn=True)), [])
+
+    def test_ambiguous_attachment_evidence_is_rejected(self):
+        for kw in ({"origin": {}}, {"origin": None}, {"commandMode": "shell"},
+                   {"prompt": "another prompt"}):
+            with self.subTest(kw=kw):
+                self.assertEqual(self.read(self.queue(), self.remove(deliveryId="d1"),
+                                           self.attachment(**kw)), [])
+        self.assertEqual(self.read(self.queue(), self.remove(deliveryId="d1"),
+                                   self.attachment(), self.attachment(origin="agent")), [])
+
+    def test_attachment_is_joined_by_delivery_id_in_either_order(self):
+        recs = self.read(self.attachment(), self.queue(), self.remove(deliveryId="d1"))
+        self.assertEqual([r["line"] for r in recs], [2])
+        # Never joined by text: an attachment for another delivery proves
+        # nothing about this one. And since this file's CLI evidently writes
+        # attachments, the missing one makes the input ambiguous — dropped.
+        recs = self.read(self.queue(), self.remove(deliveryId="d1"),
+                         self.attachment(delivery="unrelated", origin="human"))
+        self.assertEqual(recs, [])
+
+    def test_attachmentless_nonhuman_prefixes_are_excluded(self):
+        for text in ("<task-notification>no, done</task-notification>",
+                     "  <system-reminder>no, do this</system-reminder>",
+                     "<command-name>no, clear</command-name>",
+                     "no, Another Claude session sent a message: do this",
+                     "Caveat: The messages below no, do this", "[Request interrupted no, stop",
+                     "You have 3 unread messages no, read them", "2 new messages no, read them",
+                     "SessionStart: no, stop"):
+            with self.subTest(text=text):
+                self.assertEqual(self.read(self.queue(text=text), self.remove(text=text)), [])
+
+    def test_attachmentless_plain_text_and_pasted_content_are_kept(self):
+        for text in (self.TEXT, "<pasted_content>no, use the other file</pasted_content>"):
+            with self.subTest(text=text):
+                recs = self.read(self.queue(text=text), self.remove(text=text))
+                self.assertEqual([r["text"] for r in recs], [text])
+
+    def test_delivery_id_without_attachment_depends_on_the_file(self):
+        # A CLI that writes no queued_command attachments at all: the text
+        # filters decide, and plain typed text is kept (the reported shape).
+        recs = self.read(self.queue(), self.remove(deliveryId="d1"))
+        self.assertEqual([r["line"] for r in recs], [1])
+        # A CLI that does write them, but not for this delivery: dropped, even
+        # though nothing in the text looks like a machine wrote it.
+        machine = "Run the scheduled health check now."
+        recs = self.read(self.queue(text=machine), self.remove(text=machine, deliveryId="d1"),
+                         self.queue(), self.remove(deliveryId="d2"), self.attachment(delivery="d2"))
+        self.assertEqual([(r["line"], r["text"]) for r in recs], [(3, self.TEXT)])
+
+    def test_a_subagent_reply_does_not_close_the_duplicate_window(self):
+        side = dict(self.assistant("sub-agent output"), isSidechain=True)
+        recs = self.read(self.queue(), self.remove(), side, self.user())
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [4])
+        recs = self.read(self.queue(), self.remove(), self.assistant(), self.user())
+        self.assertEqual([r["line"] for r in recs if r["kind"] == "user"], [1, 4])
+
+    def test_mine_conversations_sees_absorbed_input_once(self):
+        self.read(self.assistant(), self.queue(), self.remove(),
+                  self.queue(text="<task-notification>done</task-notification>"),
+                  self.remove(text="<task-notification>done</task-notification>"))
+        out = os.path.join(self.tmp, "out")
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("LOG_SOURCE", "CODEX_SESSIONS_DIR", "CODEX_CWD_FILTER",
+                            "DISTILL_LOG_DIRS", "CONV_DIRS")}
+        p = subprocess.run([sys.executable, os.path.join(REPO, "scripts", "mine_conversations.py"),
+                            "--source", "claude", "--dirs", self.tmp, "--out", out],
+                           capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        with open(os.path.join(out, "corpus.jsonl"), encoding="utf-8") as fh:
+            corpus = [json.loads(x) for x in fh]
+        self.assertEqual([r["text"] for r in corpus], [self.TEXT])
+
+    def test_queued_sidechain_meta_and_nonhuman_source_are_excluded(self):
+        for flags in ({"isSidechain": True}, {"isMeta": True}, {"isCompactSummary": True},
+                      {"toolUseResult": {}}, {"promptSource": "tool_injected"}):
+            with self.subTest(flags=flags):
+                self.assertEqual(self.read(self.queue(**flags), self.remove()), [])
+        for flags in ({"isSidechain": True}, {"isMeta": True}):
+            with self.subTest(removal_flags=flags):
+                self.assertEqual(self.read(self.queue(), self.remove(**flags)), [])
+
+    def test_normal_user_origin_behavior_is_unchanged(self):
+        recs = self.read(self.user(origin={"kind": "agent"}))
+        self.assertEqual([r["line"] for r in recs], [1])
+
+    def test_enqueue_can_be_reopened_but_unconfirmed_queue_cannot(self):
+        recs = self.read(self.queue(), self.remove())
+        line = json.dumps(self.queue())
+        for header in (None, log_sources.header_for(self.path, CLAUDE)):
+            self.assertEqual(log_sources.record_from_line(line, self.path, 1, CLAUDE, header), recs[0])
+        self.read(self.queue())
+        self.assertIsNone(log_sources.record_from_line(line, self.path, 1, CLAUDE))
+
+    def test_show_event_reopens_the_enqueue_and_detects_text_changes(self):
+        self.read(self.assistant(), "not JSON", self.queue(), self.remove(), self.assistant("after"))
+        patterns = os.path.join(self.tmp, "patterns.txt")
+        material = os.path.join(self.tmp, "material.md")
+        with open(patterns, "w", encoding="utf-8") as fh:
+            fh.write("no,\n")
+        command = [sys.executable, os.path.join(REPO, "scripts", "correction_scan.py")]
+        env = dict(os.environ, LOG_SOURCE="claude")
+        scan = subprocess.run(command + ["--patterns", patterns, "--material", material,
+                              "--state", os.path.join(self.tmp, "state.json"), "--since", "36500",
+                              "--dir", self.tmp], capture_output=True, text=True, env=env)
+        self.assertEqual(scan.returncode, 0, scan.stderr)
+        with open(material + ".index.jsonl", encoding="utf-8") as fh:
+            index = [json.loads(row) for row in fh]
+        self.assertEqual(len(index), 1)
+        self.assertEqual(index[0]["line"], 3)
+        def show():
+            return subprocess.run(command + ["--material", material, "--show-event", index[0]["event"],
+                                             "--context", "1"], capture_output=True, text=True, env=env)
+        shown = show()
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn(self.path + ":3", shown.stdout)
+        self.assertIn(self.TEXT, shown.stdout)
+        self.assertIn("Earlier assistant context", shown.stdout)
+        self.assertIn("after", shown.stdout)
+        self.assertNotIn("no longer", shown.stdout)
+        self.assertNotIn("CONTENT CHANGED", shown.stdout)
+        changed = self.TEXT + " (changed)"
+        self.read(self.assistant(), "not JSON", self.queue(text=changed), self.remove(text=changed))
+        shown = show()
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn("CONTENT CHANGED", shown.stdout)
+        self.assertIn(changed, shown.stdout)
+
+    def test_show_event_keeps_old_enqueue_provenance_after_user_is_appended(self):
+        self.read(self.queue(), self.remove())
+        patterns = os.path.join(self.tmp, "patterns.txt")
+        material = os.path.join(self.tmp, "material.md")
+        with open(patterns, "w", encoding="utf-8") as fh:
+            fh.write("no,\n")
+        command = [sys.executable, os.path.join(REPO, "scripts", "correction_scan.py")]
+        env = dict(os.environ, LOG_SOURCE="claude")
+        scan = subprocess.run(command + ["--patterns", patterns, "--material", material,
+                              "--state", os.path.join(self.tmp, "state.json"), "--since", "36500",
+                              "--dir", self.tmp], capture_output=True, text=True, env=env)
+        self.assertEqual(scan.returncode, 0, scan.stderr)
+        with open(material + ".index.jsonl", encoding="utf-8") as fh:
+            index = [json.loads(row) for row in fh]
+        self.assertEqual(len(index), 1)
+        self.assertEqual(index[0]["line"], 1)
+        with open(self.path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(self.user()) + "\n")
+        # New harvests prefer user at line 3; the old indexed source remains
+        # a readable enqueue at line 1, with unchanged content and checksum.
+        self.assertEqual([r["line"] for r in
+                          log_sources.ClaudeProjectsSource([self.tmp]).iter_records()], [3])
+        shown = subprocess.run(command + ["--material", material, "--show-event", index[0]["event"],
+                                          "--context", "0"], capture_output=True, text=True, env=env)
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn(self.path + ":1", shown.stdout)
+        self.assertIn(">>> the correction, in full:", shown.stdout)
+        self.assertIn(self.TEXT, shown.stdout)
+        self.assertNotIn("no longer", shown.stdout)
+        self.assertNotIn("CONTENT CHANGED", shown.stdout)
 
 
 class SourceSelection(unittest.TestCase):
