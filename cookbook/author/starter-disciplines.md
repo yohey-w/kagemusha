@@ -220,6 +220,21 @@
 
 **機械化**: 出力中の意思表明（`〜しておく/後で/次に`）を検出し、各ヒットに**直後の実操作**か**台帳の1件**が対応しているかを報告前に確認。
 
+### C4. A derived note is a pointer, not the record — open what it points to before you assert.
+
+**［機構前提］** requires: 出所の欄を持つ台帳と、その出所が指す一次の記録（逐語・メール・文書）。出所の欄がまだ無いなら [台帳の雛形](../../templates/context_ledgers_template.md) の `source` 欄を参照
+**貼り先**: エージェント指示ファイル・`verifiers.md` (A)
+
+要約（台帳の1行・議事録）も、前に書いた調べの作業メモも、**一次の記録と正本への案内であって、その代わりではない**。
+
+- **要約**：人の発言に触れて答えるとき、「言っていない」と言うとき、その人への問いを作るときは、要約の出所を開いて前後を読む。要約からは、留保・その答えを引き出した問い・話した人の立場が落ちる。
+- **作業メモ**：書いた日の状態の写しだ。その結果で正本を直したら、メモの先頭に「この結果で直した（いつ・どこを）」を書き足す。メモを根拠に何か言う前に、そのあとで正本が改版されていないかを見る。
+
+> 焼けた出自: 相手の発言について、台帳の要約だけを読んで答えた。要約から落ちていたやり取り（こちらの「〜だからではないか」という問いかけと、相手の「かもしれない」）を「記録に無い」と答えた——出所の欄は逐語の場所を指していて、開けば読めた。別の日には、前に書いた調べのメモを今の状態として読み、そのあとで直してあった正本を「現行とずれている」と言った。
+> 追記の出所: 著者の別の実走（受託の作業場）からの報告。字面の検索が、言い方の違う記録と、音声認識が別の字で書いた発言を取りこぼすことも同じ場で出た——そちらの手当ては [`../../templates/skills/meaning-search/`](../../templates/skills/meaning-search/SKILL.md)（beta）。
+
+**機械化**: 出す前の1問——「この文の根拠にした行の出所を、今日開いたか」。作業メモは、先頭に「反映済み」の行が無いものを数える。
+
 ---
 
 ## D. 顧客と合意文書
@@ -232,6 +247,10 @@
 相手への質問は、送る前に**1問ずつ過去のやり取りに当てる**。「未解決リストに残っている＝まだ聞いていない」ではない——リストの更新漏れかもしれない。聞くべきを聞かないのと、もらった答えをまた聞くのは、同じ失敗の両面で、どちらも送信前に記録を1回開けば防げる。
 
 > 焼けた出自: 納期直前、多忙な相手への確認メールに4問を載せた。うち**3問は相手がすでに答えていた**（1問は会議の逐語に、1問は先方が送ってきた名簿そのものに、1問はこちらの資料に答えがあった）。未確定リストからの機械転記が原因——リストの鮮度管理と、送信前の検品の両方が抜けていた。
+
+**「相手の発言と資料が食い違う」と聞く前にも、食い違って見える発言の出典を開く。** 答えが前提（だれが・どの画面で・どのデータを見たときか）で分かれる話なら、前提ごとに答えがどう変わるかを先に並べ、相手がどの前提で話したかを逐語の前後から読む。それでも決まらない前提だけを聞く。
+
+> 焼けた出自（追記）: 相手の説明と一次資料が食い違って見えたので確認の問いを作りかけた。相手の立場（部署）をそろえて読み直すと、食い違いではなかった。詰めずに聞いていれば、調べていない問いに見えた。著者の別の実走からの報告。
 
 **機械化**: 送信前チェック1問——「この質問リストの各行について、相手の返信・議事録・受領物を検索したか」。
 
@@ -291,7 +310,7 @@
 
 ## English summary
 
-The updated B1 distinguishes choices that change what the recipient is promised (requirements, visible design, price) from internal implementation choices within agreed requirements and permissions. B2 delegates a complete piece of work through its checks and in-scope fixes, returning interpretation, scope, or test-harness problems to the parent; a completion slip names the version/diff, commands and outcomes, evidence, unresolved items, and permission compliance. C2 records where each check came from, keeps review suggestions distinct from adopted requirements, and reuses accepted evidence only under the same recorded conditions. Reopen on a new diff, evidence, failure, constraint, or a person's request, with the reason stated. These are examples from the author's operation, not new defaults installed by the kit; required independent reviews and approval for irreversible actions still apply.
+The updated B1 distinguishes choices that change what the recipient is promised (requirements, visible design, price) from internal implementation choices within agreed requirements and permissions. B2 delegates a complete piece of work through its checks and in-scope fixes, returning interpretation, scope, or test-harness problems to the parent; a completion slip names the version/diff, commands and outcomes, evidence, unresolved items, and permission compliance. C2 records where each check came from, keeps review suggestions distinct from adopted requirements, and reuses accepted evidence only under the same recorded conditions. Reopen on a new diff, evidence, failure, constraint, or a person's request, with the reason stated. C4 treats a summary line and an old working note as pointers: open the source before stating what someone said or did not say, and stamp a note once its result has been applied to the canonical file. D1 now also covers apparent contradictions: open the source of the statement that appears to conflict, line up how the answer changes by premise, read which premise the speaker was under, and ask only what the record cannot settle. These are examples from the author's operation, not new defaults installed by the kit; required independent reviews and approval for irreversible actions still apply.
 
 [`workflow_progress_check.py`](../../scripts/workflow_progress_check.py) reads a small nonsecret JSON record to flag repeated reviews, added conditions, or stalled work. **Advice only, never permission; it changes no jobs or state.**
 Run from the repository root (the key covers purpose, source version, checker version, dependencies/configuration, and adoption conditions; never include secrets or customer data):
