@@ -1,0 +1,90 @@
+# example-co は架空の倉庫運営会社です。
+meta:
+  project: example-co
+  updated: 2026-01-16
+
+facts:
+  - id: F-001
+    title: 翌月の棚卸しは東棟から始める
+    status: confirmed
+    source: "transcripts/2026-01-16_operations.txt:1"
+    fresh: 2026-01-16
+
+  - id: F-002
+    title: 月次の在庫表を共有フォルダに置く
+    status: confirmed
+    source: "transcripts/2026-01-16_operations.txt:2"
+    fresh: 2026-01-16
+
+  - id: F-003
+    title: 検品端末の入れ替え手順を倉庫ごとに揃える
+    status: confirmed
+    source: "transcripts/2026-01-15_handoff.txt:3"
+    fresh: 2026-01-15
+    note: >-
+      倉庫の閉館後に予備端末を搬入し、開館までに充電と時刻合わせを済ませる。
+      端末の番号は底面で照合し、古い番号が残っていたら管理表を検索する。
+      搬入用の箱と廃棄用の箱は色で見分け、翌朝に担当者が返却数を数える。
+      作業写真は共用の帳票に時系列で貼り、倉庫ごとに全景とラベルの写真を残す。
+      端末が起動しなければ予備機に交換し、後日、不良品を別送する。
+      初日の立ち会いは受付が担当し、問い合わせがあれば当日の作業者へ回す。
+      （人員の異動時は、検品責任者の引き継ぎを当日の端末点検に合わせる。）
+      写真を確認したら箱をたたみ、清掃用品と充電器を棚に戻す。
+
+  - id: F-004
+    title: 担当替えの当日に旧担当と後任が現場を一周する
+    status: confirmed
+    source: "talk:00:02:35"
+    fresh: 20260115
+
+  - id: F-005
+    title: 在庫履歴の保存期間は暫定12か月
+    status: proposed
+    source: "talk:2026-01-15_handoff@00:04:15（暫定値の話）"
+    fresh: 2026-01-15
+
+  - id: F-006
+    title: 破損品を黄色の箱に隔離する
+    status: confirmed
+    source: "transcripts/2026-01-16_operations.txt:4"
+    fresh: 2026-01-16
+
+holes:
+  - id: H-001
+    title: 業務帳票を遡れる月数を決める
+    status: open
+    why: 監査担当が参照する範囲を聞く
+    source: "transcripts/2026-01-16_operations.txt:6"
+    fresh: 2026-01-16
+
+  - id: H-002
+    title: 返品の受付時間を決める
+    status: open
+    source: "transcripts/2026-01-16_operations.txt:5"
+
+  - id: H-003
+    title: 作業用ベストを何着補充するか
+    status: open
+
+  - id: H-004
+    title: 運送便の伝票を倉庫で印刷できるか
+    status: open
+
+forks:
+  - id: K-001
+    title: 担当替えの際に後任と副担当の両方へ渡すか
+    status: open
+    source: "transcripts/2026-01-15_handoff.txt:6"
+    fresh: 2026-01-15
+
+  - id: K-002
+    title: 作業台を入口側と奥側のどちらに置くか
+    status: open
+
+  - id: K-003
+    title: 研修の集合場所を東棟と西棟のどちらにするか
+    status: open
+
+  - id: K-004
+    title: 予備の手袋を台車と作業台のどちらに常備するか
+    status: open

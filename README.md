@@ -127,13 +127,14 @@ Pick the CLI with **one key**: `AGENT_CLI=claude|codex` in `config.env` (`auto` 
 
 ### Bundled skills
 
-The `skills` row above is a symlink, not a description — five skills ship in `templates/skills/`:
+The `skills` row above is a symlink, not a description — six skills ship in `templates/skills/`:
 
 - **`advisor-gate`** — a procedure for consulting a frontier-class external reasoning model on a decision that matters, then auditing the reply. [`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
 - **`codex-chatgpt-consult`** — a Codex Desktop-only workflow for consulting a user-selected ChatGPT Web model through the standard in-app Browser, with duplicate-send stops and verbatim capture. [Install and use](docs/desktop-apps.md#optional-install-the-chatgpt-web-consultation-skill).
 - **`codex-pro-plan-build`** — a Codex Desktop-only workflow that consults Web Pro for authorized high-rework design decisions, audits a design contract, then implements and tests locally. [Install and use](docs/desktop-apps.md#optional-install-the-pro-plan-and-build-workflow).
 - **`meeting-copilot`** — a two-machine meeting copilot. Builds a script from a single agenda sheet, keeps 3-line cards, off-script search assist, and stops itself when the call ends; per-utterance judgment is handed to a swappable model (e.g. a small classifier like Jev/TypeSafe over Vercel AI Gateway) and falls back to plain keyword rules when it can't answer. [`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 - **`meeting-board`** — reads Meet's live captions with speaker names and keeps a "story so far" board in a separate window during the call; the thinking is done by your local Claude Code. [`templates/skills/meeting-board/SKILL.md`](templates/skills/meeting-board/SKILL.md)
+- **`meaning-search`** (beta) — **for the moment you need "what did they actually say about this?" out of your ledgers.** `grep` only finds a record written the way you searched: look for "changes after delivery" and you will not get the record that says "fixes after acceptance", nor the meeting line where speech recognition wrote a different word that sounds the same. So this has a cheap model read the whole ledger for records that may bear on the topic, then follows each hit's `source` into the meeting transcript and reads around it. Run it before you answer or question the other side, or before you change a design. What comes back is a pre-read: open the originals before you rely on it, and records can still be missed. Leaves no index behind. Claude Code gives the child no tools. Codex runs it in a read-only sandbox without an option to disable connectors. [`templates/skills/meaning-search/SKILL.md`](templates/skills/meaning-search/SKILL.md)
 
 The kit's own scheduled calls to Codex are **not** recorded in `~/.codex/sessions` (`--ephemeral`): that tree is what the distillation lane harvests, and the machinery's prompts are not your judgment. `AGENT_CLI_RECORD=1` turns recording on while you debug a cron run.
 

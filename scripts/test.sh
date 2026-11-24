@@ -25,6 +25,7 @@
 #         N parent-selected difficulty profiles
 #         O the Claude Code outward guard (the twin of M9's Codex one)
 #         P meeting-board (Meet captions → a local board; local-only by construction)
+#         Q meaning-search (record chunks and source excerpts, with stub agents)
 # ═══════════════════════════════════════════════════════════════════════════
 set -uo pipefail
 
@@ -41,8 +42,8 @@ TESTS_DIR="$REPO_ROOT/tests"
 
 ALL_GROUPS=(a_lint b_setup c_privacy d_gitignore e_cron f_discipline g_distill h_layers
             i_community_lane j_demo k_readme l_meeting_copilot m_codex n_difficulty
-            o_claude_guard p_meeting_board)
-MIN_ASSERTIONS=1731  # full-run floor; +3 (O11: the docs do not show the bypass flag paired with an allow-list as a command)
+            o_claude_guard p_meeting_board q_meaning_search)
+MIN_ASSERTIONS=1845  # full-run floor; +114 from group Q
 
 # ─── preflight ─────────────────────────────────────────────────────────────
 die() { printf 'test.sh: %s\n' "$1" >&2; exit 2; }

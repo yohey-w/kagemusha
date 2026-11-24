@@ -40,8 +40,19 @@ Case data lives under `projects/`, which the allowlist `.gitignore` makes struct
 | `title` | the fact, in one line |
 | `status` | `confirmed` |
 | `kind` | counterpart's current state ／ agreed ／ our own implementation state（相手の現状／合意済み／こちらの実装状態） |
-| `source` | `file:line` ／ `mail:YYYY-MM-DD` ／ `talk:HH:MM:SS` — where you saw it |
+| `source` | `file:line` ／ `mail:YYYY-MM-DD` ／ `talk:<transcript name>@HH:MM:SS` ／ `talk:HH:MM:SS` (resolves automatically only when exactly one transcript name contains the `fresh` date ／ `fresh` の日付を名前に含む逐語がちょうど1本のときだけ機械で解決できる) — where you saw it. **An address to open, not a citation to trust**（下の「`title` は目次」） |
 | `fresh` | the date the fact was true |
+
+**EN.** **`title` is the table of contents; `source` is the page.** A one-line title drops the hedge ("maybe"), the question that drew the answer out, and which seat the speaker was answering from. Before you state what the counterpart said — or that they never said it — and before you draft a question to them, open `source` and read around it. "Not in the ledger" is a sentence about the ledger, not about the meeting.
+
+**JA.** **`title` は目次、`source` は本文の頁。** 1行の title からは、留保（「かもしれない」）・その答えを引き出した問い・相手がどの立場で答えたかが落ちる。相手の発言に触れて答えるとき、「言っていない」と言うとき、相手への問いを作るときは、`source` を開いて前後を読む。「台帳に無い」は台帳についての文であって、会議についての文ではない。
+
+**EN.** A `talk:` source points into a verbatim transcript. **Keep the transcript exactly as the recognizer wrote it, homophone errors included, and never make a corrected copy** — the copy becomes a second source of truth, and its lines stop matching the timestamps. Write the misreadings you notice into a side table next to the ledger (`projects/<name>/ledgers/mishearings.md`: as written → read as) and hand that table to whoever reads the transcript next. A bare `talk:HH:MM:SS` does not say *which* meeting; once a case has more than one transcript, write `talk:<transcript file name without extension>@HH:MM:SS`.
+
+**JA.** `talk:` の出典は逐語（文字起こし）を指す。**逐語は、音声認識が書いたとおりに、同じ音の別の字の誤りごと残す。直した版は作らない**——直した版は2つ目の正本になり、行と時刻が合わなくなる。気づいた聞き違いは、台帳の隣の対応表（`projects/<name>/ledgers/mishearings.md`：書かれた字 → 読む字）に足し、次に逐語を読む者へその表を渡す。無印の `talk:HH:MM:SS` は「どの会議か」を言っていない。逐語が2本以上になったら `talk:<逐語ファイルの名前（拡張子なし）>@HH:MM:SS` と書く。
+
+字面の検索は、書かれたとおりの言葉しか拾わない（言い換えと聞き違いを落とす）。`source` を機械でたどって前後を読ませる道具が [`skills/meaning-search/`](skills/meaning-search/SKILL.md) にある（**beta**）。
+A literal search only finds a record written the way you searched for it. [`skills/meaning-search/`](skills/meaning-search/SKILL.md) (**beta**) follows `source` mechanically and reads around it.
 
 **holes**
 
@@ -117,5 +128,7 @@ Step 2 exists because of a specific failure: the counterpart says something they
 - A hole with no `fills_by`.（誰が埋めるか無しの穴）
 - A fork with no `recommend`.（推しの無い分岐＝丸投げ）
 - Twelve `owner` forks. Re-run the test on each; most are `agent`.（人の分岐が10件超えたら分類をやり直す）
+- Answering about what the counterpart said from `title` alone, without opening `source`.（title だけ読んで相手の発言を語る）
+- A "cleaned-up" copy of a transcript.（逐語の聞き違いを直した版を作る）
 - Hand-editing a generated view and losing it on the next render.（生成ビューを手で直す）
 - A scope table with "undecided" rows that have no fork ID — assert it mechanically.（未決なのに分岐IDを持たない行）

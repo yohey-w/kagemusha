@@ -127,13 +127,14 @@ AIに仕事を渡すと、詰まるところは2つあります——**取り消
 
 ### 同梱スキル
 
-上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には5つ同梱されている。
+上の表の「スキル」行は symlink の話であって中身の説明ではない——`templates/skills/` には6つ同梱されている。
 
 - **`advisor-gate`** — 最上位の外部推論モデルへ重要な判断のレビューを諮問し、回答を検収するための手順。[`templates/skills/advisor-gate/SKILL.md`](templates/skills/advisor-gate/SKILL.md)
 - **`codex-chatgpt-consult`** — Codex Desktop専用。標準の内蔵Browserで利用者指定のChatGPT Webモデルへ1回だけ相談し、重複送信を避けて回答全文を保存・照合する。[導入と使い方](docs/desktop-apps.md#任意-chatgpt-web相談スキルを入れる)。
 - **`codex-pro-plan-build`** — Codex Desktop専用。認可された手戻りの大きい設計判断だけWeb Proへ相談し、設計契約を検収してからローカルで実装・試験する。[導入と使い方](docs/desktop-apps.md#任意-pro設計実装ワークフローを入れる)。
 - **`meeting-copilot`** — 2 台構成の会議コパイロット。進行表 1 枚から台本を作り、3 行カード、探し物アシスト、終話で自動停止。発話ごとの判定は Jev（TypeSafe・Vercel AI Gateway 経由）等の差し替え可能な判定モデルに任せ、答えられなければルールへ退避する。[`templates/skills/meeting-copilot/SKILL.md`](templates/skills/meeting-copilot/SKILL.md)
 - **`meeting-board`** — Meet の字幕を話者つきで読み、会議中に「ここまでの話」を整理して別窓に出す。頭は手元の Claude Code。[`templates/skills/meeting-board/SKILL.md`](templates/skills/meeting-board/SKILL.md)
+- **`meaning-search`**（beta）— **「あの件について、相手は何と言っていたか」を台帳から引くときに使う。** `grep` は書いたとおりの言葉しか拾わない——「納品後の修正」で探しても、「検収後の直し」と書いた記録や、音声認識が「異動」を「移動」と書いた発言は出てこない。そこで、台帳を安いモデルに全部読ませて関係しそうな記録を拾い、その出典から会議の逐語の前後まで読ませる。相手への返事や問いを書く前、設計を変える前に流す。出てくるのは下読みで、拾ったものは原文を開いて確かめる（拾い漏れもありうる）。索引は残さない。Claude Code では子に道具を1つも渡さない。Codex では読み取り専用のサンドボックスで起動するが、コネクタを外す指定がない。[`templates/skills/meaning-search/SKILL.md`](templates/skills/meaning-search/SKILL.md)
 
 このキットが自動便から Codex を呼ぶときの会話は、**`~/.codex/sessions` に残りません**（`--ephemeral`）。あの木は蒸留便が採掘する場所で、**機構自身のプロンプトはあなたの判断ではない**ため。cron の不調を追うときだけ `AGENT_CLI_RECORD=1` で記録を戻す。
 
