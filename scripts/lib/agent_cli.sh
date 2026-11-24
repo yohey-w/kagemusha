@@ -93,7 +93,7 @@
 #                          scheduled run, then turn it off.
 #
 # ⚠️ A model id that belongs to the other dialect is not something the CLI tells
-# you about kindly: codex would go and ask its API for "claude-opus-4-8". So the
+# you about kindly: codex would go and ask its API for "claude-opus-5-5". So the
 # two crossings are handled here — the shared AGENT_MODEL is simply not read for
 # codex, and a `claude-*` id that reaches a codex call any other way (--model,
 # AGENT_MODEL_CODEX) FAILS THE BUILD, before anything is spawned.
@@ -121,7 +121,7 @@ AGENT_CLI_PREAMBLE="${AGENT_CLI_PREAMBLE:-Answer with output only. Do not use an
 # alternative — falling back to the shared AGENT_MODEL — is exactly how a Claude
 # model id reached a codex command line. Override it per machine if you want a
 # different default; set AGENT_MODEL_CODEX to pin one per config.
-AGENT_CLI_DEFAULT_MODEL_CODEX="${AGENT_CLI_DEFAULT_MODEL_CODEX:-gpt-5.6-sol}"
+AGENT_CLI_DEFAULT_MODEL_CODEX="${AGENT_CLI_DEFAULT_MODEL_CODEX:-gpt-6.2-sol}"
 
 # ─── the environment, frozen once ──────────────────────────────────────────
 # Read here, at source time, which is BEFORE the caller sources config.env
@@ -239,7 +239,7 @@ agent_cli_which() {
 # OTHER known CLI the two keys contradict each other, and the resolution is
 # fixed and loud: the dialect wins, the binary falls back to the dialect's own
 # name, and ONE line goes to stderr. The alternative — running the named binary
-# in the other dialect's argv form — is `claude exec -m claude-opus-4-8`, a
+# in the other dialect's argv form — is `claude exec -m claude-opus-5-5`, a
 # command line that belongs to no CLI at all.
 agent_cli_bin() {
   local cli="$1" cmd kind

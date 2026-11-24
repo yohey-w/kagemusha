@@ -569,8 +569,8 @@ _MODEL_DEFAULTS = {
         "answer": ("claude-opus-5", "low", "claude-sonnet-5", "low"),
     },
     "codex": {
-        "premise": ("gpt-5.6-sol", "low", "gpt-5.6-sol", "medium"),
-        "answer": ("gpt-5.6-sol", "xhigh", "gpt-5.6-sol", "low"),
+        "premise": ("gpt-6.2-sol", "low", "gpt-6.2-sol", "medium"),
+        "answer": ("gpt-6.2-sol", "xhigh", "gpt-6.2-sol", "low"),
     },
 }
 

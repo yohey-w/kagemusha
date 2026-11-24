@@ -368,7 +368,7 @@ assert_grep_str "M3c: AGENT_CLI=codex in the environment beats AGENT_CMD in conf
 assert_grep_str "M3c: …so the whole command line is codex's" "codex exec" "$M_PREC"
 assert_no_grep_str "M3c: …and NOT the mongrel that was measured" "claude exec" "$M_PREC"
 assert_grep_str "M3c: …the model is codex's own default, not the config's Claude id" \
-  "-m gpt-5.6-sol" "$M_PREC"
+  "-m gpt-6.2-sol" "$M_PREC"
 assert_no_grep_str "M3c: …no Claude model id crosses over" "claude-opus-4-8" "$M_PREC"
 assert_no_grep_str "M3c: …and no claude-only flag does either" "dangerously" "$M_PREC"
 assert_eq "M3c: the contradiction is reported in exactly ONE line, on stderr" \
@@ -406,7 +406,7 @@ assert_grep_str "M3c: …and AGENT_CLI=auto in the environment is not a choice, 
 
 # the dry run prints the four things that were RESOLVED, not just the argv
 assert_grep_str "M3c: agent_cli_show names type, executable, model and effort" \
-  "# cli=codex bin=codex model=gpt-5.6-sol effort=xhigh" \
+  "# cli=codex bin=codex model=gpt-6.2-sol effort=xhigh" \
   "$(m_prec "$M_CFG_OLD" AGENT_CLI=codex AGENT_EFFORT_CODEX=xhigh)"
 assert_grep_str "M3c: …and prints '-' for what nothing set" \
   "effort=-" "$(m_prec "$M_CFG_OLD" AGENT_CLI=codex)"
@@ -463,7 +463,7 @@ env -i HOME="$TEST_TMP/m_fakehome" PATH="$M_BIN:/usr/bin:/bin" AGENT_CLI=codex \
     LOOP_CONFIG="$M_PCFG" SHIM_ARGS="$M_PARGS" "$M_KIT/scripts/morning_brief.sh" >/dev/null 2>&1
 assert_eq "M3d: the CODEX binary is the one that ran, not the config's claude" \
   "codex" "$(cat "$M_PARGS.bin" 2>/dev/null)"
-assert_grep "M3d: …with codex's default model" "gpt-5.6-sol" "$M_PARGS"
+assert_grep "M3d: …with codex's default model" "gpt-6.2-sol" "$M_PARGS"
 assert_no_grep "M3d: …and the config's Claude model id never reaches it" \
   "claude-opus-4-8" "$M_PARGS"
 assert_no_grep "M3d: …nor the claude-only permission flag" "dangerously" "$M_PARGS"
