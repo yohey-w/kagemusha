@@ -28,7 +28,9 @@
 # ─── model and reasoning ───────────────────────────────────────────────────
 # The kit's scripts pass these per call (scripts/lib/agent_cli.sh), so what you
 # put here is the default for the INTERACTIVE session you open in this folder.
-model = "gpt-5.6-sol"
+# Model ids can go stale as generations change. Check your CLI's model list
+# and update the id here.
+model = "gpt-6.2-sol"
 model_reasoning_effort = "xhigh"
 
 # ─── sandbox ───────────────────────────────────────────────────────────────

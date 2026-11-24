@@ -90,10 +90,10 @@ export MEETLIVE_KNOWLEDGE_DIR=/path/to/projects/acme/meetlive_knowledge
 | 変数 | 既定 | 意味 |
 |---|---|---|
 | `MEETLIVE_AGENT_CLI` | (空→PATHにある方・両方あれば `claude`) | 使う CLI: `claude` / `codex` |
-| `MEETLIVE_MODEL_PREMISE` / `_EFFORT_PREMISE` | claude: `claude-sonnet-5`/`medium`<br>codex: `gpt-5.6-sol`/`low` | 前提監視(量産呼び出し) |
-| `MEETLIVE_MODEL_PREMISE_FALLBACK` / `_EFFORT_PREMISE_FALLBACK` | claude: `claude-opus-5`/`medium`<br>codex: `gpt-5.6-sol`/`medium` | 既定が空を返したときだけ1回 |
-| `MEETLIVE_MODEL_ANSWER` / `_EFFORT_ANSWER` | claude: `claude-opus-5`/`low`<br>codex: `gpt-5.6-sol`/`xhigh` | 台本外の回答(一発呼び出し) |
-| `MEETLIVE_MODEL_ANSWER_FALLBACK` / `_EFFORT_ANSWER_FALLBACK` | claude: `claude-sonnet-5`/`low`<br>codex: `gpt-5.6-sol`/`low` | 同上のフォールバック |
+| `MEETLIVE_MODEL_PREMISE` / `_EFFORT_PREMISE` | claude: `claude-sonnet-5`/`medium`<br>codex: `gpt-6.2-sol`/`low` | 前提監視(量産呼び出し) |
+| `MEETLIVE_MODEL_PREMISE_FALLBACK` / `_EFFORT_PREMISE_FALLBACK` | claude: `claude-opus-5`/`medium`<br>codex: `gpt-6.2-sol`/`medium` | 既定が空を返したときだけ1回 |
+| `MEETLIVE_MODEL_ANSWER` / `_EFFORT_ANSWER` | claude: `claude-opus-5`/`low`<br>codex: `gpt-6.2-sol`/`xhigh` | 台本外の回答(一発呼び出し) |
+| `MEETLIVE_MODEL_ANSWER_FALLBACK` / `_EFFORT_ANSWER_FALLBACK` | claude: `claude-sonnet-5`/`low`<br>codex: `gpt-6.2-sol`/`low` | 同上のフォールバック |
 
 **既定が CLI ごとに違うのは、モデルidがCLIをまたいで通用しないから**(片方の既定を
 もう片方に渡すと、CLI 自身のエラーで空が返る＝画面の上では「材料になし」と区別が
