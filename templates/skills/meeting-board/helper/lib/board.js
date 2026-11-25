@@ -2,14 +2,19 @@
 // ボードの形（board.json の schema 2）を整え、更新をまたいで安定させる。
 // claude が書くのは提案（話題・状態・次の一手など）。ヘルパーがここで、
 //   ・話題に id を付けて引き継ぐ（題名は一度出たら変えない・前の話題を消さない）
-//   ・聞くことの表を事前メモの文言と順番で固定し、状態（済／持ち帰り／まだ）だけを当てる
+//   ・聞くことの表を事前メモの文言と順番で固定し、状態（済／一部／持ち帰り／まだ）だけを当てる
 //   ・形の崩れた要素を捨てる（何が来ても例外を出さない）
 // をする。extract.js の normalizeBoard() はそのまま使い、その結果に上乗せする。
 
 const { normalizeBoard } = require('./extract');
 
-const STATES = ['open', 'deferred', 'done'];
-const RANK = { open: 0, deferred: 1, done: 2 };
+// partial（一部）… 答えの一部だけが出た。0.5 までは open に丸めて「まだ」に見えていた（2026-11-07 の本番）
+const STATES = ['open', 'partial', 'deferred', 'done'];
+const RANK = { open: 0, partial: 1, deferred: 2, done: 3 };
+/** まだ残りがある（次の一手・言い忘れの警告・「あと○つ」の対象） */
+function isUnfinished(state) {
+  return state === 'open' || state === 'partial';
+}
 const MAX_CARDS = 2;
 const HEADLINE_MAX = 60;
 
@@ -34,13 +39,14 @@ function normText(s) {
   return str(s).replace(/[\s。．.、，,？?！!]/g, '');
 }
 
-/** 状態の言い方を 3 つに寄せる。分からなければ null（前回のまま） */
+/** 状態の言い方を 4 つに寄せる。分からなければ null（前回のまま） */
 function stateOf(r) {
   if (!isObj(r)) return null;
   const s = str(r.state).toLowerCase();
   if (/^(done|済|済み|answered|told|伝え済み)$/.test(s)) return 'done';
   if (/^(deferred|持ち帰り|carried|pending)$/.test(s)) return 'deferred';
-  if (/^(open|まだ|未|todo|partial)$/.test(s)) return 'open';
+  if (/^(partial|partially|一部|一部回答|一部済み?|in[ _-]?progress)$/.test(s)) return 'partial';
+  if (/^(open|まだ|未|todo)$/.test(s)) return 'open';
   if (r.done === true) return 'done'; // 0.1 の形（done だけ）も読む
   if (r.done === false) return 'open';
   return null;
@@ -133,19 +139,20 @@ function buildChecklist(spec, rawChecklist, prevList, todos, hasNotes) {
     }
     return items.map((it) => {
       const r = byId.get(it.id) || byText.get(normText(it.text)) || null;
-      const p = prevs.find((x) => x.id === it.id) || null;
+      // 前回の判定は、id だけでなく本文も同じときだけ引き継ぐ（事前メモを貼り直して番号がずれたとき、別の項目の根拠を付けない）
+      const p = prevs.find((x) => x.id === it.id && (!str(x.item) || normText(x.item) === normText(it.text))) || null;
       let state = stateOf(r);
       if (state === null) state = p && STATES.includes(p.state) ? p.state : 'open';
-      // 済・持ち帰りは claude の気まぐれでは戻さない（済 → 持ち帰り → まだ の向きには動かさない）
+      // 済・持ち帰り・一部は claude の気まぐれでは戻さない（済 → 持ち帰り → 一部 → まだ の向きには動かさない）
       if (p && STATES.includes(p.state) && RANK[p.state] > RANK[state]) state = p.state;
       const todo = todos.find((t) => t.ref === it.id) || null;
-      if (state === 'open' && todo) state = 'deferred'; // 宿題に結びついていれば少なくとも持ち帰り
+      if (isUnfinished(state) && todo) state = 'deferred'; // 宿題に結びついていれば少なくとも持ち帰り
       const owner = state === 'deferred' ? str(r && r.owner) || (todo ? todo.who : '') || (p ? str(p.owner) : '') : '';
       const evidence = str(r && r.evidence) || (p ? str(p.evidence) : '');
       return { id: it.id, kind: it.kind, item: it.text, state, owner, evidence, done: state === 'done' };
     });
   }
-  // 事前メモに見出しが無い → 今までどおり claude が事前メモから作った表を使う（状態は 3 つにする）
+  // 事前メモに見出しが無い → 今までどおり claude が事前メモから作った表を使う（状態は 4 つにする）
   return raws
     .map((r, i) => {
       const item = str(r.item);
@@ -186,18 +193,22 @@ function decideNextAction(rawNext, checklist, beliefs, todos) {
     if (ref && !ids.has(ref)) ref = '';
     const target = checklist.find((c) => c.id === ref);
     // 済んだ・持ち帰りになった項目を指したままの提案は古い（もう言った・聞いた・相手が調べる）ので使わない
-    if (text && !(target && target.state !== 'open')) {
+    if (text && !(target && !isUnfinished(target.state))) {
       return { text: clip(text, LINE_MAX), reason: clip(str(rawNext.reason), LINE_MAX), ref, by: 'llm' };
     }
   }
   if (!checklist.length) return null;
-  const open = checklist.find((c) => c.state === 'open');
+  // 事前メモの順で、まだ残りがある最初の項目（まだ・一部）
+  const open = checklist.find((c) => isUnfinished(c.state));
   if (open) {
     const no = checklist.indexOf(open) + 1;
     const tell = open.kind === 'tell';
+    const part = open.state === 'partial';
     return {
       text: clip((tell ? '伝える：' : '聞く：') + stripEnd(open.item), LINE_MAX),
-      reason: (tell ? 'まだ伝えていない' : 'まだ答えをもらっていない') + '（事前メモの ' + no + ' 番目）',
+      reason:
+        (part ? (tell ? '一部しか伝えていない' : '答えが一部だけ出た（残りを聞く）') : tell ? 'まだ伝えていない' : 'まだ答えをもらっていない') +
+        '（事前メモの ' + no + ' 番目）',
       ref: open.id,
       by: 'rule',
     };
@@ -231,7 +242,7 @@ function normWarnings(rawList, checklist, beliefs) {
     .filter((w) => {
       if (w.kind !== 'missing') return true;
       const c = checklist.find((x) => x.id === w.ref);
-      return !(c && c.state !== 'open'); // もう済んだ・持ち帰りになった項目の言い忘れは出さない
+      return !(c && !isUnfinished(c.state)); // もう済んだ・持ち帰りになった項目の言い忘れは出さない
     })
     .slice(0, MAX_WARNINGS);
 }
@@ -319,8 +330,8 @@ function normalizeBoardV2(raw, ctx) {
 }
 
 /**
- * 人が手で直した聞くことの状態（済／持ち帰り／まだ）を当てる。人の操作が claude より勝つ。
- *   overrides = { q1: { state: 'done' | 'deferred' | 'open', owner: '' } }
+ * 人が手で直した聞くことの状態（済／一部／持ち帰り／まだ）を当てる。人の操作が claude より勝つ。
+ *   overrides = { q1: { state: 'done' | 'partial' | 'deferred' | 'open', owner: '' } }
  * 当てたあと、次の一手と言い忘れの警告を、直した状態に合わせて決め直す。元のボードは変えない（新しいボードを返す）
  */
 function applyOverrides(board, overrides, ctx) {
@@ -348,9 +359,87 @@ function applyOverrides(board, overrides, ctx) {
   out.warnings = arr(board.warnings).filter((w) => {
     if (!w || w.kind !== 'missing') return true;
     const it = checklist.find((x) => x.id === w.ref);
-    return !(it && it.state !== 'open');
+    return !(it && !isUnfinished(it.state));
   });
   return out;
+}
+
+/**
+ * 事前メモを貼り直したときの id の対応（旧 id → 新 id）。本文が同じもの（聞くこと・伝えることは種類も同じ）だけ。
+ * 同じ本文が 2 つあれば、上から順に 1 対 1 で結ぶ
+ */
+function specIdMap(oldList, newList, sameKind) {
+  const map = new Map();
+  const used = new Set();
+  const news = arr(newList).filter(isObj);
+  for (const o of arr(oldList).filter(isObj)) {
+    const key = normText(o.text);
+    if (!key || !str(o.id)) continue;
+    const n = news.find((x) => !used.has(x.id) && normText(x.text) === key && (!sameKind || x.kind === o.kind));
+    if (!n) continue;
+    used.add(n.id);
+    map.set(str(o.id), n.id);
+  }
+  return map;
+}
+
+/**
+ * 事前メモを貼り直したとき、前のボードと人が直した状態を新しい事前メモの id に付け替える。
+ *   ・本文が同じ項目は、状態・根拠・持ち帰りの人・人が直した状態を引き継ぐ（番号の位置が変わっても付いていく）
+ *   ・対応の取れない古い判定は捨てる（新しい項目は「まだ」から。0.5 までは位置の番号で引き継ぎ、別の項目に根拠が付いた）
+ *   ・宿題・次の一手・警告・前提と食い違ったことの参照（ref）も付け替える。対応の無い参照は外す（警告と次の一手は捨てる）
+ * 戻り値: { board（新しいオブジェクト。元は変えない。board が無ければそのまま）, overrides }
+ */
+function remapToSpec(board, overrides, oldSpec, newSpec) {
+  const os = isObj(oldSpec) ? oldSpec : {};
+  const ns = isObj(newSpec) ? newSpec : {};
+  const im = specIdMap(os.items, ns.items, true);
+  const bm = specIdMap(os.beliefs, ns.beliefs, false);
+  const ov = {};
+  for (const k of Object.keys(isObj(overrides) ? overrides : {})) if (im.has(k)) ov[im.get(k)] = overrides[k];
+  if (!isObj(board)) return { board, overrides: ov };
+  // 参照の付け替え: '' → ''（参照なし）、対応あり → 新しい id、対応なし → null
+  const oldIds = new Set(arr(os.items).concat(arr(os.beliefs)).filter(isObj).map((x) => str(x.id)));
+  const ref = (r) => {
+    const v = str(r);
+    if (!v) return '';
+    if (im.has(v)) return im.get(v);
+    if (bm.has(v)) return bm.get(v);
+    return oldIds.has(v) ? null : v; // 事前メモ由来でない参照（claude が作った表の c1 など）はそのまま
+  };
+  const out = Object.assign({}, board);
+  const newItems = arr(ns.items).filter(isObj);
+  if (newItems.length) {
+    const old = arr(board.checklist).filter(isObj);
+    out.checklist = newItems.map((it) => {
+      const c = old.find((x) => im.get(str(x.id)) === it.id) || null;
+      const state = c && STATES.includes(c.state) ? c.state : 'open';
+      return {
+        id: it.id,
+        kind: it.kind,
+        item: it.text,
+        state,
+        owner: c && state === 'deferred' ? str(c.owner) : '',
+        evidence: c ? str(c.evidence) : '',
+        done: state === 'done',
+      };
+    });
+  } else if (arr(os.items).length) out.checklist = []; // 事前メモから項目が読めなくなった → 次の整理で claude の表に戻る
+  out.topics = arr(board.topics).map((t) =>
+    isObj(t) ? Object.assign({}, t, { todos: arr(t.todos).map((d) => (isObj(d) ? Object.assign({}, d, { ref: ref(d.ref) || '' }) : d)) }) : t
+  );
+  if (isObj(board.next_action)) {
+    const r = ref(board.next_action.ref);
+    out.next_action = r === null ? null : Object.assign({}, board.next_action, { ref: r });
+  }
+  out.warnings = arr(board.warnings)
+    .filter(isObj)
+    .map((w) => Object.assign({}, w, { ref: ref(w.ref) }))
+    .filter((w) => w.ref !== null);
+  out.premise_conflicts = arr(board.premise_conflicts)
+    .filter(isObj)
+    .map((k) => Object.assign({}, k, { ref: ref(k.ref) || '' }));
+  return { board: out, overrides: ov };
 }
 
 /**
@@ -480,6 +569,8 @@ module.exports = {
   detailTopicIds,
   normalizeBoardV2,
   applyOverrides,
+  remapToSpec,
+  specIdMap,
   normClosing,
   toPromptBoard,
   buildChecklist,
@@ -487,6 +578,7 @@ module.exports = {
   decideNextAction,
   normWarnings,
   stateOf,
+  isUnfinished,
   isNoiseTopic,
   MAX_CARDS,
 };

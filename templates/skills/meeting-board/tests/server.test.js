@@ -1130,3 +1130,81 @@ test('POST /finish は、ほかの書き込みと同じ札（X-Meeting-Board）�
     await h.close();
   }
 });
+
+// ── 事前メモの貼り直し: 0.5 までは q1, q2… が振り直され、前の根拠が別の項目に付いたまま出た（2026-11-07 の本番） ──
+test('事前メモを貼り直す（POST /notes）: 本文が同じ項目へ状態・根拠・手で直した状態が付いていき、新しい項目は「まだ」。次の整理のあとも同じ', async () => {
+  const h = await S.startApp({ fakeClock: true, notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 初期費用はいくらか\n3. 納期はいつか' });
+  const first = path.join(h.dataDir, 'stub_first.json');
+  const later = path.join(h.dataDir, 'stub_later.json');
+  fs.writeFileSync(
+    first,
+    JSON.stringify({
+      topics: [{ title: '費用', current: true, points: [{ speaker: '佐々木', text: '月額は400円です' }] }],
+      checklist: [
+        { id: 'q1', state: 'done', evidence: '1人月400円（佐々木）' },
+        { id: 'q2', state: 'partial', evidence: '30万円は出た／保守費は残り' },
+        { id: 'q3', state: 'open', evidence: '' },
+      ],
+    })
+  );
+  fs.writeFileSync(later, JSON.stringify({ topics: [{ title: '費用', current: true, points: [{ speaker: '佐々木', text: '続き' }] }] }));
+  try {
+    h.app.env.STUB_BOARD = first;
+    await post(h, '/captions', { entries: lines(8, 'a') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    assert.equal((await post(h, '/override', { id: 'q3', state: 'deferred', owner: '佐々木' })).status, 200);
+
+    // 先頭に 1 つ足して貼り直す → 番号が 1 つずつずれる
+    assert.equal((await post(h, '/notes', { text: '## 今日聞くこと\n1. 担当者は誰か\n2. 月額はいくらか\n3. 初期費用はいくらか\n4. 納期はいつか' })).status, 200);
+    let st = (await get(h, '/state')).json;
+    const rows = (b) => b.checklist.map((c) => [c.id, c.item, c.state, c.evidence, !!c.byUser]);
+    const want = [
+      ['q1', '担当者は誰か', 'open', '', false],
+      ['q2', '月額はいくらか', 'done', '1人月400円（佐々木）', false],
+      ['q3', '初期費用はいくらか', 'partial', '30万円は出た／保守費は残り', false],
+      ['q4', '納期はいつか', 'deferred', '', true],
+    ];
+    assert.deepEqual(rows(st.board), want, '貼り直した直後から、本文の同じ項目に付いている');
+    assert.equal(st.board.next_action.ref, 'q1', '次の一手は新しい「まだ」');
+    const dir = fs.readdirSync(h.dataDir).find((d) => /^\d{4}-/.test(d));
+    assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(h.dataDir, dir, 'overrides.json'), 'utf8'))), ['q4']);
+    assert.deepEqual(rows(JSON.parse(fs.readFileSync(path.join(h.dataDir, dir, 'board.json'), 'utf8'))), want);
+
+    // 次の整理（claude が表を返さない）でも、前回の判定は本文の同じ項目に残る。claude には新しい id で渡る
+    h.app.env.STUB_BOARD = later;
+    await post(h, '/captions', { entries: lines(8, 'b') });
+    h.clock.t += 30000;
+    assert.equal((await h.app.runUpdate('test')).ok, true);
+    st = (await get(h, '/state')).json;
+    assert.deepEqual(rows(st.board), want);
+    assert.match(h.calls()[1].stdin, /"id":"q2","state":"done","owner":"","evidence":"1人月400円（佐々木）"/);
+
+    // 項目を消して貼り直すと、その判定は捨てる
+    await post(h, '/notes', { text: '## 今日聞くこと\n1. 納期はいつか' });
+    st = (await get(h, '/state')).json;
+    assert.deepEqual(rows(st.board), [['q1', '納期はいつか', 'deferred', '', true]]);
+  } finally {
+    await h.close();
+  }
+});
+
+test('事前メモを貼り直す: 整理の最中に貼り直したら、古い番号で書かれた返事は捨てる（新しい項目に古い根拠を付けない）', async () => {
+  const h = await S.startApp({ fakeClock: true, notes: '## 今日聞くこと\n1. 月額はいくらか\n2. 納期はいつか', env: { STUB_DELAY_MS: '600' } });
+  const stub = path.join(h.dataDir, 'stub_q1.json');
+  fs.writeFileSync(stub, JSON.stringify({ topics: [{ title: '費用', current: true, points: [] }], checklist: [{ id: 'q1', state: 'done', evidence: '400円' }] }));
+  try {
+    h.app.env.STUB_BOARD = stub;
+    await post(h, '/captions', { entries: lines(4, 'a') });
+    const p = h.app.runUpdate('test');
+    await S.sleep(100);
+    await post(h, '/notes', { text: '## 今日聞くこと\n1. 担当者は誰か\n2. 月額はいくらか\n3. 納期はいつか' });
+    const r = await p;
+    assert.equal(r.kind, 'stale');
+    assert.equal(h.app.updateCount, 0);
+    assert.equal(h.app.notesDirty, true, '次は新しいメモで整理し直す');
+    assert.equal(h.app.board, null);
+  } finally {
+    await h.close();
+  }
+});
